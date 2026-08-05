@@ -116,6 +116,7 @@
       sprintMultiplier: 2.3,
       verticalSpeed: 12,
     };
+    const flyDirection = new THREE.Vector3();
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0x030610, 0.0085);
@@ -807,16 +808,28 @@
         setTimeout(() => URL.revokeObjectURL(link.href), 1000);
       }, 'image/png');
     }
-
+    
     function updateFlight(delta) {
       const boost = moveState.sprint ? CONFIG.sprintMultiplier : 1;
       const moveSpeed = CONFIG.flySpeed * boost * delta;
       const verticalSpeed = CONFIG.verticalSpeed * boost * delta;
 
-      if (moveState.forward) controls.moveForward(moveSpeed);
-      if (moveState.backward) controls.moveForward(-moveSpeed);
+      // Full 3D camera direction, including looking up or down.
+      controls.getDirection(flyDirection);
+
+      if (moveState.forward) {
+        controls.object.position.addScaledVector(flyDirection, moveSpeed);
+      }
+
+      if (moveState.backward) {
+        controls.object.position.addScaledVector(flyDirection, -moveSpeed);
+      }
+
+      // Strafing remains sideways.
       if (moveState.left) controls.moveRight(-moveSpeed);
       if (moveState.right) controls.moveRight(moveSpeed);
+
+      // Manual world-space up/down.
       if (moveState.up) controls.object.position.y += verticalSpeed;
       if (moveState.down) controls.object.position.y -= verticalSpeed;
     }
