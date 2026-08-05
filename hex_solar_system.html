@@ -245,6 +245,125 @@
       [1.00, 'rgba(0,0,0,0.0)'],
     ]);
 
+    function createArtificialStarMaps(size = 1024) {
+      const colorCanvas = document.createElement('canvas');
+      const emissiveCanvas = document.createElement('canvas');
+      const bumpCanvas = document.createElement('canvas');
+
+      colorCanvas.width = colorCanvas.height = size;
+      emissiveCanvas.width = emissiveCanvas.height = size;
+      bumpCanvas.width = bumpCanvas.height = size;
+
+      const ctx = colorCanvas.getContext('2d');
+      const ectx = emissiveCanvas.getContext('2d');
+      const bctx = bumpCanvas.getContext('2d');
+
+      const cx = size / 2;
+      const cy = size / 2;
+
+      // Base metallic radial shading
+      const base = ctx.createRadialGradient(cx, cy, size * 0.08, cx, cy, size * 0.62);
+      base.addColorStop(0.00, '#d8dde2');
+      base.addColorStop(0.22, '#9aa5b0');
+      base.addColorStop(0.55, '#59636f');
+      base.addColorStop(1.00, '#1f252b');
+      ctx.fillStyle = base;
+      ctx.fillRect(0, 0, size, size);
+
+      // Emissive background starts black
+      ectx.fillStyle = 'black';
+      ectx.fillRect(0, 0, size, size);
+
+      // Bump background = medium gray
+      bctx.fillStyle = 'rgb(140,140,140)';
+      bctx.fillRect(0, 0, size, size);
+
+      const r = size * 0.04;
+      const stepX = r * 1.5;
+      const stepY = Math.sqrt(3) * r;
+
+      function hexPath(g, x, y, radius) {
+        g.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = i * Math.PI / 3;
+          const px = x + Math.cos(a) * radius;
+          const py = y + Math.sin(a) * radius;
+          if (i === 0) g.moveTo(px, py);
+          else g.lineTo(px, py);
+        }
+        g.closePath();
+      }
+
+      for (let col = -2; col < size / stepX + 3; col++) {
+        const x = col * stepX;
+        const yOffset = (col % 2) * (stepY * 0.5);
+
+        for (let row = -2; row < size / stepY + 3; row++) {
+          const y = row * stepY + yOffset;
+
+          const dx = x - cx;
+          const dy = y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy) / (size * 0.5);
+          const centerWeight = Math.max(0, 1 - dist);
+
+          // Metallic cell fill
+          const tone = 70 + centerWeight * 90 + Math.random() * 20;
+          const tone2 = tone + 10;
+          const tone3 = tone + 18;
+
+          ctx.fillStyle = `rgb(${tone2|0}, ${tone3|0}, ${tone|0})`;
+          hexPath(ctx, x, y, r * 0.92);
+          ctx.fill();
+
+          // Slight darker panel edges
+          ctx.strokeStyle = 'rgba(20,24,28,0.75)';
+          ctx.lineWidth = r * 0.06;
+          ctx.stroke();
+
+          // Glowing seams / gaps
+          const seamStrength = 120 + centerWeight * 120 + Math.random() * 25;
+          ectx.strokeStyle = `rgb(${seamStrength|0}, ${(seamStrength * 0.58)|0}, 20)`;
+          ectx.lineWidth = r * 0.11;
+          hexPath(ectx, x, y, r * 0.95);
+          ectx.stroke();
+
+          // Occasional brighter vent/core dots
+          if (Math.random() < 0.16) {
+            ectx.beginPath();
+            ectx.arc(x, y, r * 0.14, 0, Math.PI * 2);
+            ectx.fillStyle = `rgba(255, ${160 + Math.random()*60}, 70, 0.9)`;
+            ectx.fill();
+          }
+
+          // Bump: raised panels, recessed seams
+          bctx.fillStyle = `rgb(${150 + centerWeight * 40}, ${150 + centerWeight * 40}, ${150 + centerWeight * 40})`;
+          hexPath(bctx, x, y, r * 0.90);
+          bctx.fill();
+
+          bctx.strokeStyle = 'rgb(60,60,60)';
+          bctx.lineWidth = r * 0.10;
+          hexPath(bctx, x, y, r * 0.96);
+          bctx.stroke();
+        }
+      }
+
+      const colorMap = new THREE.CanvasTexture(colorCanvas);
+      colorMap.colorSpace = THREE.SRGBColorSpace;
+      colorMap.wrapS = colorMap.wrapT = THREE.RepeatWrapping;
+      colorMap.repeat.set(2, 1);
+
+      const emissiveMap = new THREE.CanvasTexture(emissiveCanvas);
+      emissiveMap.colorSpace = THREE.SRGBColorSpace;
+      emissiveMap.wrapS = emissiveMap.wrapT = THREE.RepeatWrapping;
+      emissiveMap.repeat.set(2, 1);
+
+      const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+      bumpMap.wrapS = bumpMap.wrapT = THREE.RepeatWrapping;
+      bumpMap.repeat.set(2, 1);
+
+      return { colorMap, emissiveMap, bumpMap };
+    }
+
     // -------------------------------------------------------------------------
     // Background stars
     // -------------------------------------------------------------------------
@@ -298,10 +417,28 @@
     const starGroup = new THREE.Group();
     scene.add(starGroup);
 
+    const starMaps = createArtificialStarMaps();
+
     const star = new THREE.Mesh(
-      new THREE.SphereGeometry(2.35, 64, 64),
-      new THREE.MeshBasicMaterial({ color: 0xffe1a1 }),
+      new THREE.IcosahedronGeometry(2.35, 5),
+      new THREE.MeshPhysicalMaterial({
+        map: starMaps.colorMap,
+        emissiveMap: starMaps.emissiveMap,
+        bumpMap: starMaps.bumpMap,
+
+        color: 0xffffff,
+        emissive: 0xff8a2b,
+        emissiveIntensity: 1.8,
+
+        metalness: 0.92,
+        roughness: 0.34,
+        bumpScale: 0.12,
+        clearcoat: 0.18,
+        clearcoatRoughness: 0.22,
+        envMapIntensity: 1.15,
+      }),
     );
+
     starGroup.add(star);
 
     const coronaMaterial = new THREE.SpriteMaterial({
@@ -643,7 +780,9 @@
       updateHexagons(time, delta);
       updateConnections(time);
 
-      star.rotation.y += delta * 0.06;
+      star.rotation.y += delta * 0.10;
+      star.rotation.z += delta * 0.03;
+      star.material.emissiveIntensity = 1.65 + Math.sin(time * 1.7) * 0.18;
       innerCorona.material.rotation += delta * 0.018;
       outerCorona.material.rotation -= delta * 0.009;
       innerCorona.material.opacity = 0.88 + Math.sin(time * 1.1) * 0.06;
