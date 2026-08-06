@@ -193,6 +193,7 @@
       <div id="position">Position: 0, 0, 0</div>
       <div>Stars: 130,000</div>
       <div id="links">Links: building…</div>
+      <div id="selected-star">Selected: none</div>
     </div>
 
     <div id="crosshair" aria-hidden="true"></div>
@@ -205,6 +206,7 @@
       </div>
     </div>
   </div>
+
 
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/+esm";
@@ -258,6 +260,7 @@
     const speedLabel = document.getElementById("speed");
     const positionLabel = document.getElementById("position");
     const linksLabel = document.getElementById("links");
+    const selectedStarLabel = document.getElementById("selected-star");
 
     function randomGaussian() {
       let u = 0;
@@ -404,220 +407,397 @@
 
     let connectionLines = null;
     let linksVisible = true;
+    let starConnectionCounts = null;
 
     function buildConnectionNetwork(sourcePositions, sourceColors) {
       // The nearest-neighbor search runs in a worker so the camera remains usable.
       const workerSource = String.raw`
-        self.onmessage = (event) => {
-          const { positionsBuffer, colorsBuffer, count, neighborCount } = event.data;
-          const positions = new Float32Array(positionsBuffer);
-          const colors = new Float32Array(colorsBuffer);
-          const indices = new Int32Array(count);
+      self.onmessage = (event) => {
+        const {
+          positionsBuffer,
+          colorsBuffer,
+          count,
+          neighborCount
+        } = event.data;
 
-          for (let i = 0; i < count; i++) indices[i] = i;
+        const positions = new Float32Array(positionsBuffer);
+        const colors = new Float32Array(colorsBuffer);
+        const indices = new Int32Array(count);
 
-          const coordinate = (pointIndex, axis) => positions[pointIndex * 3 + axis];
+        for (let i = 0; i < count; i++) {
+          indices[i] = i;
+        }
 
-          function swap(a, b) {
-            const temporary = indices[a];
-            indices[a] = indices[b];
-            indices[b] = temporary;
-          }
+        const coordinate = (pointIndex, axis) =>
+          positions[pointIndex * 3 + axis];
 
-          function partition(left, right, pivotIndex, axis) {
-            const pivotValue = coordinate(indices[pivotIndex], axis);
-            swap(pivotIndex, right);
-            let storeIndex = left;
+        function swap(a, b) {
+          const temporary = indices[a];
+          indices[a] = indices[b];
+          indices[b] = temporary;
+        }
 
-            for (let i = left; i < right; i++) {
-              if (coordinate(indices[i], axis) < pivotValue) {
-                swap(storeIndex, i);
-                storeIndex++;
-              }
-            }
+        function partition(left, right, pivotIndex, axis) {
+          const pivotValue = coordinate(indices[pivotIndex], axis);
 
-            swap(right, storeIndex);
-            return storeIndex;
-          }
+          swap(pivotIndex, right);
 
-          function quickSelect(left, right, target, axis) {
-            while (left < right) {
-              let pivotIndex = (left + right) >> 1;
-              pivotIndex = partition(left, right, pivotIndex, axis);
+          let storeIndex = left;
 
-              if (target === pivotIndex) return;
-              if (target < pivotIndex) right = pivotIndex - 1;
-              else left = pivotIndex + 1;
+          for (let i = left; i < right; i++) {
+            if (coordinate(indices[i], axis) < pivotValue) {
+              swap(storeIndex, i);
+              storeIndex++;
             }
           }
 
-          function buildTree(left, right, depth) {
-            if (left > right) return;
-            const middle = (left + right) >> 1;
-            quickSelect(left, right, middle, depth % 3);
-            buildTree(left, middle - 1, depth + 1);
-            buildTree(middle + 1, right, depth + 1);
-          }
+          swap(right, storeIndex);
+          return storeIndex;
+        }
 
-          self.postMessage({ type: "status", text: "Building spatial index…" });
-          buildTree(0, count - 1, 0);
-          self.postMessage({ type: "status", text: "Finding six closest stars…" });
+        function quickSelect(left, right, target, axis) {
+          while (left < right) {
+            let pivotIndex = (left + right) >> 1;
 
-          const nearestIndices = new Int32Array(neighborCount);
-          const nearestDistances = new Float64Array(neighborCount);
-          let nearestSize = 0;
-          let worstSlot = 0;
-          let worstDistance = Infinity;
-          let targetIndex = 0;
-          let targetX = 0;
-          let targetY = 0;
-          let targetZ = 0;
+            pivotIndex = partition(
+              left,
+              right,
+              pivotIndex,
+              axis
+            );
 
-          function refreshWorst() {
-            if (nearestSize < neighborCount) {
-              worstDistance = Infinity;
-              worstSlot = nearestSize;
-              return;
-            }
+            if (target === pivotIndex) return;
 
-            worstSlot = 0;
-            worstDistance = nearestDistances[0];
-            for (let i = 1; i < nearestSize; i++) {
-              if (nearestDistances[i] > worstDistance) {
-                worstDistance = nearestDistances[i];
-                worstSlot = i;
-              }
-            }
-          }
-
-          function consider(pointIndex) {
-            if (pointIndex === targetIndex) return;
-
-            const offset = pointIndex * 3;
-            const dx = positions[offset] - targetX;
-            const dy = positions[offset + 1] - targetY;
-            const dz = positions[offset + 2] - targetZ;
-            const distanceSquared = dx * dx + dy * dy + dz * dz;
-
-            if (nearestSize < neighborCount) {
-              nearestIndices[nearestSize] = pointIndex;
-              nearestDistances[nearestSize] = distanceSquared;
-              nearestSize++;
-              refreshWorst();
-            } else if (distanceSquared < worstDistance) {
-              nearestIndices[worstSlot] = pointIndex;
-              nearestDistances[worstSlot] = distanceSquared;
-              refreshWorst();
-            }
-          }
-
-          function searchTree(left, right, depth) {
-            if (left > right) return;
-
-            const middle = (left + right) >> 1;
-            const pointIndex = indices[middle];
-            const axis = depth % 3;
-            const pointOffset = pointIndex * 3;
-            const targetCoordinate = axis === 0 ? targetX : axis === 1 ? targetY : targetZ;
-            const difference = targetCoordinate - positions[pointOffset + axis];
-
-            if (difference <= 0) {
-              searchTree(left, middle - 1, depth + 1);
-              consider(pointIndex);
-              if (difference * difference < worstDistance) {
-                searchTree(middle + 1, right, depth + 1);
-              }
+            if (target < pivotIndex) {
+              right = pivotIndex - 1;
             } else {
-              searchTree(middle + 1, right, depth + 1);
-              consider(pointIndex);
-              if (difference * difference < worstDistance) {
-                searchTree(left, middle - 1, depth + 1);
-              }
+              left = pivotIndex + 1;
             }
           }
+        }
 
-          const edgeSet = new Set();
+        function buildTree(left, right, depth) {
+          if (left > right) return;
 
-          for (targetIndex = 0; targetIndex < count; targetIndex++) {
-            const targetOffset = targetIndex * 3;
-            targetX = positions[targetOffset];
-            targetY = positions[targetOffset + 1];
-            targetZ = positions[targetOffset + 2];
-            nearestSize = 0;
-            worstSlot = 0;
-            worstDistance = Infinity;
+          const middle = (left + right) >> 1;
 
-            searchTree(0, count - 1, 0);
-
-            for (let i = 0; i < nearestSize; i++) {
-              const neighbor = nearestIndices[i];
-              const low = targetIndex < neighbor ? targetIndex : neighbor;
-              const high = targetIndex < neighbor ? neighbor : targetIndex;
-              edgeSet.add(low * count + high);
-            }
-
-            if (targetIndex > 0 && targetIndex % 20000 === 0) {
-              self.postMessage({
-                type: "status",
-                text: "Finding closest stars… " + Math.round(targetIndex / count * 100) + "%"
-              });
-            }
-          }
-
-          self.postMessage({ type: "status", text: "Creating glowing links…" });
-
-          const edgeCount = edgeSet.size;
-          const linePositions = new Float32Array(edgeCount * 6);
-          const lineColors = new Float32Array(edgeCount * 6);
-          let writeOffset = 0;
-
-          for (const key of edgeSet) {
-            const first = Math.floor(key / count);
-            const second = key - first * count;
-            const a = first * 3;
-            const b = second * 3;
-
-            const dx = positions[a] - positions[b];
-            const dy = positions[a + 1] - positions[b + 1];
-            const dz = positions[a + 2] - positions[b + 2];
-            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-            // Short local links shine most strongly. Long halo links remain visible
-            // but dim enough that they do not turn the entire galaxy into a cage.
-            const intensity = Math.max(0.055, Math.min(0.72, 1.1 / (1 + distance * 0.075)));
-
-            linePositions[writeOffset] = positions[a];
-            linePositions[writeOffset + 1] = positions[a + 1];
-            linePositions[writeOffset + 2] = positions[a + 2];
-            linePositions[writeOffset + 3] = positions[b];
-            linePositions[writeOffset + 4] = positions[b + 1];
-            linePositions[writeOffset + 5] = positions[b + 2];
-
-            const redBrightness = intensity * .2;
-
-            lineColors[writeOffset] = redBrightness;
-            lineColors[writeOffset + 1] = redBrightness * 0.025;
-            lineColors[writeOffset + 2] = 0;
-
-            lineColors[writeOffset + 3] = redBrightness;
-            lineColors[writeOffset + 4] = redBrightness * 0.025;
-            lineColors[writeOffset + 5] = 0;
-
-            writeOffset += 6;
-          }
-
-          self.postMessage(
-            {
-              type: "complete",
-              edgeCount,
-              positionsBuffer: linePositions.buffer,
-              colorsBuffer: lineColors.buffer
-            },
-            [linePositions.buffer, lineColors.buffer]
+          quickSelect(
+            left,
+            right,
+            middle,
+            depth % 3
           );
-        };
-      `;
 
+          buildTree(left, middle - 1, depth + 1);
+          buildTree(middle + 1, right, depth + 1);
+        }
+
+        self.postMessage({
+          type: "status",
+          text: "Building spatial index…"
+        });
+
+        buildTree(0, count - 1, 0);
+
+        self.postMessage({
+          type: "status",
+          text: "Finding six closest stars…"
+        });
+
+        const nearestIndices =
+          new Int32Array(neighborCount);
+
+        const nearestDistances =
+          new Float64Array(neighborCount);
+
+        let nearestSize = 0;
+        let worstSlot = 0;
+        let worstDistance = Infinity;
+
+        let targetIndex = 0;
+        let targetX = 0;
+        let targetY = 0;
+        let targetZ = 0;
+
+        function refreshWorst() {
+          if (nearestSize < neighborCount) {
+            worstDistance = Infinity;
+            worstSlot = nearestSize;
+            return;
+          }
+
+          worstSlot = 0;
+          worstDistance = nearestDistances[0];
+
+          for (let i = 1; i < nearestSize; i++) {
+            if (nearestDistances[i] > worstDistance) {
+              worstDistance = nearestDistances[i];
+              worstSlot = i;
+            }
+          }
+        }
+
+        function consider(pointIndex) {
+          if (pointIndex === targetIndex) return;
+
+          const offset = pointIndex * 3;
+
+          const dx = positions[offset] - targetX;
+          const dy = positions[offset + 1] - targetY;
+          const dz = positions[offset + 2] - targetZ;
+
+          const distanceSquared =
+            dx * dx +
+            dy * dy +
+            dz * dz;
+
+          if (nearestSize < neighborCount) {
+            nearestIndices[nearestSize] = pointIndex;
+            nearestDistances[nearestSize] =
+              distanceSquared;
+
+            nearestSize++;
+            refreshWorst();
+          } else if (distanceSquared < worstDistance) {
+            nearestIndices[worstSlot] = pointIndex;
+            nearestDistances[worstSlot] =
+              distanceSquared;
+
+            refreshWorst();
+          }
+        }
+
+        function searchTree(left, right, depth) {
+          if (left > right) return;
+
+          const middle = (left + right) >> 1;
+          const pointIndex = indices[middle];
+          const axis = depth % 3;
+          const pointOffset = pointIndex * 3;
+
+          const targetCoordinate =
+            axis === 0
+              ? targetX
+              : axis === 1
+                ? targetY
+                : targetZ;
+
+          const difference =
+            targetCoordinate -
+            positions[pointOffset + axis];
+
+          if (difference <= 0) {
+            searchTree(
+              left,
+              middle - 1,
+              depth + 1
+            );
+
+            consider(pointIndex);
+
+            if (
+              difference * difference <
+              worstDistance
+            ) {
+              searchTree(
+                middle + 1,
+                right,
+                depth + 1
+              );
+            }
+          } else {
+            searchTree(
+              middle + 1,
+              right,
+              depth + 1
+            );
+
+            consider(pointIndex);
+
+            if (
+              difference * difference <
+              worstDistance
+            ) {
+              searchTree(
+                left,
+                middle - 1,
+                depth + 1
+              );
+            }
+          }
+        }
+
+        const edgeSet = new Set();
+
+        for (
+          targetIndex = 0;
+          targetIndex < count;
+          targetIndex++
+        ) {
+          const targetOffset = targetIndex * 3;
+
+          targetX = positions[targetOffset];
+          targetY = positions[targetOffset + 1];
+          targetZ = positions[targetOffset + 2];
+
+          nearestSize = 0;
+          worstSlot = 0;
+          worstDistance = Infinity;
+
+          searchTree(0, count - 1, 0);
+
+          for (let i = 0; i < nearestSize; i++) {
+            const neighbor = nearestIndices[i];
+
+            const low =
+              targetIndex < neighbor
+                ? targetIndex
+                : neighbor;
+
+            const high =
+              targetIndex < neighbor
+                ? neighbor
+                : targetIndex;
+
+            // Each unique connection is stored only once.
+            edgeSet.add(low * count + high);
+          }
+
+          if (
+            targetIndex > 0 &&
+            targetIndex % 20000 === 0
+          ) {
+            self.postMessage({
+              type: "status",
+              text:
+                "Finding closest stars… " +
+                Math.round(
+                  targetIndex / count * 100
+                ) +
+                "%"
+            });
+          }
+        }
+
+        self.postMessage({
+          type: "status",
+          text: "Creating glowing links…"
+        });
+
+        const edgeCount = edgeSet.size;
+
+        const linePositions =
+          new Float32Array(edgeCount * 6);
+
+        const lineColors =
+          new Float32Array(edgeCount * 6);
+
+        // One connection-count entry for every star.
+        const connectionCounts =
+          new Uint16Array(count);
+
+        let writeOffset = 0;
+
+        for (const key of edgeSet) {
+          const first = Math.floor(key / count);
+          const second = key - first * count;
+
+          // Count the connection for both endpoint stars.
+          connectionCounts[first]++;
+          connectionCounts[second]++;
+
+          const a = first * 3;
+          const b = second * 3;
+
+          const dx =
+            positions[a] - positions[b];
+
+          const dy =
+            positions[a + 1] -
+            positions[b + 1];
+
+          const dz =
+            positions[a + 2] -
+            positions[b + 2];
+
+          const distance = Math.sqrt(
+            dx * dx +
+            dy * dy +
+            dz * dz
+          );
+
+          // Short local links shine most strongly.
+          // Long halo links stay relatively dim.
+          const intensity = Math.max(
+            0.055,
+            Math.min(
+              0.72,
+              1.1 / (1 + distance * 0.075)
+            )
+          );
+
+          linePositions[writeOffset] =
+            positions[a];
+
+          linePositions[writeOffset + 1] =
+            positions[a + 1];
+
+          linePositions[writeOffset + 2] =
+            positions[a + 2];
+
+          linePositions[writeOffset + 3] =
+            positions[b];
+
+          linePositions[writeOffset + 4] =
+            positions[b + 1];
+
+          linePositions[writeOffset + 5] =
+            positions[b + 2];
+
+          const redBrightness =
+            intensity * 0.2;
+
+          lineColors[writeOffset] =
+            redBrightness;
+
+          lineColors[writeOffset + 1] =
+            redBrightness * 0.025;
+
+          lineColors[writeOffset + 2] = 0;
+
+          lineColors[writeOffset + 3] =
+            redBrightness;
+
+          lineColors[writeOffset + 4] =
+            redBrightness * 0.025;
+
+          lineColors[writeOffset + 5] = 0;
+
+          writeOffset += 6;
+        }
+
+        self.postMessage(
+          {
+            type: "complete",
+            edgeCount,
+
+            positionsBuffer:
+              linePositions.buffer,
+
+            colorsBuffer:
+              lineColors.buffer,
+
+            connectionCountsBuffer:
+              connectionCounts.buffer
+          },
+          [
+            linePositions.buffer,
+            lineColors.buffer,
+            connectionCounts.buffer
+          ]
+        );
+      };
+    `;
       const workerBlob = new Blob([workerSource], { type: "text/javascript" });
       const workerUrl = URL.createObjectURL(workerBlob);
       const worker = new Worker(workerUrl);
@@ -630,6 +810,9 @@
 
         if (event.data.type === "complete") {
           const geometry = new THREE.BufferGeometry();
+          starConnectionCounts = new Uint16Array(
+            event.data.connectionCountsBuffer
+          );
           geometry.setAttribute(
             "position",
             new THREE.BufferAttribute(new Float32Array(event.data.positionsBuffer), 3)
@@ -724,6 +907,54 @@
 
     scene.add(buildBackgroundStars());
 
+    function selectStarAtCrosshair() {
+      console.log("selectStarAtCrosshair called");
+
+      if (!starConnectionCounts) {
+        console.log("Connection counts are not ready");
+
+        selectedStarLabel.textContent =
+          "Selected: network still building…";
+
+        return;
+      }
+
+      camera.updateMatrixWorld(true);
+      galaxy.updateMatrixWorld(true);
+
+      starRaycaster.setFromCamera(screenCenter, camera);
+
+      const intersections = starRaycaster.intersectObject(
+        galaxy,
+        false
+      );
+
+      console.log(
+        "Star intersections:",
+        intersections.length,
+        intersections[0]
+      );
+
+      if (intersections.length === 0) {
+        console.log("No star under crosshair");
+        selectedStarLabel.textContent = "Selected: none";
+        return;
+      }
+
+      const starIndex = intersections[0].index;
+      const connectionCount =
+        starConnectionCounts[starIndex] ?? 0;
+
+      console.log({
+        starIndex,
+        connectionCount,
+        distance: intersections[0].distance
+      });
+
+      selectedStarLabel.textContent =
+        `Star ${starIndex.toLocaleString()}: ` +
+        `${connectionCount} connections`;
+    }
     const keys = new Set();
     let yaw = 0;
     let pitch = -0.12;
@@ -735,6 +966,11 @@
     const right = new THREE.Vector3();
     const up = new THREE.Vector3();
     const velocity = new THREE.Vector3();
+
+    const starRaycaster = new THREE.Raycaster();
+    const screenCenter = new THREE.Vector2(0, 0);
+
+    starRaycaster.params.Points.threshold = 8;
 
     function resetCamera() {
       camera.position.set(0, 115, 890);
@@ -757,8 +993,22 @@
     }
 
     startButton.addEventListener("click", lockPointer);
-    renderer.domElement.addEventListener("click", () => {
-      if (document.pointerLockElement !== renderer.domElement) {
+    renderer.domElement.addEventListener("mousedown", (event) => {
+      const locked =
+        document.pointerLockElement === renderer.domElement;
+
+      console.log("Canvas pressed", {
+        button: event.button,
+        locked
+      });
+
+      if (event.button !== 0) return;
+
+      if (locked) {
+        console.log("Attempting star selection");
+        selectStarAtCrosshair();
+      } else {
+        console.log("Requesting pointer lock");
         lockPointer();
       }
     });
@@ -1198,8 +1448,8 @@
       updateMovement(deltaSeconds);
 
       // Barely perceptible motion keeps the cloud from feeling frozen.
-      galaxy.rotation.y += deltaSeconds * 0.0012;
-      if (connectionLines) connectionLines.rotation.y = galaxy.rotation.y;
+      // galaxy.rotation.y += deltaSeconds * 0.0012;
+      // if (connectionLines) connectionLines.rotation.y = galaxy.rotation.y;
 
       hudTimer += deltaSeconds;
       if (hudTimer > 0.12) {
