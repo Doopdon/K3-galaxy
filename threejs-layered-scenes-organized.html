@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Organized Three.js Layered Scenes</title>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system,
+        BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #01030a;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #hud {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      width: min(410px, calc(100vw - 24px));
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 10px;
+      background: rgba(4, 8, 18, 0.84);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+      user-select: none;
+    }
+
+    #hud.hidden {
+      display: none;
+    }
+
+    h1 {
+      margin: 0 0 7px;
+      font-size: 15px;
+    }
+
+    p {
+      margin: 5px 0;
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    code {
+      color: #b9d7ff;
+    }
+
+    #scene-list {
+      display: grid;
+      gap: 6px;
+      margin: 10px 0;
+    }
+
+    .scene-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 8px;
+      padding: 7px;
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.055);
+      font-size: 12px;
+    }
+
+    .scene-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .scene-scale {
+      color: rgba(255, 255, 255, 0.62);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 7px;
+      padding: 6px 9px;
+      color: white;
+      background: rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+    }
+
+    button:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button.off {
+      opacity: 0.5;
+    }
+
+    #status {
+      margin-top: 9px;
+      color: rgba(255, 255, 255, 0.58);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>Layered scenes</h1>
+
+    <p>
+      <strong>WASD</strong> move, <strong>Q/E</strong> down/up,
+      <strong>arrows</strong> look, <strong>Shift</strong> boost,
+      <strong>H</strong> hide panel.
+    </p>
+
+    <p>
+      Each scene camera uses
+      <code>master camera position × scene scale</code>.
+    </p>
+
+    <div id="scene-list"></div>
+
+    <div class="button-row">
+      <button id="add-scene">Add scene (N)</button>
+      <button id="remove-scene">Remove newest (Delete)</button>
+      <button id="reset-camera">Reset camera (R)</button>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <!-- =====================================================================
+       SCRIPT 1: SHARED ENGINE, MOVEMENT, KEYS, EVENTS, RENDERER, CAMERAS
+
+       This is the reusable machinery. It does not know what a galaxy, star,
+       or planet is. It only knows how to add, remove, update, and render
+       scene-data objects.
+       ===================================================================== -->
+  <script type="module" id="shared-engine-and-controls">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js";
+
+    // Make THREE available to the ordinary scene-definition script blocks.
+    window.THREE = THREE;
+
+    // ---------------------------------------------------------------------
+    // Renderer
+    // ---------------------------------------------------------------------
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.autoClear = false;
+
+    document.body.prepend(renderer.domElement);
+
+    // ---------------------------------------------------------------------
+    // Cleanup helpers
+    // ---------------------------------------------------------------------
+
+    function disposeMaterial(material) {
+      if (!material) return;
+
+      for (const value of Object.values(material)) {
+        if (value?.isTexture) value.dispose();
+      }
+
+      material.dispose?.();
+    }
+
+    function disposeObjectTree(root) {
+      root.traverse((object) => {
+        object.geometry?.dispose?.();
+
+        if (Array.isArray(object.material)) {
+          object.material.forEach(disposeMaterial);
+        } else {
+          disposeMaterial(object.material);
+        }
+      });
+
+      root.clear();
+    }
+
+    // ---------------------------------------------------------------------
+    // One live layer
+    // ---------------------------------------------------------------------
+
+    class SceneLayer {
+      constructor(sceneData) {
+        const {
+          id,
+          name = id,
+          scale = 1,
+          enabled = true,
+          renderOrder = 0,
+          clearDepth = true,
+          near = 0.01,
+          far = 5000,
+          cameraOffset = [0, 0, 0],
+          create,
+          update = null,
+          dispose = null,
+        } = sceneData;
+
+        if (!id) {
+          throw new Error("Every scene-data object needs an id.");
+        }
+
+        if (typeof create !== "function") {
+          throw new Error(`Scene '${id}' needs a create(layer) function.`);
+        }
+
+        this.id = id;
+        this.name = name;
+        this.scale = scale;
+        this.enabled = enabled;
+        this.renderOrder = renderOrder;
+        this.clearDepth = clearDepth;
+        this.updateCallback = update;
+        this.disposeCallback = dispose;
+        this.userData = {};
+
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(
+          65,
+          window.innerWidth / window.innerHeight,
+          near,
+          far,
+        );
+        this.camera.rotation.order = "YXZ";
+
+        this.cameraOffset = Array.isArray(cameraOffset)
+          ? new THREE.Vector3(...cameraOffset)
+          : cameraOffset.clone();
+
+        create(this);
+      }
+
+      syncCamera(masterCamera) {
+        // This is the central scale rule.
+        this.camera.position
+          .copy(masterCamera.position)
+          .multiplyScalar(this.scale)
+          .add(this.cameraOffset);
+
+        // Every scene looks in exactly the same direction.
+        this.camera.quaternion.copy(masterCamera.quaternion);
+        this.camera.updateMatrixWorld();
+      }
+
+      update(deltaSeconds, elapsedSeconds, masterCamera) {
+        this.updateCallback?.(
+          this,
+          deltaSeconds,
+          elapsedSeconds,
+          masterCamera,
+        );
+      }
+
+      resize(width, height) {
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
+      }
+
+      dispose() {
+        this.disposeCallback?.(this);
+        disposeObjectTree(this.scene);
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Scene collection
+    // ---------------------------------------------------------------------
+
+    class LayeredSceneManager {
+      constructor(renderer) {
+        this.renderer = renderer;
+        this.layers = [];
+        this.layerById = new Map();
+      }
+
+      add(sceneData) {
+        if (this.layerById.has(sceneData.id)) {
+          throw new Error(`Scene id '${sceneData.id}' is already in use.`);
+        }
+
+        const layer = new SceneLayer(sceneData);
+        this.layers.push(layer);
+        this.layerById.set(layer.id, layer);
+        this.layers.sort((a, b) => a.renderOrder - b.renderOrder);
+        refreshSceneList();
+        return layer;
+      }
+
+      remove(id) {
+        const layer = this.layerById.get(id);
+        if (!layer) return false;
+
+        layer.dispose();
+        this.layerById.delete(id);
+        this.layers = this.layers.filter((item) => item !== layer);
+        refreshSceneList();
+        return true;
+      }
+
+      get(id) {
+        return this.layerById.get(id) ?? null;
+      }
+
+      toggle(id) {
+        const layer = this.get(id);
+        if (!layer) return false;
+
+        layer.enabled = !layer.enabled;
+        refreshSceneList();
+        return layer.enabled;
+      }
+
+      setScale(id, newScale) {
+        const layer = this.get(id);
+        if (!layer) return false;
+
+        layer.scale = newScale;
+        refreshSceneList();
+        return true;
+      }
+
+      resize(width, height) {
+        for (const layer of this.layers) {
+          layer.resize(width, height);
+        }
+      }
+
+      update(deltaSeconds, elapsedSeconds, masterCamera) {
+        for (const layer of this.layers) {
+          if (!layer.enabled) continue;
+
+          layer.syncCamera(masterCamera);
+          layer.update(deltaSeconds, elapsedSeconds, masterCamera);
+        }
+      }
+
+      render() {
+        this.renderer.setClearColor(0x01030a, 1);
+        this.renderer.clear(true, true, true);
+
+        let renderedSceneCount = 0;
+
+        for (const layer of this.layers) {
+          if (!layer.enabled) continue;
+
+          // Scene depths are unrelated, so later scenes normally receive a
+          // clean depth buffer while preserving earlier scene colors.
+          if (renderedSceneCount > 0 && layer.clearDepth) {
+            this.renderer.clearDepth();
+          }
+
+          this.renderer.render(layer.scene, layer.camera);
+          renderedSceneCount += 1;
+        }
+      }
+    }
+
+    const sceneManager = new LayeredSceneManager(renderer);
+
+    // ---------------------------------------------------------------------
+    // Master camera and movement
+    // ---------------------------------------------------------------------
+
+    const masterCamera = new THREE.Object3D();
+    masterCamera.rotation.order = "YXZ";
+
+    const navigation = {
+      yaw: 0,
+      pitch: 0,
+      moveSpeed: 14,
+      lookSpeed: 1.45,
+    };
+
+    const keys = new Set();
+    const temporaryMovement = new THREE.Vector3();
+    const temporaryForward = new THREE.Vector3();
+    const temporaryRight = new THREE.Vector3();
+    const worldUp = new THREE.Vector3(0, 1, 0);
+
+    function resetCamera() {
+      masterCamera.position.set(0, 0, 0);
+      navigation.yaw = 0;
+      navigation.pitch = 0;
+      masterCamera.rotation.set(0, 0, 0);
+      masterCamera.updateMatrixWorld();
+    }
+
+    function updateNavigation(deltaSeconds) {
+      const lookAmount = navigation.lookSpeed * deltaSeconds;
+
+      if (keys.has("ArrowLeft")) navigation.yaw += lookAmount;
+      if (keys.has("ArrowRight")) navigation.yaw -= lookAmount;
+      if (keys.has("ArrowUp")) navigation.pitch += lookAmount;
+      if (keys.has("ArrowDown")) navigation.pitch -= lookAmount;
+
+      navigation.pitch = THREE.MathUtils.clamp(
+        navigation.pitch,
+        -Math.PI * 0.495,
+        Math.PI * 0.495,
+      );
+
+      masterCamera.rotation.set(navigation.pitch, navigation.yaw, 0);
+      masterCamera.updateMatrixWorld();
+
+      temporaryMovement.set(0, 0, 0);
+      temporaryForward
+        .set(0, 0, -1)
+        .applyQuaternion(masterCamera.quaternion);
+      temporaryRight
+        .set(1, 0, 0)
+        .applyQuaternion(masterCamera.quaternion);
+
+      // W/S follow the full view direction, including upward/downward pitch.
+      if (keys.has("KeyW")) temporaryMovement.add(temporaryForward);
+      if (keys.has("KeyS")) temporaryMovement.sub(temporaryForward);
+      if (keys.has("KeyD")) temporaryMovement.add(temporaryRight);
+      if (keys.has("KeyA")) temporaryMovement.sub(temporaryRight);
+      if (keys.has("KeyE")) temporaryMovement.add(worldUp);
+      if (keys.has("KeyQ")) temporaryMovement.sub(worldUp);
+
+      if (temporaryMovement.lengthSq() > 0) {
+        const boost =
+          keys.has("ShiftLeft") || keys.has("ShiftRight") ? 5 : 1;
+
+        temporaryMovement
+          .normalize()
+          .multiplyScalar(navigation.moveSpeed * boost * deltaSeconds);
+
+        masterCamera.position.add(temporaryMovement);
+        masterCamera.updateMatrixWorld();
+      }
+    }
+
+    resetCamera();
+
+    // ---------------------------------------------------------------------
+    // HUD
+    // ---------------------------------------------------------------------
+
+    const sceneListElement = document.querySelector("#scene-list");
+    const statusElement = document.querySelector("#status");
+
+    function refreshSceneList() {
+      sceneListElement.replaceChildren();
+
+      sceneManager.layers.forEach((layer, index) => {
+        const row = document.createElement("div");
+        row.className = "scene-row";
+
+        const name = document.createElement("span");
+        name.className = "scene-name";
+        name.textContent = `${index + 1}. ${layer.name}`;
+
+        const scale = document.createElement("span");
+        scale.className = "scene-scale";
+        scale.textContent = `scale ${layer.scale}`;
+
+        const toggle = document.createElement("button");
+        toggle.textContent = layer.enabled ? "On" : "Off";
+        toggle.classList.toggle("off", !layer.enabled);
+        toggle.addEventListener("click", () => sceneManager.toggle(layer.id));
+
+        row.append(name, scale, toggle);
+        sceneListElement.append(row);
+      });
+    }
+
+    // ---------------------------------------------------------------------
+    // All event listeners live in this script block
+    // ---------------------------------------------------------------------
+
+    window.addEventListener("keydown", (event) => {
+      if (
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(
+          event.code,
+        )
+      ) {
+        event.preventDefault();
+      }
+
+      keys.add(event.code);
+
+      if (event.repeat) return;
+
+      if (event.code === "KeyH") {
+        document.querySelector("#hud").classList.toggle("hidden");
+      }
+
+      if (event.code === "KeyR") resetCamera();
+      if (event.code === "KeyN") window.add_demo_scene?.();
+
+      if (event.code === "Delete" || event.code === "Backspace") {
+        window.remove_newest_demo_scene?.();
+      }
+
+      if (/^Digit[1-9]$/.test(event.code)) {
+        const layerIndex = Number(event.code.slice(-1)) - 1;
+        const layer = sceneManager.layers[layerIndex];
+        if (layer) sceneManager.toggle(layer.id);
+      }
+    });
+
+    window.addEventListener("keyup", (event) => {
+      keys.delete(event.code);
+    });
+
+    window.addEventListener("blur", () => {
+      keys.clear();
+    });
+
+    let dragging = false;
+    let lastPointerX = 0;
+    let lastPointerY = 0;
+
+    renderer.domElement.addEventListener("pointerdown", (event) => {
+      dragging = true;
+      lastPointerX = event.clientX;
+      lastPointerY = event.clientY;
+      renderer.domElement.setPointerCapture(event.pointerId);
+    });
+
+    renderer.domElement.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+
+      const dx = event.clientX - lastPointerX;
+      const dy = event.clientY - lastPointerY;
+      lastPointerX = event.clientX;
+      lastPointerY = event.clientY;
+
+      navigation.yaw -= dx * 0.003;
+      navigation.pitch -= dy * 0.003;
+      navigation.pitch = THREE.MathUtils.clamp(
+        navigation.pitch,
+        -Math.PI * 0.495,
+        Math.PI * 0.495,
+      );
+    });
+
+    renderer.domElement.addEventListener("pointerup", (event) => {
+      dragging = false;
+      renderer.domElement.releasePointerCapture(event.pointerId);
+    });
+
+    renderer.domElement.addEventListener("pointercancel", () => {
+      dragging = false;
+    });
+
+    document
+      .querySelector("#add-scene")
+      .addEventListener("click", () => window.add_demo_scene?.());
+
+    document
+      .querySelector("#remove-scene")
+      .addEventListener("click", () => window.remove_newest_demo_scene?.());
+
+    document
+      .querySelector("#reset-camera")
+      .addEventListener("click", resetCamera);
+
+    window.addEventListener("resize", () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      sceneManager.resize(width, height);
+    });
+
+    // ---------------------------------------------------------------------
+    // Animation loop
+    // ---------------------------------------------------------------------
+
+    const clock = new THREE.Clock();
+    let animationStarted = false;
+    let statusTimer = 0;
+
+    function start(initialSceneData = []) {
+      for (const sceneData of initialSceneData) {
+        if (!sceneManager.get(sceneData.id)) {
+          sceneManager.add(sceneData);
+        }
+      }
+
+      if (animationStarted) return;
+      animationStarted = true;
+      animate();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const deltaSeconds = Math.min(clock.getDelta(), 0.05);
+      const elapsedSeconds = clock.elapsedTime;
+
+      updateNavigation(deltaSeconds);
+      sceneManager.update(deltaSeconds, elapsedSeconds, masterCamera);
+      sceneManager.render();
+
+      statusTimer += deltaSeconds;
+      if (statusTimer >= 0.1) {
+        statusTimer = 0;
+
+        const position = masterCamera.position;
+        const enabledCount = sceneManager.layers.filter(
+          (layer) => layer.enabled,
+        ).length;
+
+        statusElement.textContent =
+          `Master: ${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ` +
+          `${position.z.toFixed(1)} · ${enabledCount}/` +
+          `${sceneManager.layers.length} scenes rendered`;
+      }
+    }
+
+    // This is the small public API used by the final script block.
+    window.MultiSceneApp = {
+      THREE,
+      renderer,
+      sceneManager,
+      masterCamera,
+      navigation,
+      start,
+      addScene: (sceneData) => sceneManager.add(sceneData),
+      removeScene: (id) => sceneManager.remove(id),
+      toggleScene: (id) => sceneManager.toggle(id),
+      setSceneScale: (id, scale) => sceneManager.setScale(id, scale),
+      resetCamera,
+    };
+
+    // The ordinary scripts below have already run by the time this imported
+    // module finishes loading, so notify the final script that the engine is ready.
+    window.dispatchEvent(new Event("multiscene-engine-ready"));
+  </script>
+
+  <!-- =====================================================================
+       SCRIPT 2: GALAXY SCENE DATA
+
+       To move this into its own file later, copy this whole script body into
+       galaxy-scene.js and load it with:
+       <script src="galaxy-scene.js"></script>
+       ===================================================================== -->
+  <script id="galaxy-scene-data">
+    let galaxy_scene_data = {
+      id: "galaxy-scene",
+      name: "Galaxy",
+
+      // The master camera moves only 0.002 units through this scene for every
+      // 1 unit moved by the controls.
+      scale: 0.002,
+      renderOrder: 0,
+      near: 0.1,
+      far: 3000,
+
+      create(layer) {
+        const THREE = window.THREE;
+        const starCount = 18000;
+        const positions = new Float32Array(starCount * 3);
+        const colors = new Float32Array(starCount * 3);
+        const color = new THREE.Color();
+
+        const armCount = 5;
+        const galaxyRadius = 520;
+
+        for (let i = 0; i < starCount; i += 1) {
+          const distance = Math.pow(Math.random(), 0.62) * galaxyRadius;
+          const arm = i % armCount;
+          const armAngle = (arm / armCount) * Math.PI * 2;
+          const spiralAngle = distance * 0.022;
+          const scatter = THREE.MathUtils.randFloatSpread(0.48);
+          const angle = armAngle + spiralAngle + scatter;
+
+          const index = i * 3;
+          positions[index] = Math.cos(angle) * distance;
+          positions[index + 1] = THREE.MathUtils.randFloatSpread(
+            8 + distance * 0.045,
+          );
+          positions[index + 2] =
+            Math.sin(angle) * distance - 650;
+
+          const centerBrightness = 1 - distance / galaxyRadius;
+          const hue = THREE.MathUtils.lerp(0.58, 0.09, centerBrightness);
+          color.setHSL(
+            hue,
+            THREE.MathUtils.lerp(0.25, 0.75, centerBrightness),
+            THREE.MathUtils.randFloat(0.55, 0.96),
+          );
+
+          colors[index] = color.r;
+          colors[index + 1] = color.g;
+          colors[index + 2] = color.b;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(positions, 3),
+        );
+        geometry.setAttribute(
+          "color",
+          new THREE.BufferAttribute(colors, 3),
+        );
+
+        const material = new THREE.PointsMaterial({
+          size: 1.45,
+          sizeAttenuation: true,
+          vertexColors: true,
+          transparent: true,
+          opacity: 0.88,
+          depthWrite: false,
+        });
+
+        const galaxy = new THREE.Points(geometry, material);
+        galaxy.rotation.x = -0.13;
+        layer.userData.galaxy = galaxy;
+        layer.scene.add(galaxy);
+      },
+
+      update(layer, deltaSeconds) {
+        layer.userData.galaxy.rotation.y += deltaSeconds * 0.006;
+      },
+    };
+  </script>
+
+  <!-- =====================================================================
+       SCRIPT 3: STAR / SOLAR-SYSTEM-SCALE SCENE DATA
+       ===================================================================== -->
+  <script id="star-scene-data">
+    let star_scene_data = {
+      id: "star-scene",
+      name: "Star system",
+      scale: 0.08,
+      renderOrder: 10,
+      near: 0.01,
+      far: 1200,
+
+      create(layer) {
+        const THREE = window.THREE;
+
+        layer.scene.add(
+          new THREE.HemisphereLight(0x6d84bd, 0x09030c, 0.7),
+        );
+
+        const system = new THREE.Group();
+        system.position.set(0, 0, -105);
+
+        const star = new THREE.Mesh(
+          new THREE.SphereGeometry(8, 40, 24),
+          new THREE.MeshBasicMaterial({ color: 0xffd19a }),
+        );
+        system.add(star);
+
+        const glow = new THREE.PointLight(0xffb36a, 1300, 430, 1.25);
+        system.add(glow);
+
+        const orbitMaterial = new THREE.MeshBasicMaterial({
+          color: 0x4a6f9c,
+          transparent: true,
+          opacity: 0.3,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+
+        const planets = [];
+        const orbitRadii = [18, 31, 47, 67];
+
+        orbitRadii.forEach((radius, index) => {
+          const orbit = new THREE.Mesh(
+            new THREE.RingGeometry(radius - 0.06, radius + 0.06, 160),
+            orbitMaterial,
+          );
+          orbit.rotation.x = Math.PI * 0.5;
+          system.add(orbit);
+
+          const pivot = new THREE.Group();
+          pivot.rotation.y = index * 1.7;
+
+          const planet = new THREE.Mesh(
+            new THREE.SphereGeometry(1 + index * 0.42, 24, 16),
+            new THREE.MeshStandardMaterial({
+              color: new THREE.Color().setHSL(
+                0.52 + index * 0.11,
+                0.6,
+                0.48,
+              ),
+              roughness: 0.72,
+              metalness: 0.08,
+            }),
+          );
+
+          planet.position.x = radius;
+          pivot.add(planet);
+          system.add(pivot);
+          planets.push(pivot);
+        });
+
+        layer.userData.system = system;
+        layer.userData.star = star;
+        layer.userData.planets = planets;
+        layer.scene.add(system);
+      },
+
+      update(layer, deltaSeconds, elapsedSeconds) {
+        layer.userData.star.scale.setScalar(
+          1 + Math.sin(elapsedSeconds * 2.1) * 0.015,
+        );
+
+        layer.userData.planets.forEach((pivot, index) => {
+          pivot.rotation.y += deltaSeconds * (0.12 / (index + 1));
+        });
+      },
+    };
+  </script>
+
+  <!-- =====================================================================
+       SCRIPT 4: PLANET / LOCAL-SCALE SCENE DATA
+       ===================================================================== -->
+  <script id="planet-scene-data">
+    let planet_scene_data = {
+      id: "planet-scene",
+      name: "Local planet",
+      scale: 1,
+      renderOrder: 20,
+      near: 0.01,
+      far: 500,
+
+      create(layer) {
+        const THREE = window.THREE;
+
+        layer.scene.add(
+          new THREE.HemisphereLight(0xaacfff, 0x160819, 1.35),
+        );
+
+        const sunlight = new THREE.DirectionalLight(0xffe4c1, 3.2);
+        sunlight.position.set(-8, 7, 10);
+        layer.scene.add(sunlight);
+
+        const localSystem = new THREE.Group();
+        localSystem.position.set(0, 0, -28);
+
+        const planet = new THREE.Mesh(
+          new THREE.SphereGeometry(4.2, 48, 32),
+          new THREE.MeshStandardMaterial({
+            color: 0x315f9f,
+            roughness: 0.72,
+            metalness: 0.08,
+            emissive: 0x061124,
+            emissiveIntensity: 0.45,
+          }),
+        );
+        localSystem.add(planet);
+
+        const atmosphere = new THREE.Mesh(
+          new THREE.SphereGeometry(4.42, 48, 32),
+          new THREE.MeshBasicMaterial({
+            color: 0x69aaff,
+            transparent: true,
+            opacity: 0.1,
+            side: THREE.BackSide,
+            depthWrite: false,
+          }),
+        );
+        localSystem.add(atmosphere);
+
+        const moonPivot = new THREE.Group();
+        moonPivot.rotation.x = 0.23;
+
+        const moon = new THREE.Mesh(
+          new THREE.SphereGeometry(0.82, 24, 16),
+          new THREE.MeshStandardMaterial({
+            color: 0xb9b5ad,
+            roughness: 0.95,
+          }),
+        );
+        moon.position.x = 8.5;
+        moonPivot.add(moon);
+        localSystem.add(moonPivot);
+
+        const stationPivot = new THREE.Group();
+        stationPivot.rotation.z = 0.65;
+
+        const station = new THREE.Mesh(
+          new THREE.TorusGeometry(0.72, 0.1, 10, 36),
+          new THREE.MeshStandardMaterial({
+            color: 0xd9e8ff,
+            metalness: 0.86,
+            roughness: 0.2,
+            emissive: 0x163770,
+            emissiveIntensity: 0.8,
+          }),
+        );
+        station.position.x = 6.2;
+        station.rotation.y = Math.PI * 0.5;
+        stationPivot.add(station);
+        localSystem.add(stationPivot);
+
+        layer.userData.localSystem = localSystem;
+        layer.userData.planet = planet;
+        layer.userData.moonPivot = moonPivot;
+        layer.userData.stationPivot = stationPivot;
+        layer.scene.add(localSystem);
+      },
+
+      update(layer, deltaSeconds) {
+        layer.userData.planet.rotation.y += deltaSeconds * 0.13;
+        layer.userData.moonPivot.rotation.y += deltaSeconds * 0.34;
+        layer.userData.stationPivot.rotation.y -= deltaSeconds * 0.62;
+      },
+    };
+  </script>
+
+  <!-- =====================================================================
+       SCRIPT 5: TIE EVERYTHING TOGETHER
+
+       This is the only place that decides which scene-data objects are active
+       when the app starts.
+       ===================================================================== -->
+  <script id="layered-scene-stack-and-bootstrap">
+    let layered_scenes = [
+      galaxy_scene_data,
+      star_scene_data,
+      planet_scene_data,
+    ];
+
+    // Also expose the array for browser-console experimentation.
+    window.layered_scenes = layered_scenes;
+
+    function add_layered_scene(sceneData) {
+      if (layered_scenes.some((item) => item.id === sceneData.id)) {
+        console.warn(`Scene '${sceneData.id}' is already in layered_scenes.`);
+        return null;
+      }
+
+      layered_scenes.push(sceneData);
+      return window.MultiSceneApp.addScene(sceneData);
+    }
+
+    function remove_layered_scene(sceneId) {
+      const removed = window.MultiSceneApp.removeScene(sceneId);
+      if (!removed) return false;
+
+      const index = layered_scenes.findIndex((item) => item.id === sceneId);
+      if (index >= 0) layered_scenes.splice(index, 1);
+      return true;
+    }
+
+    function set_layered_scene_scale(sceneId, newScale) {
+      const sceneData = layered_scenes.find((item) => item.id === sceneId);
+      if (sceneData) sceneData.scale = newScale;
+
+      return window.MultiSceneApp.setSceneScale(sceneId, newScale);
+    }
+
+    // Put the useful runtime functions on window so other future script files
+    // can add and remove scenes without knowing the internals of the manager.
+    window.add_layered_scene = add_layered_scene;
+    window.remove_layered_scene = remove_layered_scene;
+    window.set_layered_scene_scale = set_layered_scene_scale;
+
+    // ---------------------------------------------------------------------
+    // Optional runtime-scene demonstration
+    // ---------------------------------------------------------------------
+
+    let demo_scene_number = 0;
+    let demo_scene_ids = [];
+
+    function make_demo_scene_data(number) {
+      const sceneId = `runtime-scene-${number}`;
+      const hue = Math.random();
+
+      return {
+        id: sceneId,
+        name: `Runtime scene ${number}`,
+        scale: Number((0.25 + Math.random() * 1.75).toFixed(2)),
+        renderOrder: 100 + number,
+        near: 0.01,
+        far: 500,
+
+        create(layer) {
+          const THREE = window.THREE;
+          const group = new THREE.Group();
+          const geometry = new THREE.IcosahedronGeometry(0.75, 1);
+          const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(hue, 0.72, 0.58),
+            wireframe: true,
+            transparent: true,
+            opacity: 0.78,
+          });
+
+          for (let i = 0; i < 24; i += 1) {
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(
+              THREE.MathUtils.randFloatSpread(30),
+              THREE.MathUtils.randFloatSpread(20),
+              -18 - Math.random() * 48,
+            );
+            mesh.scale.setScalar(THREE.MathUtils.randFloat(0.5, 2.2));
+            group.add(mesh);
+          }
+
+          layer.userData.group = group;
+          layer.scene.add(group);
+        },
+
+        update(layer, deltaSeconds) {
+          layer.userData.group.rotation.y += deltaSeconds * 0.08;
+          layer.userData.group.rotation.x += deltaSeconds * 0.025;
+        },
+      };
+    }
+
+    window.add_demo_scene = function add_demo_scene() {
+      demo_scene_number += 1;
+      const sceneData = make_demo_scene_data(demo_scene_number);
+      const layer = add_layered_scene(sceneData);
+
+      if (layer) demo_scene_ids.push(sceneData.id);
+    };
+
+    window.remove_newest_demo_scene = function remove_newest_demo_scene() {
+      const sceneId = demo_scene_ids.pop();
+      if (sceneId) remove_layered_scene(sceneId);
+    };
+
+    // ---------------------------------------------------------------------
+    // Start only after the imported Three.js engine has finished loading.
+    // ---------------------------------------------------------------------
+
+    function start_multiscene_app() {
+      window.MultiSceneApp.start(layered_scenes);
+    }
+
+    if (window.MultiSceneApp) {
+      start_multiscene_app();
+    } else {
+      window.addEventListener(
+        "multiscene-engine-ready",
+        start_multiscene_app,
+        { once: true },
+      );
+    }
+  </script>
+</body>
+</html>

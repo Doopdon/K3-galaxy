@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js Multi-Scene / Multi-Camera Layers</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #02040a;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #hud {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      width: min(390px, calc(100vw - 24px));
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 10px;
+      background: rgba(5, 9, 18, 0.82);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+      user-select: none;
+    }
+
+    #hud.hidden {
+      display: none;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 5px 0;
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    code {
+      color: #b8d7ff;
+    }
+
+    #scene-list {
+      display: grid;
+      gap: 6px;
+      margin: 10px 0;
+    }
+
+    .scene-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 7px;
+      padding: 7px;
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.055);
+      font-size: 12px;
+    }
+
+    .scene-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .scene-scale {
+      color: rgba(255, 255, 255, 0.6);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 7px;
+      padding: 6px 9px;
+      color: white;
+      background: rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+    }
+
+    button:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button.disabled {
+      opacity: 0.48;
+    }
+
+    #status {
+      margin-top: 9px;
+      color: rgba(255, 255, 255, 0.58);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>Multi-scene camera layers</h1>
+    <p>
+      <strong>WASD</strong> fly, <strong>Q/E</strong> descend/ascend,
+      <strong>arrow keys</strong> look, <strong>Shift</strong> boost,
+      <strong>H</strong> hide this panel.
+    </p>
+    <p>
+      Camera translation in each scene is
+      <code>masterPosition × panScale</code>.
+    </p>
+
+    <div id="scene-list"></div>
+
+    <div class="controls">
+      <button id="add-scene">Add runtime scene (N)</button>
+      <button id="remove-scene">Remove newest (Delete)</button>
+      <button id="reset-camera">Reset camera (R)</button>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js";
+
+    // -------------------------------------------------------------------------
+    // Basic renderer
+    // -------------------------------------------------------------------------
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+    });
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+
+    // We manually clear because several independent scenes are rendered into
+    // the same canvas every frame.
+    renderer.autoClear = false;
+    document.body.prepend(renderer.domElement);
+
+    // -------------------------------------------------------------------------
+    // Disposal helpers
+    // -------------------------------------------------------------------------
+
+    function disposeMaterial(material) {
+      if (!material) return;
+
+      // Dispose textures referenced by the material.
+      for (const value of Object.values(material)) {
+        if (value && value.isTexture) {
+          value.dispose();
+        }
+      }
+
+      material.dispose?.();
+    }
+
+    function disposeObjectTree(root) {
+      root.traverse((object) => {
+        object.geometry?.dispose?.();
+
+        if (Array.isArray(object.material)) {
+          object.material.forEach(disposeMaterial);
+        } else {
+          disposeMaterial(object.material);
+        }
+      });
+
+      root.clear();
+    }
+
+    // -------------------------------------------------------------------------
+    // SceneLayer
+    //
+    // Each layer owns an independent THREE.Scene and THREE.Camera. The camera's
+    // rotation follows the master camera exactly. Its position is multiplied by
+    // panScale, allowing different coordinate scales to coexist visually.
+    // -------------------------------------------------------------------------
+
+    class SceneLayer {
+      constructor({
+        id,
+        name = id,
+        panScale = 1,
+        enabled = true,
+        renderOrder = 0,
+        clearDepth = true,
+        near = 0.01,
+        far = 5000,
+        cameraOffset = new THREE.Vector3(),
+        create,
+        update = null,
+        dispose = null,
+      }) {
+        if (!id) throw new Error("SceneLayer requires an id.");
+        if (typeof create !== "function") {
+          throw new Error(`SceneLayer '${id}' requires a create(layer) function.`);
+        }
+
+        this.id = id;
+        this.name = name;
+        this.panScale = panScale;
+        this.enabled = enabled;
+        this.renderOrder = renderOrder;
+        this.clearDepth = clearDepth;
+        this.cameraOffset = cameraOffset.clone();
+        this.updateCallback = update;
+        this.disposeCallback = dispose;
+        this.userData = {};
+
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(
+          65,
+          window.innerWidth / window.innerHeight,
+          near,
+          far,
+        );
+        this.camera.rotation.order = "YXZ";
+
+        create(this);
+      }
+
+      syncCamera(masterCamera) {
+        this.camera.position
+          .copy(masterCamera.position)
+          .multiplyScalar(this.panScale)
+          .add(this.cameraOffset);
+
+        this.camera.quaternion.copy(masterCamera.quaternion);
+        this.camera.updateMatrixWorld();
+      }
+
+      update(deltaSeconds, elapsedSeconds, masterCamera) {
+        this.updateCallback?.(this, deltaSeconds, elapsedSeconds, masterCamera);
+      }
+
+      resize(width, height) {
+        this.camera.aspect = width / height;
+        this.camera.updateProjectionMatrix();
+      }
+
+      dispose() {
+        this.disposeCallback?.(this);
+        disposeObjectTree(this.scene);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // MultiSceneManager
+    // -------------------------------------------------------------------------
+
+    class MultiSceneManager {
+      constructor(renderer) {
+        this.renderer = renderer;
+        this.layers = [];
+        this.layerById = new Map();
+      }
+
+      add(config) {
+        if (this.layerById.has(config.id)) {
+          throw new Error(`A scene with id '${config.id}' already exists.`);
+        }
+
+        const layer = new SceneLayer(config);
+        this.layers.push(layer);
+        this.layerById.set(layer.id, layer);
+        this.sort();
+        refreshSceneList();
+        return layer;
+      }
+
+      remove(id) {
+        const layer = this.layerById.get(id);
+        if (!layer) return false;
+
+        layer.dispose();
+        this.layerById.delete(id);
+        this.layers = this.layers.filter((candidate) => candidate !== layer);
+        refreshSceneList();
+        return true;
+      }
+
+      get(id) {
+        return this.layerById.get(id) ?? null;
+      }
+
+      setEnabled(id, enabled) {
+        const layer = this.get(id);
+        if (!layer) return false;
+        layer.enabled = enabled;
+        refreshSceneList();
+        return true;
+      }
+
+      toggle(id) {
+        const layer = this.get(id);
+        if (!layer) return false;
+        layer.enabled = !layer.enabled;
+        refreshSceneList();
+        return layer.enabled;
+      }
+
+      setPanScale(id, panScale) {
+        const layer = this.get(id);
+        if (!layer) return false;
+        layer.panScale = panScale;
+        refreshSceneList();
+        return true;
+      }
+
+      sort() {
+        this.layers.sort((a, b) => a.renderOrder - b.renderOrder);
+      }
+
+      resize(width, height) {
+        for (const layer of this.layers) {
+          layer.resize(width, height);
+        }
+      }
+
+      update(deltaSeconds, elapsedSeconds, masterCamera) {
+        for (const layer of this.layers) {
+          if (!layer.enabled) continue;
+          layer.syncCamera(masterCamera);
+          layer.update(deltaSeconds, elapsedSeconds, masterCamera);
+        }
+      }
+
+      render() {
+        // Clear the canvas once. Each later scene clears only depth, so its
+        // color output is layered over the scenes already rendered.
+        this.renderer.setClearColor(0x02040a, 1);
+        this.renderer.clear(true, true, true);
+
+        let renderedCount = 0;
+
+        for (const layer of this.layers) {
+          if (!layer.enabled) continue;
+
+          if (renderedCount > 0 && layer.clearDepth) {
+            // Depth values from unrelated coordinate systems are not directly
+            // comparable, so each layer normally gets a fresh depth buffer.
+            this.renderer.clearDepth();
+          }
+
+          this.renderer.render(layer.scene, layer.camera);
+          renderedCount += 1;
+        }
+      }
+    }
+
+    const sceneManager = new MultiSceneManager(renderer);
+
+    // Expose the manager so you can experiment from the browser console.
+    // Example: sceneManager.setPanScale("local", 2);
+    window.sceneManager = sceneManager;
+
+    // -------------------------------------------------------------------------
+    // Master camera / navigation state
+    //
+    // This camera is never rendered directly. It is the common navigation pose
+    // copied into every SceneLayer camera.
+    // -------------------------------------------------------------------------
+
+    const masterCamera = new THREE.Object3D();
+    masterCamera.rotation.order = "YXZ";
+
+    const navigation = {
+      yaw: 0,
+      pitch: 0,
+      moveSpeed: 10,
+      lookSpeed: 1.45,
+    };
+
+    function resetCamera() {
+      masterCamera.position.set(0, 0, 0);
+      navigation.yaw = 0;
+      navigation.pitch = 0;
+      masterCamera.rotation.set(0, 0, 0);
+      masterCamera.updateMatrixWorld();
+    }
+
+    resetCamera();
+
+    // -------------------------------------------------------------------------
+    // Input
+    // -------------------------------------------------------------------------
+
+    const keys = new Set();
+
+    window.addEventListener("keydown", (event) => {
+      const blockedKeys = [
+        "ArrowUp",
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+        "Space",
+      ];
+
+      if (blockedKeys.includes(event.code)) {
+        event.preventDefault();
+      }
+
+      keys.add(event.code);
+
+      if (event.repeat) return;
+
+      if (event.code === "KeyH") {
+        document.querySelector("#hud").classList.toggle("hidden");
+      }
+
+      if (event.code === "KeyR") {
+        resetCamera();
+      }
+
+      if (event.code === "KeyN") {
+        addRuntimeScene();
+      }
+
+      if (event.code === "Delete" || event.code === "Backspace") {
+        removeNewestRuntimeScene();
+      }
+
+      if (event.code === "Digit1") sceneManager.toggle("far-stars");
+      if (event.code === "Digit2") sceneManager.toggle("middle-grid");
+      if (event.code === "Digit3") sceneManager.toggle("local-objects");
+    });
+
+    window.addEventListener("keyup", (event) => {
+      keys.delete(event.code);
+    });
+
+    window.addEventListener("blur", () => keys.clear());
+
+    // Optional mouse drag looking. Arrow-key looking remains fully supported.
+    let dragging = false;
+    let lastPointerX = 0;
+    let lastPointerY = 0;
+
+    renderer.domElement.addEventListener("pointerdown", (event) => {
+      dragging = true;
+      lastPointerX = event.clientX;
+      lastPointerY = event.clientY;
+      renderer.domElement.setPointerCapture(event.pointerId);
+    });
+
+    renderer.domElement.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+
+      const dx = event.clientX - lastPointerX;
+      const dy = event.clientY - lastPointerY;
+      lastPointerX = event.clientX;
+      lastPointerY = event.clientY;
+
+      navigation.yaw -= dx * 0.003;
+      navigation.pitch -= dy * 0.003;
+      navigation.pitch = THREE.MathUtils.clamp(
+        navigation.pitch,
+        -Math.PI * 0.495,
+        Math.PI * 0.495,
+      );
+    });
+
+    renderer.domElement.addEventListener("pointerup", (event) => {
+      dragging = false;
+      renderer.domElement.releasePointerCapture(event.pointerId);
+    });
+
+    function updateNavigation(deltaSeconds) {
+      const lookAmount = navigation.lookSpeed * deltaSeconds;
+
+      if (keys.has("ArrowLeft")) navigation.yaw += lookAmount;
+      if (keys.has("ArrowRight")) navigation.yaw -= lookAmount;
+      if (keys.has("ArrowUp")) navigation.pitch += lookAmount;
+      if (keys.has("ArrowDown")) navigation.pitch -= lookAmount;
+
+      navigation.pitch = THREE.MathUtils.clamp(
+        navigation.pitch,
+        -Math.PI * 0.495,
+        Math.PI * 0.495,
+      );
+
+      masterCamera.rotation.set(navigation.pitch, navigation.yaw, 0);
+      masterCamera.updateMatrixWorld();
+
+      const movement = new THREE.Vector3();
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(
+        masterCamera.quaternion,
+      );
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(
+        masterCamera.quaternion,
+      );
+      const worldUp = new THREE.Vector3(0, 1, 0);
+
+      // W/S follow the full view direction. Looking down and pressing W moves
+      // downward, rather than remaining locked to a horizontal plane.
+      if (keys.has("KeyW")) movement.add(forward);
+      if (keys.has("KeyS")) movement.sub(forward);
+      if (keys.has("KeyD")) movement.add(right);
+      if (keys.has("KeyA")) movement.sub(right);
+      if (keys.has("KeyE")) movement.add(worldUp);
+      if (keys.has("KeyQ")) movement.sub(worldUp);
+
+      if (movement.lengthSq() > 0) {
+        const boost =
+          keys.has("ShiftLeft") || keys.has("ShiftRight") ? 5 : 1;
+        movement
+          .normalize()
+          .multiplyScalar(navigation.moveSpeed * boost * deltaSeconds);
+        masterCamera.position.add(movement);
+        masterCamera.updateMatrixWorld();
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Demo scene factories
+    //
+    // Later these functions can move into separate files. For example:
+    //
+    //   import { createGalaxyLayer } from "./galaxy-layer.js";
+    //   sceneManager.add(createGalaxyLayer());
+    //
+    // The manager only cares that each config has an id, panScale, and create.
+    // -------------------------------------------------------------------------
+
+    function createFarStarLayerConfig() {
+      return {
+        id: "far-stars",
+        name: "Far star field",
+        panScale: 0.015,
+        renderOrder: 0,
+        near: 0.1,
+        far: 3000,
+        create(layer) {
+          const starCount = 5000;
+          const positions = new Float32Array(starCount * 3);
+          const colors = new Float32Array(starCount * 3);
+          const color = new THREE.Color();
+
+          for (let i = 0; i < starCount; i += 1) {
+            const radius = THREE.MathUtils.randFloat(120, 1200);
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(THREE.MathUtils.randFloatSpread(2));
+
+            positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+            positions[i * 3 + 1] = radius * Math.cos(phi);
+            positions[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
+
+            const warmth = Math.random();
+            color.setHSL(0.55 + warmth * 0.08, 0.2 + warmth * 0.45, 0.72 + Math.random() * 0.25);
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+          }
+
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+          geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+          const material = new THREE.PointsMaterial({
+            size: 1.3,
+            sizeAttenuation: true,
+            transparent: true,
+            opacity: 0.9,
+            vertexColors: true,
+            depthWrite: false,
+          });
+
+          layer.scene.add(new THREE.Points(geometry, material));
+        },
+      };
+    }
+
+    function createMiddleGridLayerConfig() {
+      return {
+        id: "middle-grid",
+        name: "Middle-scale lattice",
+        panScale: 0.18,
+        renderOrder: 10,
+        near: 0.01,
+        far: 1000,
+        create(layer) {
+          const grid = new THREE.GridHelper(260, 52, 0x426caa, 0x14233e);
+          grid.position.y = -8;
+          layer.scene.add(grid);
+
+          const group = new THREE.Group();
+          const geometry = new THREE.IcosahedronGeometry(1.4, 1);
+
+          for (let x = -5; x <= 5; x += 1) {
+            for (let z = -5; z <= 5; z += 1) {
+              if (Math.random() < 0.4) continue;
+
+              const material = new THREE.MeshBasicMaterial({
+                color: new THREE.Color().setHSL(
+                  THREE.MathUtils.randFloat(0.48, 0.68),
+                  0.55,
+                  0.52,
+                ),
+                wireframe: true,
+                transparent: true,
+                opacity: 0.36,
+              });
+
+              const mesh = new THREE.Mesh(geometry, material);
+              mesh.position.set(x * 12, THREE.MathUtils.randFloat(-5, 12), z * 12 - 45);
+              mesh.scale.setScalar(THREE.MathUtils.randFloat(0.5, 2.2));
+              group.add(mesh);
+            }
+          }
+
+          layer.userData.group = group;
+          layer.scene.add(group);
+        },
+        update(layer, deltaSeconds) {
+          layer.userData.group.rotation.y += deltaSeconds * 0.035;
+        },
+      };
+    }
+
+    function createLocalObjectsLayerConfig() {
+      return {
+        id: "local-objects",
+        name: "Local objects",
+        panScale: 1,
+        renderOrder: 20,
+        near: 0.01,
+        far: 500,
+        create(layer) {
+          layer.scene.add(new THREE.HemisphereLight(0xaacfff, 0x170b25, 1.9));
+
+          const keyLight = new THREE.PointLight(0xffb37a, 80, 90, 2);
+          keyLight.position.set(8, 10, 2);
+          layer.scene.add(keyLight);
+
+          const group = new THREE.Group();
+          group.position.set(0, 0, -22);
+
+          const core = new THREE.Mesh(
+            new THREE.DodecahedronGeometry(3.2, 1),
+            new THREE.MeshStandardMaterial({
+              color: 0x9ab8ff,
+              metalness: 0.85,
+              roughness: 0.22,
+              emissive: 0x142552,
+              emissiveIntensity: 1.2,
+            }),
+          );
+          group.add(core);
+
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(6.5, 0.18, 12, 128),
+            new THREE.MeshStandardMaterial({
+              color: 0xff9f73,
+              emissive: 0xff4b21,
+              emissiveIntensity: 2.2,
+              metalness: 0.4,
+              roughness: 0.25,
+            }),
+          );
+          ring.rotation.x = Math.PI * 0.5;
+          group.add(ring);
+
+          const smallGeometry = new THREE.OctahedronGeometry(0.65, 0);
+          const smallMaterial = new THREE.MeshStandardMaterial({
+            color: 0xdbe7ff,
+            metalness: 0.7,
+            roughness: 0.2,
+          });
+
+          for (let i = 0; i < 20; i += 1) {
+            const satellite = new THREE.Mesh(smallGeometry, smallMaterial);
+            const angle = (i / 20) * Math.PI * 2;
+            const radius = THREE.MathUtils.randFloat(9, 15);
+            satellite.position.set(
+              Math.cos(angle) * radius,
+              THREE.MathUtils.randFloatSpread(8),
+              Math.sin(angle) * radius,
+            );
+            satellite.scale.setScalar(THREE.MathUtils.randFloat(0.55, 1.4));
+            group.add(satellite);
+          }
+
+          layer.userData.group = group;
+          layer.userData.ring = ring;
+          layer.scene.add(group);
+        },
+        update(layer, deltaSeconds) {
+          layer.userData.group.rotation.y += deltaSeconds * 0.12;
+          layer.userData.ring.rotation.z -= deltaSeconds * 0.3;
+        },
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // Runtime-generated scene factory
+    // -------------------------------------------------------------------------
+
+    let runtimeSceneNumber = 0;
+    const runtimeSceneIds = [];
+
+    function createRuntimeSceneConfig(number) {
+      const id = `runtime-${number}`;
+      const panScale = Number(THREE.MathUtils.randFloat(0.3, 2.5).toFixed(2));
+      const hue = Math.random();
+
+      return {
+        id,
+        name: `Runtime scene ${number}`,
+        panScale,
+        renderOrder: 100 + number,
+        near: 0.01,
+        far: 500,
+        create(layer) {
+          const group = new THREE.Group();
+          const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(hue, 0.75, 0.58),
+            wireframe: true,
+            transparent: true,
+            opacity: 0.82,
+          });
+
+          for (let i = 0; i < 14; i += 1) {
+            const mesh = new THREE.Mesh(
+              new THREE.TorusKnotGeometry(
+                THREE.MathUtils.randFloat(0.45, 1.3),
+                0.12,
+                54,
+                8,
+              ),
+              material,
+            );
+
+            mesh.position.set(
+              THREE.MathUtils.randFloatSpread(26),
+              THREE.MathUtils.randFloatSpread(18),
+              -18 - Math.random() * 40,
+            );
+            mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            group.add(mesh);
+          }
+
+          layer.userData.group = group;
+          layer.scene.add(group);
+        },
+        update(layer, deltaSeconds) {
+          layer.userData.group.rotation.y += deltaSeconds * (0.06 + number * 0.006);
+          layer.userData.group.rotation.x += deltaSeconds * 0.018;
+        },
+      };
+    }
+
+    function addRuntimeScene() {
+      runtimeSceneNumber += 1;
+      const config = createRuntimeSceneConfig(runtimeSceneNumber);
+      sceneManager.add(config);
+      runtimeSceneIds.push(config.id);
+    }
+
+    function removeNewestRuntimeScene() {
+      const id = runtimeSceneIds.pop();
+      if (!id) return;
+      sceneManager.remove(id);
+    }
+
+    // -------------------------------------------------------------------------
+    // Initial scene stack
+    // -------------------------------------------------------------------------
+
+    sceneManager.add(createFarStarLayerConfig());
+    sceneManager.add(createMiddleGridLayerConfig());
+    sceneManager.add(createLocalObjectsLayerConfig());
+
+    // -------------------------------------------------------------------------
+    // HUD
+    // -------------------------------------------------------------------------
+
+    const sceneListElement = document.querySelector("#scene-list");
+    const statusElement = document.querySelector("#status");
+
+    function refreshSceneList() {
+      // This can run before the DOM constants above are initialized because
+      // initial scenes are created earlier in the file.
+      const target = document.querySelector("#scene-list");
+      if (!target) return;
+
+      target.replaceChildren();
+
+      for (const layer of sceneManager.layers) {
+        const row = document.createElement("div");
+        row.className = "scene-row";
+
+        const label = document.createElement("span");
+        label.className = "scene-name";
+        label.textContent = layer.name;
+
+        const scale = document.createElement("span");
+        scale.className = "scene-scale";
+        scale.textContent = `×${layer.panScale}`;
+
+        const toggle = document.createElement("button");
+        toggle.textContent = layer.enabled ? "On" : "Off";
+        toggle.classList.toggle("disabled", !layer.enabled);
+        toggle.addEventListener("click", () => sceneManager.toggle(layer.id));
+
+        row.append(label, scale, toggle);
+        target.append(row);
+      }
+    }
+
+    document.querySelector("#add-scene").addEventListener("click", addRuntimeScene);
+    document
+      .querySelector("#remove-scene")
+      .addEventListener("click", removeNewestRuntimeScene);
+    document.querySelector("#reset-camera").addEventListener("click", resetCamera);
+
+    refreshSceneList();
+
+    // -------------------------------------------------------------------------
+    // Resize / animation
+    // -------------------------------------------------------------------------
+
+    window.addEventListener("resize", () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      sceneManager.resize(width, height);
+    });
+
+    const clock = new THREE.Clock();
+    let statusTimer = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const deltaSeconds = Math.min(clock.getDelta(), 0.05);
+      const elapsedSeconds = clock.elapsedTime;
+
+      updateNavigation(deltaSeconds);
+      sceneManager.update(deltaSeconds, elapsedSeconds, masterCamera);
+      sceneManager.render();
+
+      statusTimer += deltaSeconds;
+      if (statusTimer >= 0.1) {
+        statusTimer = 0;
+        const p = masterCamera.position;
+        const enabledCount = sceneManager.layers.filter((layer) => layer.enabled).length;
+        statusElement.textContent =
+          `Master position: ${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)} · ` +
+          `${enabledCount}/${sceneManager.layers.length} scenes rendered`;
+      }
+    }
+
+    animate();
+  </script>
+</body>
+</html>

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Two-Layer Three.js Parallax Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #02040a;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #hud {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      max-width: 350px;
+      padding: 12px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 10px;
+      background: rgba(3, 7, 18, 0.72);
+      backdrop-filter: blur(8px);
+      color: rgba(255, 255, 255, 0.92);
+      line-height: 1.4;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    #hud strong {
+      color: white;
+    }
+
+    #hud .secondary {
+      margin-top: 6px;
+      color: rgba(255, 255, 255, 0.65);
+      font-size: 0.88rem;
+    }
+
+    #status {
+      margin-top: 7px;
+      color: #a7f3d0;
+      font-size: 0.88rem;
+    }
+
+    #crosshair {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: 12px;
+      height: 12px;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
+    #crosshair::before,
+    #crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(255, 255, 255, 0.75);
+    }
+
+    #crosshair::before {
+      left: 5px;
+      top: 0;
+      width: 2px;
+      height: 12px;
+    }
+
+    #crosshair::after {
+      left: 0;
+      top: 5px;
+      width: 12px;
+      height: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <strong>Two-camera parallax demo</strong><br />
+    Click to capture the mouse.<br />
+    WASD: move &nbsp; Space/Shift: up/down<br />
+    Mouse: look &nbsp; R: reset
+    <div class="secondary">
+      Spheres use 100% of camera translation. Cubes use 10%, so their layer appears much farther away.
+    </div>
+    <div id="status">Click anywhere to begin.</div>
+  </div>
+
+  <div id="crosshair" aria-hidden="true"></div>
+
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js";
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance"
+    });
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.autoClear = false;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.prepend(renderer.domElement);
+
+    // Two completely separate scenes rendered into the same canvas.
+    const cubeScene = new THREE.Scene();
+    const sphereScene = new THREE.Scene();
+
+    // Only the first scene paints the background.
+    cubeScene.background = new THREE.Color(0x02040a);
+
+    // Separate fog values help the two fields feel like different depth layers.
+    cubeScene.fog = new THREE.FogExp2(0x02040a, 0.00034);
+    sphereScene.fog = new THREE.FogExp2(0x02040a, 0.00105);
+
+    const cubeCamera = new THREE.PerspectiveCamera(
+      70,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      12000
+    );
+
+    const sphereCamera = new THREE.PerspectiveCamera(
+      70,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      12000
+    );
+
+    // ---------- Deterministic random number generator ----------
+    // This keeps the same object layout each time the file is opened.
+    let randomState = 0x12345678;
+
+    function random() {
+      randomState ^= randomState << 13;
+      randomState ^= randomState >>> 17;
+      randomState ^= randomState << 5;
+      return (randomState >>> 0) / 4294967296;
+    }
+
+    function randomRange(min, max) {
+      return min + random() * (max - min);
+    }
+
+    function randomPointInField(radius, innerRadius) {
+      const point = new THREE.Vector3();
+
+      do {
+        point.set(
+          randomRange(-radius, radius),
+          randomRange(-radius, radius),
+          randomRange(-radius, radius)
+        );
+      } while (point.length() < innerRadius);
+
+      return point;
+    }
+
+    // ---------- Far layer: cubes ----------
+    const cubeCount = 1800;
+    const cubeGeometry = new THREE.BoxGeometry(7, 7, 7);
+    const cubeMaterial = new THREE.MeshBasicMaterial({
+      color: 0x8aa4c8,
+      transparent: true,
+      opacity: 0.52
+    });
+
+    const cubes = new THREE.InstancedMesh(
+      cubeGeometry,
+      cubeMaterial,
+      cubeCount
+    );
+
+    const matrixHelper = new THREE.Object3D();
+
+    for (let i = 0; i < cubeCount; i++) {
+      const position = randomPointInField(4200, 180);
+      const scale = randomRange(0.35, 1.7);
+
+      matrixHelper.position.copy(position);
+      matrixHelper.rotation.set(
+        randomRange(0, Math.PI),
+        randomRange(0, Math.PI),
+        randomRange(0, Math.PI)
+      );
+      matrixHelper.scale.setScalar(scale);
+      matrixHelper.updateMatrix();
+
+      cubes.setMatrixAt(i, matrixHelper.matrix);
+    }
+
+    cubes.instanceMatrix.needsUpdate = true;
+    cubes.frustumCulled = false;
+    cubeScene.add(cubes);
+
+    // ---------- Near layer: spheres ----------
+    const sphereCount = 700;
+    const sphereGeometry = new THREE.SphereGeometry(3.8, 12, 8);
+    const sphereMaterial = new THREE.MeshBasicMaterial({
+      color: 0xf1c58b,
+      transparent: true,
+      opacity: 0.86
+    });
+
+    const spheres = new THREE.InstancedMesh(
+      sphereGeometry,
+      sphereMaterial,
+      sphereCount
+    );
+
+    for (let i = 0; i < sphereCount; i++) {
+      const position = randomPointInField(1050, 45);
+      const scale = randomRange(0.45, 2.25);
+
+      matrixHelper.position.copy(position);
+      matrixHelper.rotation.set(0, 0, 0);
+      matrixHelper.scale.setScalar(scale);
+      matrixHelper.updateMatrix();
+
+      spheres.setMatrixAt(i, matrixHelper.matrix);
+    }
+
+    spheres.instanceMatrix.needsUpdate = true;
+    spheres.frustumCulled = false;
+    sphereScene.add(spheres);
+
+    // ---------- Shared flight state ----------
+    const keys = new Set();
+    const velocity = new THREE.Vector3();
+    const movementInput = new THREE.Vector3();
+    const travelPosition = new THREE.Vector3();
+
+    const euler = new THREE.Euler(0, 0, 0, "YXZ");
+    const sharedQuaternion = new THREE.Quaternion();
+
+    const clock = new THREE.Clock();
+    const status = document.getElementById("status");
+
+    const movementSpeed = 155;
+    const acceleration = 7.5;
+    const damping = 5.0;
+    const mouseSensitivity = 0.0022;
+    const cubeTranslationScale = 0.1;
+
+    function resetView() {
+      travelPosition.set(0, 0, 0);
+      velocity.set(0, 0, 0);
+      euler.set(0, 0, 0);
+      sharedQuaternion.identity();
+      updateCameras();
+    }
+
+    function updateCameras() {
+      sharedQuaternion.setFromEuler(euler);
+
+      // Both cameras always face the same direction.
+      sphereCamera.quaternion.copy(sharedQuaternion);
+      cubeCamera.quaternion.copy(sharedQuaternion);
+
+      // The sphere layer receives the full translation.
+      sphereCamera.position.copy(travelPosition);
+
+      // The cube layer receives exactly one tenth of that translation.
+      cubeCamera.position.copy(travelPosition).multiplyScalar(cubeTranslationScale);
+    }
+
+    function updateFlight(deltaTime) {
+      movementInput.set(0, 0, 0);
+
+      if (keys.has("KeyW")) movementInput.z -= 1;
+      if (keys.has("KeyS")) movementInput.z += 1;
+      if (keys.has("KeyA")) movementInput.x -= 1;
+      if (keys.has("KeyD")) movementInput.x += 1;
+      if (keys.has("Space")) movementInput.y += 1;
+      if (keys.has("ShiftLeft") || keys.has("ShiftRight")) movementInput.y -= 1;
+
+      if (movementInput.lengthSq() > 0) {
+        movementInput.normalize();
+        movementInput.applyQuaternion(sharedQuaternion);
+        velocity.lerp(
+          movementInput.multiplyScalar(movementSpeed),
+          1 - Math.exp(-acceleration * deltaTime)
+        );
+      } else {
+        velocity.multiplyScalar(Math.exp(-damping * deltaTime));
+      }
+
+      travelPosition.addScaledVector(velocity, deltaTime);
+      updateCameras();
+    }
+
+    function render() {
+      const deltaTime = Math.min(clock.getDelta(), 0.05);
+
+      updateFlight(deltaTime);
+
+      renderer.clear();
+
+      // Draw the slow/far cube layer first.
+      renderer.render(cubeScene, cubeCamera);
+
+      // Keep its color pixels, but discard its depth buffer so that the
+      // sphere layer can be composited directly over it.
+      renderer.clearDepth();
+
+      // Draw the fast/near sphere layer second.
+      renderer.render(sphereScene, sphereCamera);
+
+      requestAnimationFrame(render);
+    }
+
+    renderer.domElement.addEventListener("click", () => {
+      renderer.domElement.requestPointerLock();
+    });
+
+    document.addEventListener("pointerlockchange", () => {
+      const active = document.pointerLockElement === renderer.domElement;
+      status.textContent = active
+        ? "Mouse captured. Press Esc to release."
+        : "Click anywhere to resume.";
+    });
+
+    document.addEventListener("mousemove", (event) => {
+      if (document.pointerLockElement !== renderer.domElement) return;
+
+      euler.y -= event.movementX * mouseSensitivity;
+      euler.x -= event.movementY * mouseSensitivity;
+      euler.x = THREE.MathUtils.clamp(
+        euler.x,
+        -Math.PI / 2 + 0.01,
+        Math.PI / 2 - 0.01
+      );
+
+      updateCameras();
+    });
+
+    window.addEventListener("keydown", (event) => {
+      keys.add(event.code);
+
+      if (event.code === "KeyR") {
+        resetView();
+      }
+
+      if (
+        event.code === "Space" ||
+        event.code.startsWith("Arrow")
+      ) {
+        event.preventDefault();
+      }
+    });
+
+    window.addEventListener("keyup", (event) => {
+      keys.delete(event.code);
+    });
+
+    window.addEventListener("blur", () => {
+      keys.clear();
+    });
+
+    window.addEventListener("resize", () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const aspect = width / height;
+
+      cubeCamera.aspect = aspect;
+      sphereCamera.aspect = aspect;
+      cubeCamera.updateProjectionMatrix();
+      sphereCamera.updateProjectionMatrix();
+
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    });
+
+    resetView();
+    render();
+  </script>
+</body>
+</html>
