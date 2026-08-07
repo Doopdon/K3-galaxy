@@ -38,55 +38,59 @@
             }
         }
 
-        // Sphere Scene
-        const sphereSceneData = {
-            scene: new THREE.Scene(),
-            camera: new THREE.PerspectiveCamera(
+        function generateCamera() {
+            const camera = new THREE.PerspectiveCamera(
                 75,
                 window.innerWidth / window.innerHeight,
                 0.1,
-                1000),
-            scale: .1,
-            disapearDistance: 1,
+                1000);
+            camera.rotation.order = "YXZ";
+            camera.position.z = 5;
+            return camera;
+        }
+        
+        const yelloCubeSceneData = {
+            scene: new THREE.Scene(),
+            camera: generateCamera(),
+            scale: .001,
+            childScenes: [],
             remove: function () {
                 this.scene.clear();
-                greenSphereSceneData.remove();
             },
             populateScene: function (position) {
+                console.log("Populating yellow cube scene at", position);
                 for (let i = 0; i < 10; i++) {
-                    const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
-                    const sphereMaterial = new THREE.MeshBasicMaterial({
-                        color: "red"
+                    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+                    const cubeMaterial = new THREE.MeshBasicMaterial({
+                        color: "yellow"
                     });
-                    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+                    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
 
-                    sphere.position.set(
+                    cube.position.set(
                         position.x + Math.random() * 20 - 10,
                         position.y + Math.random() * 20 - 10,
                         position.z + Math.random() * 20 - 10
                     );
 
-                    this.scene.add(sphere);
+                    this.scene.add(cube);
                 }
-            },
-            checkCollision: function () {
-                checkCollision(this, greenSphereSceneData)
             }
         }
-        sphereSceneData.camera.rotation.order = "YXZ";
-        sphereSceneData.camera.position.z = 5;
+
 
         // Green Sphere Scene
         const greenSphereSceneData = {
             scene: new THREE.Scene(),
-            camera: new THREE.PerspectiveCamera(
-                75,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000),
+            camera: generateCamera(),
             scale: .01,
+            disapearDistance: 1,
+            childScenes: [yelloCubeSceneData],
             remove: function () {
                 this.scene.clear();
+                this.childScenes.forEach((scene) => scene.remove());
+            },
+            checkCollision: function () {
+                checkCollision(this, this.childScenes[0])
             },
             populateScene: function (position) {
                 console.log("Populating green sphere scene at", position);
@@ -107,20 +111,51 @@
                 }
             }
         }
-        greenSphereSceneData.camera.rotation.order = "YXZ";
-        greenSphereSceneData.camera.position.z = 5;
+        
+        // Sphere Scene
+        const sphereSceneData = {
+            scene: new THREE.Scene(),
+            camera: generateCamera(),
+            scale: .1,
+            disapearDistance: 1,
+            childScenes: [greenSphereSceneData],
+            remove: function () {
+                this.scene.clear();
+                this.childScenes.forEach((scene) => scene.remove());
+            },
+            populateScene: function (position) {
+                for (let i = 0; i < 10; i++) {
+                    const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
+                    const sphereMaterial = new THREE.MeshBasicMaterial({
+                        color: "red"
+                    });
+                    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+
+                    sphere.position.set(
+                        position.x + Math.random() * 20 - 10,
+                        position.y + Math.random() * 20 - 10,
+                        position.z + Math.random() * 20 - 10
+                    );
+
+                    this.scene.add(sphere);
+                }
+            },
+            checkCollision: function () {
+                checkCollision(this, this.childScenes[0])
+            }
+        }
 
 
-        // Cube
+        // Cube Scene
         const cubeSceneData = {
             scene: new THREE.Scene(),
-            camera: new THREE.PerspectiveCamera(
-                75,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000),
+            camera: generateCamera(),
             scale: 1,
-            disapearDistance: 2,
+            disapearDistance: 1,
+            childScenes: [sphereSceneData],
+            checkCollision: function () {
+                checkCollision(this, this.childScenes[0])
+            },
             populateScene: function () {
                 for (let i = 0; i < 100; i++) {
                     const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -139,20 +174,24 @@
 
                     this.scene.add(cube);
                 }
-            },
-            checkCollision: function () {
-                checkCollision(this, sphereSceneData)
             }
         }
-        cubeSceneData.camera.rotation.order = "YXZ";
-        cubeSceneData.camera.position.z = 5;
+    
 
 
-        const scenesData = [
-            cubeSceneData,
-            sphereSceneData,
-            greenSphereSceneData
-        ];
+        const scenesData = [cubeSceneData];
+
+        function addChildScenes(parentSceneData) {
+            // two loops to add child scenes and their children recursively
+            parentSceneData.childScenes.forEach(childScene => {
+                scenesData.push(childScene);
+            });
+            parentSceneData.childScenes.forEach(childScene => {
+                addChildScenes(childScene);
+            });
+        }
+
+        addChildScenes(cubeSceneData)
 
 
         // Renderer
@@ -192,12 +231,16 @@
 
         }
 
+        let speed = 0.1;
         function moveCamera() {
             let mainCamera = scenesData[0].camera;
-            if (keys["w"]) mainCamera.translateZ(-0.1);
-            if (keys["s"]) mainCamera.translateZ(0.1);
-            if (keys["a"]) mainCamera.translateX(-0.1);
-            if (keys["d"]) mainCamera.translateX(0.1);
+            if (keys["w"]) mainCamera.translateZ(-speed);
+            if (keys["s"]) mainCamera.translateZ(speed);
+            if (keys["a"]) mainCamera.translateX(-speed);
+            if (keys["d"]) mainCamera.translateX(speed);
+
+            if (keys["f"]) speed *= 1.1;
+            if (keys["r"]) speed /= 1.1;
 
             if (keys["arrowup"]) mainCamera.rotation.x += 0.01;
             if (keys["arrowdown"]) mainCamera.rotation.x -= 0.01;
