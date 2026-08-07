@@ -48,35 +48,56 @@
             camera.position.z = 5;
             return camera;
         }
-        
+
         const yelloCubeSceneData = {
             scene: new THREE.Scene(),
             camera: generateCamera(),
             scale: .001,
             childScenes: [],
+
             remove: function () {
                 this.scene.clear();
             },
+
             populateScene: function (position) {
-                console.log("Populating yellow cube scene at", position);
+
+                const group = new THREE.Group();
+
+                group.position.copy(position);
+
                 for (let i = 0; i < 10; i++) {
+
                     const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+
                     const cubeMaterial = new THREE.MeshBasicMaterial({
                         color: "yellow"
                     });
-                    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
 
-                    cube.position.set(
-                        position.x + Math.random() * 20 - 10,
-                        position.y + Math.random() * 20 - 10,
-                        position.z + Math.random() * 20 - 10
+                    const cube = new THREE.Mesh(
+                        cubeGeometry,
+                        cubeMaterial
                     );
 
-                    this.scene.add(cube);
+                    cube.position.set(
+                        Math.random() * 20 - 10,
+                        Math.random() * 20 - 10,
+                        Math.random() * 20 - 10
+                    );
+
+                    group.add(cube);
+                }
+
+                this.scene.add(group);
+
+                this.orbitGroup = group;
+            },
+
+            update: function () {
+                if (this.orbitGroup) {
+                    this.orbitGroup.rotation.y += 0.01;
                 }
             }
         }
-
 
         // Green Sphere Scene
         const greenSphereSceneData = {
@@ -111,7 +132,7 @@
                 }
             }
         }
-        
+
         // Sphere Scene
         const sphereSceneData = {
             scene: new THREE.Scene(),
@@ -176,7 +197,7 @@
                 }
             }
         }
-    
+
 
 
         const scenesData = [cubeSceneData];
@@ -269,6 +290,8 @@
                         renderer.clearDepth();
                     }
                     data.checkCollision?.();
+                    data.update?.();
+                    
                     renderer.render(data.scene, data.camera);
                 });
                 run();
