@@ -57,20 +57,18 @@
             color: "red"
         });
 
-        function makeBall() {
-            const b = new THREE.Mesh(geometry, material);
+        function makeBalls(position) {
+            for (let i = 0; i < 100; i++) {
+                const b = new THREE.Mesh(geometry, material);
 
-            b.position.set(
-                Math.random() * 20 - 10,
-                Math.random() * 20 - 10,
-                Math.random() * 20 - 10
-            );
+                b.position.set(
+                    position.x + Math.random() * 20 - 10,
+                    position.y + Math.random() * 20 - 10,
+                    position.z + Math.random() * 20 - 10
+                );
 
-            sphereScene.add(b);
-        }
-
-        for (let i = 0; i < 100; i++) {
-            makeBall();
+                sphereScene.add(b);
+            }
         }
 
 
@@ -91,7 +89,25 @@
                 Math.random() * 20 - 10
             );
 
+            cube.userData.visited = false;
+
             cubeScene.add(cube);
+        }
+
+        function checkCubes() {
+            for (const cube of cubeScene.children) {
+
+                const distance = cubeCamera.position.distanceTo(cube.position);
+
+                if (distance < 1 && !cube.userData.visited) {
+
+                    cube.userData.visited = true;
+
+                    makeBalls(sphereCamera.position);
+
+                    console.log("Entered cube!", cube.position);
+                }
+            }
         }
 
         for (let i = 0; i < 100; i++) {
@@ -145,17 +161,15 @@
                 moveCamera();
 
                 cubeCamera.rotation.copy(sphereCamera.rotation);
-
                 cubeCamera.position.copy(sphereCamera.position).multiplyScalar(0.1);
-
-                renderer.clear();
-
-                renderer.render(cubeScene, cubeCamera);
-
-                renderer.clearDepth();
-
-                renderer.render(sphereScene, sphereCamera);
+                checkCubes();
                 
+                
+                renderer.clear();
+                renderer.render(cubeScene, cubeCamera);
+                renderer.clearDepth();
+                renderer.render(sphereScene, sphereCamera);
+
                 run();
             }, 10);
         }
