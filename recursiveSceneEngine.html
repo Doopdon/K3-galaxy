@@ -88,14 +88,30 @@
                 if (!this.parentCollider) return;
 
                 const position = new THREE.Vector3();
+                const quaternion = new THREE.Quaternion();
 
                 this.parentCollider.getWorldPosition(position);
+                this.parentCollider.getWorldQuaternion(quaternion);
 
                 position.multiplyScalar(
                     this.parentSceneData.scale / this.scale
                 );
 
                 this.rootGroup.position.copy(position);
+                this.rootGroup.quaternion.copy(quaternion);
+            }
+
+            getColliderLocalQuaternion(collider) {
+
+                const colliderWorld = new THREE.Quaternion();
+                const rootWorld = new THREE.Quaternion();
+
+                collider.getWorldQuaternion(colliderWorld);
+                this.rootGroup.getWorldQuaternion(rootWorld);
+
+                return rootWorld
+                    .invert()
+                    .multiply(colliderWorld);
             }
 
             populateScene() {
@@ -188,8 +204,13 @@
                     this.lastColliderPosition
                 );
 
-                collider.getWorldQuaternion(
-                    this.lastColliderQuaternion
+                // Convert from world position into this scene's local frame
+                this.rootGroup.worldToLocal(
+                    this.lastColliderPosition
+                );
+
+                this.lastColliderQuaternion.copy(
+                    this.getColliderLocalQuaternion(collider)
                 );
 
 
@@ -255,22 +276,36 @@
 
                 if (!this.activeCollider) return;
 
+                const mainCamera = scenesData[0].camera;
+
+
+                // ----------------------
+                // COLLIDER LOCAL POSITION
+                // ----------------------
 
                 const newPosition = new THREE.Vector3();
-                const newQuaternion = new THREE.Quaternion();
-
 
                 this.activeCollider.getWorldPosition(
                     newPosition
                 );
 
-                this.activeCollider.getWorldQuaternion(
-                    newQuaternion
+                this.rootGroup.worldToLocal(
+                    newPosition
                 );
 
 
                 // ----------------------
-                // Translation
+                // COLLIDER LOCAL ROTATION
+                // ----------------------
+
+                const newQuaternion =
+                    this.getColliderLocalQuaternion(
+                        this.activeCollider
+                    );
+
+
+                // ----------------------
+                // TRANSLATION CHANGE
                 // ----------------------
 
                 const movement = newPosition
@@ -278,33 +313,103 @@
                     .sub(this.lastColliderPosition);
 
 
-                scenesData[0].camera.position.add(
-                    movement.multiplyScalar(
-                        this.scale / scenesData[0].scale
-                    )
+                // Movement is currently in rootGroup coordinates.
+                // Convert its direction back into world coordinates.
+
+                const rootQuaternion =
+                    new THREE.Quaternion();
+
+                this.rootGroup.getWorldQuaternion(
+                    rootQuaternion
+                );
+
+                movement.applyQuaternion(
+                    rootQuaternion
+                );
+
+
+                movement.multiplyScalar(
+                    this.scale / scenesData[0].scale
+                );
+
+
+                mainCamera.position.add(
+                    movement
                 );
 
 
                 // ----------------------
-                // Rotation
+                // ROTATION CHANGE
                 // ----------------------
-
-                const oldInverse =
-                    this.lastColliderQuaternion
-                        .clone()
-                        .invert();
 
                 const rotationChange =
                     newQuaternion
                         .clone()
-                        .multiply(oldInverse);
+                        .multiply(
+                            this.lastColliderQuaternion
+                                .clone()
+                                .invert()
+                        );
 
 
-                scenesData[0].camera.quaternion
-                    .premultiply(rotationChange);
+                // rotationChange is local to rootGroup.
+                // Convert it into world-space rotation.
+
+                const rootInverse =
+                    rootQuaternion
+                        .clone()
+                        .invert();
+
+                const worldRotationChange =
+                    rootQuaternion
+                        .clone()
+                        .multiply(rotationChange)
+                        .multiply(rootInverse);
 
 
-                // Save current transform
+                // ----------------------
+                // ROTATE CAMERA POSITION
+                // AROUND THE COLLIDER
+                // ----------------------
+
+                const colliderWorldPosition =
+                    new THREE.Vector3();
+
+                this.activeCollider.getWorldPosition(
+                    colliderWorldPosition
+                );
+
+                colliderWorldPosition.multiplyScalar(
+                    this.scale / scenesData[0].scale
+                );
+
+
+                const cameraOffset =
+                    mainCamera.position
+                        .clone()
+                        .sub(colliderWorldPosition);
+
+
+                cameraOffset.applyQuaternion(
+                    worldRotationChange
+                );
+
+
+                mainCamera.position
+                    .copy(colliderWorldPosition)
+                    .add(cameraOffset);
+
+
+                // Rotate where camera is looking too
+                mainCamera.quaternion.premultiply(
+                    worldRotationChange
+                );
+
+
+                // ----------------------
+                // SAVE FOR NEXT FRAME
+                // ----------------------
+
                 this.lastColliderPosition.copy(
                     newPosition
                 );
@@ -335,17 +440,75 @@
 
         }
 
+        const redSphereSceneData = new SceneData({
+
+            scale: 0.01,
+
+            timescale: 1,
+
+            disapearDistance: 1.5,
+
+            childScenes: [],
+
+
+            populateScene: function () {
+
+                const group = new THREE.Group();
+
+                for (let i = 0; i < 4; i++) {
+
+                    const sphere = new THREE.Mesh(
+                        new THREE.SphereGeometry(1, 32, 32),
+                        new THREE.MeshBasicMaterial({
+                            color: "red"
+                        })
+                    );
+
+                    const angle =
+                        (i / 4) * Math.PI * 2;
+
+                    sphere.position.set(
+                        Math.cos(angle) * 5,
+                        0,
+                        Math.sin(angle) * 5
+                    );
+
+                    group.add(sphere);
+
+                    // Bottom-level collider
+                    this.addCollider(sphere);
+                }
+
+                this.rootGroup.add(group);
+
+                this.orbitGroup = group;
+            },
+
+
+            animate: function (deltaTime) {
+
+                if (!this.orbitGroup) return;
+
+                this.orbitGroup.rotation.y +=
+                    1.0 * deltaTime;
+            }
+        });
 
         const cubeSceneData = new SceneData({
 
             scale: 0.1,
 
-            // Entering this scene slows its parents 10x
             timescale: 10,
 
             disapearDistance: 1.5,
 
-            childScenes: [],
+            childScenes: [
+                redSphereSceneData
+            ],
+
+            getSubSceneData: function (cube) {
+                return redSphereSceneData;
+            },
 
 
             populateScene: function () {
