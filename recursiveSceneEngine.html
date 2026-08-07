@@ -55,6 +55,9 @@
                 this.activeCollider = null;
                 this.activeSubScene = null;
 
+                this.parentCollider = null;
+                this.parentSceneData = null;
+
 
                 // Previous transform of collider
                 this.lastColliderPosition = new THREE.Vector3();
@@ -68,6 +71,9 @@
                 if (getSubSceneData) {
                     this.getSubSceneData = getSubSceneData;
                 }
+
+                this.rootGroup = new THREE.Group();
+                this.scene.add(this.rootGroup);
             }
 
             addCollider(object) {
@@ -77,17 +83,35 @@
                 return object;
             }
 
-            populateScene(position) {
+            updateParentLock() {
+
+                if (!this.parentCollider) return;
+
+                const position = new THREE.Vector3();
+
+                this.parentCollider.getWorldPosition(position);
+
+                position.multiplyScalar(
+                    this.parentSceneData.scale / this.scale
+                );
+
+                this.rootGroup.position.copy(position);
+            }
+
+            populateScene() {
 
                 this.colliders = [];
 
-                this.populateSceneFunction?.call(
-                    this,
-                    position
-                );
+                // Clear old child content
+                this.rootGroup.clear();
+
+                // Rebuild the scene contents locally around rootGroup
+                this.populateSceneFunction?.call(this);
             }
 
             update(deltaTime) {
+
+                this.updateParentLock();
 
                 const scaledDelta =
                     deltaTime * this.speedMultiplier;
@@ -158,6 +182,8 @@
                 this.activeCollider = collider;
                 this.activeSubScene = subScene ?? null;
 
+
+                // Remember its current transform for camera locking
                 collider.getWorldPosition(
                     this.lastColliderPosition
                 );
@@ -167,30 +193,38 @@
                 );
 
 
-                // If there is no deeper scene, we're done.
-                // We still remain locked to the collider.
+                // No deeper scene:
+                // stay locked to the object, but don't change the stack
                 if (!subScene) {
                     return;
                 }
 
 
-                // Hide the parent object while we're inside it
+                // Tell the child scene what object/frame it belongs to
+                subScene.parentCollider = collider;
+                subScene.parentSceneData = this;
+
+
+                // Hide parent object because we've descended inside it
                 collider.visible = false;
 
 
-                subScene.populateScene(
-                    worldPosition.clone().multiplyScalar(
-                        this.scale / subScene.scale
-                    )
-                );
+                // Position child scene root at the collider
+                subScene.updateParentLock();
 
 
+                // Child objects are now LOCAL to that root
+                subScene.populateScene();
+
+
+                // Add child to active hierarchy
                 const index =
                     activeSceneStack.indexOf(this);
 
                 activeSceneStack.splice(index + 1);
 
                 activeSceneStack.push(subScene);
+
 
                 updateTimeScales();
             }
@@ -284,19 +318,19 @@
                 return this.childScenes[0];
             }
 
-
             remove() {
 
-                this.childScenes.forEach(
-                    child => child.remove()
-                );
+                this.activeSubScene?.remove();
 
-                this.scene.clear();
+                this.rootGroup.clear();
 
                 this.colliders = [];
 
                 this.activeCollider = null;
                 this.activeSubScene = null;
+
+                this.parentCollider = null;
+                this.parentSceneData = null;
             }
 
         }
@@ -314,12 +348,9 @@
             childScenes: [],
 
 
-            populateScene: function (position) {
+            populateScene: function () {
 
                 const group = new THREE.Group();
-
-                group.position.copy(position);
-
 
                 for (let i = 0; i < 4; i++) {
 
@@ -330,8 +361,6 @@
                         })
                     );
 
-
-                    // Put four cubes around a circle
                     const angle =
                         (i / 4) * Math.PI * 2;
 
@@ -341,19 +370,15 @@
                         Math.sin(angle) * 5
                     );
 
-
                     group.add(cube);
 
-                    // Cube can be locked onto
                     this.addCollider(cube);
                 }
 
-
-                this.scene.add(group);
+                this.rootGroup.add(group);
 
                 this.orbitGroup = group;
             },
-
 
             animate: function (deltaTime) {
 
