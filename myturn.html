@@ -13,7 +13,7 @@
 
 
         class StaticSceneData {
-            constructor(scale, timescale, disapearDistance, childScenes) {
+            constructor({ scale, timescale, disapearDistance, childScenes, getSubSceneData, populateScene, update }) {
                 this.scene = new THREE.Scene();
                 this.camera = new THREE.PerspectiveCamera(
                     75,
@@ -26,6 +26,9 @@
                 this.timescale = timescale;
                 this.disapearDistance = disapearDistance;
                 this.childScenes = childScenes;
+                this.getSubSceneData = getSubSceneData ?? this.getSubSceneData;
+                this.populateScene = populateScene ?? this.populateScene;
+                this.update = update ?? this.update;
             }
 
             remove() {
@@ -462,45 +465,45 @@
             }
         }
 
-        const mainSceneData = new StaticSceneData(
-            1, // scale
-            1, // timescale
-            1, // disapearDistance
-            [sphereSceneData, orangeSphereSceneData] // childScenes
-        );
-        mainSceneData.getSubSceneData = function (child) {
-            console.log("getSubSceneData", child.userData.id);
-            if (child.userData.id % 2 === 0) {
-                return sphereSceneData;
-            } else {
-                return orangeSphereSceneData;
+        const mainSceneData = new StaticSceneData({
+            scale: 1, // scale
+            timescale: 1, // timescale
+            disapearDistance: 1, // disapearDistance
+            childScenes: [sphereSceneData, orangeSphereSceneData],
+            getSubSceneData: function (child) {
+                console.log("getSubSceneData", child.userData.id);
+                if (child.userData.id % 2 === 0) {
+                    return sphereSceneData;
+                } else {
+                    return orangeSphereSceneData;
+                }
+            },
+            populateScene: function () {
+                for (let i = 0; i < 100; i++) {
+                    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+                    const cubeMaterial1 = new THREE.MeshBasicMaterial({
+                        color: "blue"
+                    });
+
+                    const cubeMaterial2 = new THREE.MeshBasicMaterial({
+                        color: "purple"
+                    });
+                    const cubeMaterial = i % 2 ? cubeMaterial1 : cubeMaterial2;
+                    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+
+                    cube.position.set(
+                        Math.random() * 20 - 10,
+                        Math.random() * 20 - 10,
+                        Math.random() * 20 - 10
+                    );
+
+                    cube.userData.visited = false;
+                    cube.userData.id = i;
+
+                    this.scene.add(cube);
+                }
             }
-        },
-        mainSceneData.populateScene = function () {
-            for (let i = 0; i < 100; i++) {
-                const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-                const cubeMaterial1 = new THREE.MeshBasicMaterial({
-                    color: "blue"
-                });
-
-                const cubeMaterial2 = new THREE.MeshBasicMaterial({
-                    color: "purple"
-                });
-                const cubeMaterial = i % 2 ? cubeMaterial1 : cubeMaterial2;
-                const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-
-                cube.position.set(
-                    Math.random() * 20 - 10,
-                    Math.random() * 20 - 10,
-                    Math.random() * 20 - 10
-                );
-
-                cube.userData.visited = false;
-                cube.userData.id = i;
-
-                this.scene.add(cube);
-            }
-        }
+        });
 
         const scenesData = [mainSceneData];
 
