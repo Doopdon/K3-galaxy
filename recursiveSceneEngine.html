@@ -18,6 +18,7 @@
                 scale,
                 timescale = 1,
                 disapearDistance = 1,
+                localUp = new THREE.Vector3(0, 1, 0),
                 childScenes = [],
                 getSubSceneData,
                 populateScene,
@@ -74,6 +75,38 @@
 
                 this.rootGroup = new THREE.Group();
                 this.scene.add(this.rootGroup);
+
+                this.localUp = localUp.clone().normalize();
+            }
+
+            alignCameraUp() {
+
+                const camera = scenesData[0].camera;
+
+                const forward = new THREE.Vector3();
+                camera.getWorldDirection(forward);
+
+                const up = this.getWorldUp();
+
+                camera.up.copy(up);
+
+                camera.lookAt(
+                    camera.position.clone().add(forward)
+                );
+            }
+
+            getWorldUp() {
+
+                const worldQuaternion = new THREE.Quaternion();
+
+                this.rootGroup.getWorldQuaternion(
+                    worldQuaternion
+                );
+
+                return this.localUp
+                    .clone()
+                    .applyQuaternion(worldQuaternion)
+                    .normalize();
             }
 
             addCollider(object) {
@@ -232,10 +265,9 @@
 
                 // Position child scene root at the collider
                 subScene.updateParentLock();
-
-
-                // Child objects are now LOCAL to that root
                 subScene.populateScene();
+
+                subScene.alignCameraUp();
 
 
                 // Add child to active hierarchy
@@ -245,6 +277,8 @@
                 activeSceneStack.splice(index + 1);
 
                 activeSceneStack.push(subScene);
+
+
 
 
                 updateTimeScales();
@@ -444,7 +478,7 @@
 
             scale: 0.01,
 
-            timescale: 1,
+            timescale: 10,
 
             disapearDistance: 1.5,
 
@@ -454,6 +488,14 @@
             populateScene: function () {
 
                 const group = new THREE.Group();
+
+                // Give the whole orbital plane a weird tilt
+                group.rotation.x = 0.65;
+                group.rotation.z = 0.35;
+
+                this.localUp = new THREE.Vector3(0, 1, 0)
+                    .applyQuaternion(group.quaternion)
+                    .normalize();
 
                 for (let i = 0; i < 4; i++) {
 
@@ -489,8 +531,12 @@
 
                 if (!this.orbitGroup) return;
 
-                this.orbitGroup.rotation.y +=
-                    1.0 * deltaTime;
+                const axis = new THREE.Vector3(0, 1, 0);
+
+                this.orbitGroup.rotateOnAxis(
+                    axis,
+                    1.0 * deltaTime
+                );
             }
         });
 
@@ -715,48 +761,164 @@
 
 
         let keys = {};
-        function addEventHandlers() {
-            let mainCamera = scenesData[0].camera;
-            addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-            addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-
-            renderer.domElement.addEventListener("click", () => renderer.domElement.requestPointerLock());
-
-            addEventListener("mousemove", e => {
-                if (document.pointerLockElement !== renderer.domElement) return;
-
-                mainCamera.rotation.y -= e.movementX * 0.002;
-                mainCamera.rotation.x -= e.movementY * 0.002;
-
-                mainCamera.rotation.x = Math.max(
-                    -Math.PI / 2,
-                    Math.min(Math.PI / 2, mainCamera.rotation.x)
-                );
-            });
 
 
+        function getCurrentUp() {
+
+            const currentScene =
+                activeSceneStack[
+                activeSceneStack.length - 1
+                ];
+
+            return currentScene.getWorldUp();
         }
 
-        let speed = 0.1;
-        function moveCamera() {
-            let mainCamera = scenesData[0].camera;
-            if (keys["w"]) mainCamera.translateZ(-speed);
-            if (keys["s"]) mainCamera.translateZ(speed);
-            if (keys["a"]) mainCamera.translateX(-speed);
-            if (keys["d"]) mainCamera.translateX(speed);
 
-            if (keys["f"]) speed *= 1.1;
-            if (keys["r"]) speed /= 1.1;
+        // Rotate left/right around the current scene's "north pole"
+        function yawCamera(camera, amount) {
 
-            if (keys["arrowup"]) mainCamera.rotation.x += 0.01;
-            if (keys["arrowdown"]) mainCamera.rotation.x -= 0.01;
-            if (keys["arrowleft"]) mainCamera.rotation.y += 0.01;
-            if (keys["arrowright"]) mainCamera.rotation.y -= 0.01;
+            const up = getCurrentUp();
 
-            mainCamera.rotation.x = Math.max(
-                -Math.PI / 2,
-                Math.min(Math.PI / 2, mainCamera.rotation.x)
+            const rotation =
+                new THREE.Quaternion()
+                    .setFromAxisAngle(up, amount);
+
+            camera.quaternion.premultiply(rotation);
+        }
+
+
+        // Rotate up/down around the camera's own right axis
+        function pitchCamera(camera, amount) {
+
+            const up = getCurrentUp();
+
+
+            // Camera's local +X direction in world coordinates
+            const right =
+                new THREE.Vector3(1, 0, 0)
+                    .applyQuaternion(camera.quaternion)
+                    .normalize();
+
+
+            const rotation =
+                new THREE.Quaternion()
+                    .setFromAxisAngle(right, amount);
+
+
+            // Test the new orientation before applying it
+            const testQuaternion =
+                rotation
+                    .clone()
+                    .multiply(camera.quaternion);
+
+
+            const forward =
+                new THREE.Vector3(0, 0, -1)
+                    .applyQuaternion(testQuaternion)
+                    .normalize();
+
+
+            // How close are we to looking directly along "up"?
+            const verticalAmount =
+                Math.abs(forward.dot(up));
+
+
+            // Prevent flipping over the poles
+            if (verticalAmount < 0.999) {
+                camera.quaternion.copy(testQuaternion);
+            }
+        }
+
+
+        function addEventHandlers() {
+
+            const mainCamera = scenesData[0].camera;
+
+
+            addEventListener(
+                "keydown",
+                e => keys[e.key.toLowerCase()] = true
             );
+
+            addEventListener(
+                "keyup",
+                e => keys[e.key.toLowerCase()] = false
+            );
+
+
+            renderer.domElement.addEventListener(
+                "click",
+                () => renderer.domElement.requestPointerLock()
+            );
+
+
+            addEventListener("mousemove", e => {
+
+                if (
+                    document.pointerLockElement !==
+                    renderer.domElement
+                ) return;
+
+
+                yawCamera(
+                    mainCamera,
+                    -e.movementX * 0.002
+                );
+
+
+                pitchCamera(
+                    mainCamera,
+                    -e.movementY * 0.002
+                );
+            });
+        }
+
+
+
+        let speed = 0.1;
+
+
+        function moveCamera() {
+
+            const mainCamera = scenesData[0].camera;
+
+
+            // Movement stays relative to camera
+            if (keys["w"])
+                mainCamera.translateZ(-speed);
+
+            if (keys["s"])
+                mainCamera.translateZ(speed);
+
+            if (keys["a"])
+                mainCamera.translateX(-speed);
+
+            if (keys["d"])
+                mainCamera.translateX(speed);
+
+
+            // Speed
+            if (keys["f"])
+                speed *= 1.1;
+
+            if (keys["r"])
+                speed /= 1.1;
+
+
+            // Keyboard look controls now use the
+            // exact same local-up system as the mouse
+
+            if (keys["arrowleft"])
+                yawCamera(mainCamera, 0.01);
+
+            if (keys["arrowright"])
+                yawCamera(mainCamera, -0.01);
+
+            if (keys["arrowup"])
+                pitchCamera(mainCamera, 0.01);
+
+            if (keys["arrowdown"])
+                pitchCamera(mainCamera, -0.01);
         }
 
         scenesData[0].populateScene();
