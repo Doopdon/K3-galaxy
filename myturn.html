@@ -94,14 +94,33 @@
 
                 this.scene.updateMatrixWorld(true);
 
+                // Are we already locked to something?
+                if (this.lockedCube) {
+
+                    const cubePosition = new THREE.Vector3();
+                    this.lockedCube.getWorldPosition(cubePosition);
+
+                    const distance = this.camera.position.distanceTo(cubePosition);
+
+                    if (distance > 1) {
+                        console.log("UNLOCKED");
+
+                        this.lockedCube = null;
+                    }
+
+                    return;
+                }
+
+                // Otherwise look for something new to lock onto
                 for (const cube of this.orbitGroup.children) {
 
                     const cubePosition = new THREE.Vector3();
                     cube.getWorldPosition(cubePosition);
 
-                    const distance = this.camera.position.distanceTo(cubePosition);
+                    const distance =
+                        this.camera.position.distanceTo(cubePosition);
 
-                    if (!this.lockedCube && distance < 1) {
+                    if (distance < 1) {
 
                         console.log("LOCKED");
 
@@ -318,7 +337,7 @@
             camera: generateCamera(),
             scale: 1,
             disapearDistance: 1,
-            childScenes: [sphereSceneData,orangeSphereSceneData],
+            childScenes: [sphereSceneData, orangeSphereSceneData],
             checkCollision: function () {
                 checkCollision(this)
             },
