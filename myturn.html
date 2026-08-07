@@ -12,30 +12,54 @@
         import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js";
 
         function checkCollision(sceneData, subSceneData) {
-            let disapearDistance = sceneData.disapearDistance;
+
+            const disappearDistance = sceneData.disapearDistance;
             const cameraPosition = sceneData.camera.position;
-            for (const child of sceneData.scene.children) {
-                const distance = cameraPosition.distanceTo(child.position);
-                // leaving an object
-                if (child.userData.visited && distance > disapearDistance) {
-                    subSceneData.remove();
-                    child.visible = true;
-                    child.userData.visited = false;
-                }
-                // entering an object
-                else if (distance < disapearDistance && !child.userData.visited) {
-                    subSceneData.scene.clear();
-                    for (const otherChild of subSceneData.scene.children) {
-                        otherChild.userData.visited = false;
-                        otherChild.visible = true;
+
+            const children = sceneData.orbitGroup
+                ? sceneData.orbitGroup.children
+                : sceneData.scene.children;
+
+            sceneData.scene.updateMatrixWorld(true);
+
+            for (const child of children) {
+
+                const worldPosition = new THREE.Vector3();
+                child.getWorldPosition(worldPosition);
+
+                const distance = cameraPosition.distanceTo(worldPosition);
+
+                // Currently inside this object
+                if (child.userData.visited) {
+
+                    if (distance > disappearDistance) {
+                        subSceneData.remove();
+
+                        child.visible = true;
+                        child.userData.visited = false;
                     }
+                    else {
+                        return true; // still inside -> stay paused
+                    }
+                }
+
+                // Entering
+                else if (distance < disappearDistance) {
+
                     child.userData.visited = true;
                     child.visible = false;
 
-                    subSceneData.populateScene(child.position.clone().multiplyScalar(
-                        sceneData.scale / subSceneData.scale));
+                    subSceneData.populateScene(
+                        worldPosition.clone().multiplyScalar(
+                            sceneData.scale / subSceneData.scale
+                        )
+                    );
+
+                    return true;
                 }
             }
+
+            return false;
         }
 
         function generateCamera() {
@@ -106,29 +130,51 @@
             scale: .01,
             disapearDistance: 1,
             childScenes: [yelloCubeSceneData],
+            pause: false,
             remove: function () {
                 this.scene.clear();
                 this.childScenes.forEach((scene) => scene.remove());
             },
             checkCollision: function () {
-                checkCollision(this, this.childScenes[0])
+                if (checkCollision(this, this.childScenes[0])) {
+                    this.pause = true;
+                } else {
+                    this.pause = false;
+                }
             },
             populateScene: function (position) {
-                console.log("Populating green sphere scene at", position);
+                const group = new THREE.Group();
+
+                group.position.copy(position);
+
                 for (let i = 0; i < 10; i++) {
                     const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
+
                     const sphereMaterial = new THREE.MeshBasicMaterial({
                         color: "green"
                     });
-                    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
 
-                    sphere.position.set(
-                        position.x + Math.random() * 20 - 10,
-                        position.y + Math.random() * 20 - 10,
-                        position.z + Math.random() * 20 - 10
+                    const sphere = new THREE.Mesh(
+                        sphereGeometry,
+                        sphereMaterial
                     );
 
-                    this.scene.add(sphere);
+                    sphere.position.set(
+                        Math.random() * 20 - 10,
+                        Math.random() * 20 - 10,
+                        Math.random() * 20 - 10
+                    );
+
+                    group.add(sphere);
+                }
+
+                this.scene.add(group);
+                this.orbitGroup = group;
+            },
+
+            update: function () {
+                if (this.orbitGroup && !this.pause) {
+                    this.orbitGroup.rotation.y += 0.01;
                 }
             }
         }
@@ -291,7 +337,7 @@
                     }
                     data.checkCollision?.();
                     data.update?.();
-                    
+
                     renderer.render(data.scene, data.camera);
                 });
                 run();
