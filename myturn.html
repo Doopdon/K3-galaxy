@@ -11,6 +11,92 @@
 
         import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js";
 
+
+        class StaticSceneData {
+            constructor(scale, timescale, disapearDistance, childScenes) {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(
+                    75,
+                    window.innerWidth / window.innerHeight,
+                    0.1,
+                    1000);
+                this.camera.rotation.order = "YXZ";
+                this.camera.position.z = 5;
+                this.scale = scale;
+                this.timescale = timescale;
+                this.disapearDistance = disapearDistance;
+                this.childScenes = childScenes;
+            }
+
+            remove() {
+                this.scene.clear();
+                this.childScenes.forEach((scene) => scene.remove());
+            }
+
+            getSubSceneData(child) {
+                // most scenes only have one child scene, so we can just return the first one
+                return childScenes[0];
+            }
+
+            populateScene(position) {
+                // Implement in subclasses
+            }
+            // Basic collision detection logic for all scenes
+            checkCollision() {
+                const disappearDistance = this.disapearDistance;
+                const cameraPosition = this.camera.position;
+
+                const children = this.orbitGroup
+                    ? this.orbitGroup.children
+                    : this.scene.children;
+
+                this.scene.updateMatrixWorld(true);
+
+                for (const child of children) {
+
+                    const worldPosition = new THREE.Vector3();
+                    child.getWorldPosition(worldPosition);
+
+                    const distance = cameraPosition.distanceTo(worldPosition);
+
+                    // Currently inside this object
+                    if (child.userData.visited) {
+
+                        if (distance > disappearDistance) {
+                            this.getSubSceneData(child).remove();
+
+                            child.visible = true;
+                            child.userData.visited = false;
+                        }
+                        else {
+                            return true; // still inside -> stay paused
+                        }
+                    }
+
+                    // Entering
+                    else if (distance < disappearDistance) {
+
+                        child.userData.visited = true;
+                        child.visible = false;
+                        const subSceneData = this.getSubSceneData(child);
+                        subSceneData.populateScene(
+                            worldPosition.clone().multiplyScalar(
+                                this.scale / subSceneData.scale
+                            )
+                        );
+
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            update() {
+                // Implement in subclasses
+            }
+        }
+
         function checkCollision(sceneData) {
 
             const disappearDistance = sceneData.disapearDistance;
@@ -332,7 +418,7 @@
 
 
         // Cube Scene
-        const mainSceneData = {
+        const mainSceneDataOld = {
             scene: new THREE.Scene(),
             camera: generateCamera(),
             scale: 1,
@@ -376,7 +462,45 @@
             }
         }
 
+        const mainSceneData = new StaticSceneData(
+            1, // scale
+            1, // timescale
+            1, // disapearDistance
+            [sphereSceneData, orangeSphereSceneData] // childScenes
+        );
+        mainSceneData.getSubSceneData = function (child) {
+            console.log("getSubSceneData", child.userData.id);
+            if (child.userData.id % 2 === 0) {
+                return sphereSceneData;
+            } else {
+                return orangeSphereSceneData;
+            }
+        },
+        mainSceneData.populateScene = function () {
+            for (let i = 0; i < 100; i++) {
+                const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+                const cubeMaterial1 = new THREE.MeshBasicMaterial({
+                    color: "blue"
+                });
 
+                const cubeMaterial2 = new THREE.MeshBasicMaterial({
+                    color: "purple"
+                });
+                const cubeMaterial = i % 2 ? cubeMaterial1 : cubeMaterial2;
+                const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+
+                cube.position.set(
+                    Math.random() * 20 - 10,
+                    Math.random() * 20 - 10,
+                    Math.random() * 20 - 10
+                );
+
+                cube.userData.visited = false;
+                cube.userData.id = i;
+
+                this.scene.add(cube);
+            }
+        }
 
         const scenesData = [mainSceneData];
 
