@@ -666,7 +666,8 @@
             // UP points inward, toward the axis
             return nearestAxisPoint
                 .sub(cameraPosition)
-                .normalize();
+                .normalize()
+                .negate();
         }
 
         const cubeSceneData = new SceneData({
@@ -919,45 +920,67 @@
         // Rotate up/down around the camera's own right axis
         function pitchCamera(camera, amount) {
 
-            const up = getCurrentUp();
+            const up = getCurrentUp().normalize();
 
-
-            // Camera's local +X direction in world coordinates
-            const right =
-                new THREE.Vector3(1, 0, 0)
+            const forward =
+                new THREE.Vector3(0, 0, -1)
                     .applyQuaternion(camera.quaternion)
                     .normalize();
 
 
-            const rotation =
-                new THREE.Quaternion()
-                    .setFromAxisAngle(right, amount);
+            // Current pitch relative to the current "up"
+            const currentPitch = Math.asin(
+                THREE.MathUtils.clamp(
+                    forward.dot(up),
+                    -1,
+                    1
+                )
+            );
 
 
-            // Test the new orientation before applying it
-            const testQuaternion =
-                rotation
-                    .clone()
-                    .multiply(camera.quaternion);
+            const maxPitch =
+                Math.PI / 2 - 0.01;
 
 
-            const forward =
-                new THREE.Vector3(0, 0, -1)
-                    .applyQuaternion(testQuaternion)
+            // Clamp where we're allowed to end up
+            const targetPitch =
+                THREE.MathUtils.clamp(
+                    currentPitch + amount,
+                    -maxPitch,
+                    maxPitch
+                );
+
+
+            // Only rotate by the amount we're actually allowed
+            const actualAmount =
+                targetPitch - currentPitch;
+
+
+            // Right direction, perpendicular to both
+            // where we're looking and the current up axis
+            const right =
+                forward.clone()
+                    .cross(up)
                     .normalize();
 
 
-            // How close are we to looking directly along "up"?
-            const verticalAmount =
-                Math.abs(forward.dot(up));
-
-
-            // Prevent flipping over the poles
-            if (verticalAmount < 0.999) {
-                camera.quaternion.copy(testQuaternion);
+            // If we're effectively exactly at a pole,
+            // the cross product can become unusably tiny
+            if (right.lengthSq() < 0.000001) {
+                return;
             }
-        }
 
+
+            const rotation =
+                new THREE.Quaternion()
+                    .setFromAxisAngle(
+                        right,
+                        actualAmount
+                    );
+
+
+            camera.quaternion.premultiply(rotation);
+        }
 
         function addEventHandlers() {
 
