@@ -605,6 +605,69 @@
                 }
             }
         });
+        redSphereSceneData.getWorldUp = function () {
+
+            // If we're not attached to a habitat yet,
+            // just use the normal scene up.
+            if (!this.activeCollider) {
+                return SceneData.prototype.getWorldUp.call(this);
+            }
+
+            const habitat = this.activeCollider;
+
+
+            // Habitat center
+            const center = new THREE.Vector3();
+
+            habitat.getWorldPosition(center);
+
+
+            // Habitat rotation axis:
+            // cylinder local Y transformed into world direction
+            const habitatQuaternion =
+                new THREE.Quaternion();
+
+            habitat.getWorldQuaternion(
+                habitatQuaternion
+            );
+
+            const axis =
+                new THREE.Vector3(0, 1, 0)
+                    .applyQuaternion(habitatQuaternion)
+                    .normalize();
+
+
+            // Camera position in THIS scene's coordinates
+            const cameraPosition =
+                scenesData[0].camera.position
+                    .clone()
+                    .multiplyScalar(
+                        scenesData[0].scale / this.scale
+                    );
+
+
+            // Vector from habitat center to camera
+            const centerToCamera =
+                cameraPosition.clone().sub(center);
+
+
+            // Find nearest point on the cylinder's rotation axis
+            const distanceAlongAxis =
+                centerToCamera.dot(axis);
+
+            const nearestAxisPoint =
+                center.clone().add(
+                    axis.clone().multiplyScalar(
+                        distanceAlongAxis
+                    )
+                );
+
+
+            // UP points inward, toward the axis
+            return nearestAxisPoint
+                .sub(cameraPosition)
+                .normalize();
+        }
 
         const cubeSceneData = new SceneData({
 
@@ -1039,6 +1102,16 @@
                         data.camera
                     );
                 });
+
+                const currentScene =
+                    activeSceneStack[
+                    activeSceneStack.length - 1
+                    ];
+
+                const up =
+                    currentScene.getWorldUp();
+
+                scenesData[0].camera.up.copy(up);
 
                 run();
 
