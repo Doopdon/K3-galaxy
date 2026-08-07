@@ -100,6 +100,162 @@
             }
         }
 
+
+        class RotatingSceneData extends StaticSceneData {
+
+            constructor({
+                rotationSpeed = 0.02,
+                lockedRotationSpeed = 0.002,
+                lockDistance = 1,
+                populateGroup,
+                getMainSceneData,
+                ...baseOptions
+            }) {
+
+                super(baseOptions);
+
+                this.rotationSpeed = rotationSpeed;
+                this.lockedRotationSpeed = lockedRotationSpeed;
+                this.lockDistance = lockDistance;
+
+                this.populateGroup = populateGroup;
+                this.getMainSceneData = getMainSceneData;
+
+                this.orbitGroup = null;
+                this.lockedObject = null;
+                this.lastLockedPosition = new THREE.Vector3();
+            }
+
+
+            populateScene(position) {
+
+                const group = new THREE.Group();
+
+                group.position.copy(position);
+
+                // Let this particular scene decide what goes in the group
+                this.populateGroup.call(this, group);
+
+                this.scene.add(group);
+
+                this.orbitGroup = group;
+            }
+
+
+            checkCollision() {
+
+                if (!this.orbitGroup) return false;
+
+                this.scene.updateMatrixWorld(true);
+
+
+                // Already locked
+                if (this.lockedObject) {
+
+                    const position = new THREE.Vector3();
+
+                    this.lockedObject.getWorldPosition(position);
+
+                    const distance =
+                        this.camera.position.distanceTo(position);
+
+                    if (distance > this.lockDistance) {
+
+                        console.log("UNLOCKED");
+
+                        this.lockedObject = null;
+
+                        return false;
+                    }
+
+                    return true;
+                }
+
+
+                // Look for something to lock onto
+                for (const object of this.orbitGroup.children) {
+
+                    const position = new THREE.Vector3();
+
+                    object.getWorldPosition(position);
+
+                    const distance =
+                        this.camera.position.distanceTo(position);
+
+                    if (distance < this.lockDistance) {
+
+                        console.log("LOCKED");
+
+                        this.lockedObject = object;
+                        this.lastLockedPosition.copy(position);
+
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+
+            update() {
+
+                if (!this.orbitGroup) return;
+
+                const rotationAmount = this.lockedObject
+                    ? this.lockedRotationSpeed
+                    : this.rotationSpeed;
+
+
+                // Rotate the reference frame
+                this.orbitGroup.rotation.y +=
+                    rotationAmount * this.timescale;
+
+                this.scene.updateMatrixWorld(true);
+
+
+                // Player inherits movement of locked object
+                if (this.lockedObject) {
+
+                    const newPosition = new THREE.Vector3();
+
+                    this.lockedObject.getWorldPosition(newPosition);
+
+                    const movement = newPosition
+                        .clone()
+                        .sub(this.lastLockedPosition);
+
+
+                    const mainSceneData = this.getMainSceneData();
+
+
+                    // Convert movement back to main-scene scale
+                    mainSceneData.camera.position.add(
+                        movement.multiplyScalar(
+                            this.scale / mainSceneData.scale
+                        )
+                    );
+
+
+                    // Rotate player's view with the reference frame
+                    mainSceneData.camera.rotation.y +=
+                        rotationAmount * this.timescale;
+
+
+                    this.lastLockedPosition.copy(newPosition);
+                }
+            }
+
+
+            remove() {
+
+                super.remove();
+
+                this.lockedObject = null;
+                this.orbitGroup = null;
+            }
+        }
+
+
         function checkCollision(sceneData) {
 
             const disappearDistance = sceneData.disapearDistance;
@@ -162,83 +318,33 @@
             return camera;
         }
 
-        const yelloCubeSceneData = {
-            scene: new THREE.Scene(),
-            camera: generateCamera(),
-            scale: .001,
+        const yelloCubeSceneData = new RotatingSceneData({
+
+            scale: 0.001,
+            timescale: 1,
+            disapearDistance: 1,
             childScenes: [],
 
-            lockedCube: null,
-            lastLockedPosition: new THREE.Vector3(),
+            rotationSpeed: 0.02,
+            lockedRotationSpeed: 0.002,
+            lockDistance: 1,
 
-            remove: function () {
-                this.scene.clear();
-                this.lockedCube = null;
-                this.orbitGroup = null;
-            },
+            getMainSceneData: () => mainSceneData,
 
-            checkCollision: function () {
-
-                if (!this.orbitGroup?.children) return;
-
-                this.scene.updateMatrixWorld(true);
-
-                // Are we already locked to something?
-                if (this.lockedCube) {
-
-                    const cubePosition = new THREE.Vector3();
-                    this.lockedCube.getWorldPosition(cubePosition);
-
-                    const distance = this.camera.position.distanceTo(cubePosition);
-
-                    if (distance > 1) {
-                        console.log("UNLOCKED");
-
-                        this.lockedCube = null;
-                    }
-
-                    return;
-                }
-
-                // Otherwise look for something new to lock onto
-                for (const cube of this.orbitGroup.children) {
-
-                    const cubePosition = new THREE.Vector3();
-                    cube.getWorldPosition(cubePosition);
-
-                    const distance =
-                        this.camera.position.distanceTo(cubePosition);
-
-                    if (distance < 1) {
-
-                        console.log("LOCKED");
-
-                        this.lockedCube = cube;
-                        this.lastLockedPosition.copy(cubePosition);
-
-                        break;
-                    }
-                }
-            },
-
-            populateScene: function (position) {
-
-                const group = new THREE.Group();
-
-                group.position.copy(position);
+            populateGroup: function (group) {
 
                 for (let i = 0; i < 10; i++) {
 
-                    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+                    const geometry =
+                        new THREE.BoxGeometry(1, 1, 1);
 
-                    const cubeMaterial = new THREE.MeshBasicMaterial({
-                        color: "yellow"
-                    });
+                    const material =
+                        new THREE.MeshBasicMaterial({
+                            color: "yellow"
+                        });
 
-                    const cube = new THREE.Mesh(
-                        cubeGeometry,
-                        cubeMaterial
-                    );
+                    const cube =
+                        new THREE.Mesh(geometry, material);
 
                     cube.position.set(
                         Math.random() * 20 - 10,
@@ -248,49 +354,8 @@
 
                     group.add(cube);
                 }
-
-                this.scene.add(group);
-
-                this.orbitGroup = group;
-            },
-
-            update: function () {
-
-                if (!this.orbitGroup) return;
-
-                let rotationAmount;
-
-                if (this.lockedCube) {
-                    rotationAmount = 0.002;
-                } else {
-                    rotationAmount = 0.02;
-                }
-
-                this.orbitGroup.rotation.y += rotationAmount;
-                this.scene.updateMatrixWorld(true);
-
-                if (this.lockedCube) {
-
-                    const newPosition = new THREE.Vector3();
-
-                    this.lockedCube.getWorldPosition(newPosition);
-
-                    const movement = newPosition
-                        .clone()
-                        .sub(this.lastLockedPosition);
-
-                    scenesData[0].camera.position.add(
-                        movement.multiplyScalar(this.scale)
-                    );
-
-                    // Rotate your view with the reference frame
-                    scenesData[0].camera.rotation.y += rotationAmount;
-
-                    this.lastLockedPosition.copy(newPosition);
-                }
             }
-        }
-
+        });
         // Green Sphere Scene
         const greenSphereSceneData = {
             scene: new THREE.Scene(),
