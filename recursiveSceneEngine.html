@@ -12,609 +12,504 @@
         import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js";
 
 
-        class StaticSceneData {
-            constructor({ scale, timescale, disapearDistance, childScenes, getSubSceneData, populateScene, update }) {
+        class SceneData {
+
+            constructor({
+                scale,
+                timescale = 1,
+                disapearDistance = 1,
+                childScenes = [],
+                getSubSceneData,
+                populateScene,
+                animate
+            }) {
+
                 this.scene = new THREE.Scene();
+
                 this.camera = new THREE.PerspectiveCamera(
                     75,
                     window.innerWidth / window.innerHeight,
                     0.1,
-                    1000);
+                    1000
+                );
+
                 this.camera.rotation.order = "YXZ";
                 this.camera.position.z = 5;
+
+
+                // Scene properties
                 this.scale = scale;
                 this.timescale = timescale;
+                this.speedMultiplier = 1;
+
                 this.disapearDistance = disapearDistance;
+
                 this.childScenes = childScenes;
-                this.getSubSceneData = getSubSceneData ?? this.getSubSceneData;
-                this.populateScene = populateScene ?? this.populateScene;
-                this.update = update ?? this.update;
+
+
+                // Only these objects can be entered
+                this.colliders = [];
+
+
+                // Current thing we're riding
+                this.activeCollider = null;
+                this.activeSubScene = null;
+
+
+                // Previous transform of collider
+                this.lastColliderPosition = new THREE.Vector3();
+                this.lastColliderQuaternion = new THREE.Quaternion();
+
+
+                // User supplied behavior
+                this.populateSceneFunction = populateScene;
+                this.animateFunction = animate;
+
+                if (getSubSceneData) {
+                    this.getSubSceneData = getSubSceneData;
+                }
             }
 
-            remove() {
-                this.scene.clear();
-                this.childScenes.forEach((scene) => scene.remove());
+            addCollider(object) {
+
+                this.colliders.push(object);
+
+                return object;
             }
 
-            getSubSceneData(child) {
-                // most scenes only have one child scene, so we can just return the first one
+            populateScene(position) {
+
+                this.colliders = [];
+
+                this.populateSceneFunction?.call(
+                    this,
+                    position
+                );
+            }
+
+            update(deltaTime) {
+
+                const scaledDelta =
+                    deltaTime * this.speedMultiplier;
+
+                this.animateFunction?.call(
+                    this,
+                    scaledDelta
+                );
+
+                this.scene.updateMatrixWorld(true);
+
+                this.updateCameraLock();
+            }
+
+            checkCollision() {
+
+                this.scene.updateMatrixWorld(true);
+
+
+                // Already inside something
+                if (this.activeCollider) {
+
+                    const position = new THREE.Vector3();
+
+                    this.activeCollider.getWorldPosition(position);
+
+                    const distance =
+                        this.camera.position.distanceTo(position);
+
+
+                    if (distance > this.disapearDistance) {
+                        this.leaveCollider();
+                    }
+
+                    return;
+                }
+
+
+                // Look for something to enter
+                for (const collider of this.colliders) {
+
+                    const position = new THREE.Vector3();
+
+                    collider.getWorldPosition(position);
+
+                    const distance =
+                        this.camera.position.distanceTo(position);
+
+
+                    if (distance < this.disapearDistance) {
+
+                        this.enterCollider(
+                            collider,
+                            position
+                        );
+
+                        return;
+                    }
+                }
+            }
+
+            enterCollider(collider, worldPosition) {
+
+                const subScene = this.getSubSceneData(collider);
+
+
+                // Always lock to the collider
+                this.activeCollider = collider;
+                this.activeSubScene = subScene ?? null;
+
+                collider.getWorldPosition(
+                    this.lastColliderPosition
+                );
+
+                collider.getWorldQuaternion(
+                    this.lastColliderQuaternion
+                );
+
+
+                // If there is no deeper scene, we're done.
+                // We still remain locked to the collider.
+                if (!subScene) {
+                    return;
+                }
+
+
+                // Hide the parent object while we're inside it
+                collider.visible = false;
+
+
+                subScene.populateScene(
+                    worldPosition.clone().multiplyScalar(
+                        this.scale / subScene.scale
+                    )
+                );
+
+
+                const index =
+                    activeSceneStack.indexOf(this);
+
+                activeSceneStack.splice(index + 1);
+
+                activeSceneStack.push(subScene);
+
+                updateTimeScales();
+            }
+
+            leaveCollider() {
+
+                if (!this.activeCollider) return;
+
+
+                this.activeSubScene?.remove();
+
+                this.activeCollider.visible = true;
+
+                this.activeCollider = null;
+                this.activeSubScene = null;
+
+
+                const index =
+                    activeSceneStack.indexOf(this);
+
+                activeSceneStack.splice(index + 1);
+
+
+                updateTimeScales();
+            }
+
+            updateCameraLock() {
+
+                if (!this.activeCollider) return;
+
+
+                const newPosition = new THREE.Vector3();
+                const newQuaternion = new THREE.Quaternion();
+
+
+                this.activeCollider.getWorldPosition(
+                    newPosition
+                );
+
+                this.activeCollider.getWorldQuaternion(
+                    newQuaternion
+                );
+
+
+                // ----------------------
+                // Translation
+                // ----------------------
+
+                const movement = newPosition
+                    .clone()
+                    .sub(this.lastColliderPosition);
+
+
+                scenesData[0].camera.position.add(
+                    movement.multiplyScalar(
+                        this.scale / scenesData[0].scale
+                    )
+                );
+
+
+                // ----------------------
+                // Rotation
+                // ----------------------
+
+                const oldInverse =
+                    this.lastColliderQuaternion
+                        .clone()
+                        .invert();
+
+                const rotationChange =
+                    newQuaternion
+                        .clone()
+                        .multiply(oldInverse);
+
+
+                scenesData[0].camera.quaternion
+                    .premultiply(rotationChange);
+
+
+                // Save current transform
+                this.lastColliderPosition.copy(
+                    newPosition
+                );
+
+                this.lastColliderQuaternion.copy(
+                    newQuaternion
+                );
+            }
+
+            getSubSceneData(collider) {
                 return this.childScenes[0];
             }
 
-            populateScene(position) {
-                // Implement in subclasses
-            }
-            // Basic collision detection logic for all scenes
-            checkCollision() {
-                const disappearDistance = this.disapearDistance;
-                const cameraPosition = this.camera.position;
 
-                const children = this.orbitGroup
-                    ? this.orbitGroup.children
-                    : this.scene.children;
+            remove() {
 
-                this.scene.updateMatrixWorld(true);
+                this.childScenes.forEach(
+                    child => child.remove()
+                );
 
-                for (const child of children) {
+                this.scene.clear();
 
-                    const worldPosition = new THREE.Vector3();
-                    child.getWorldPosition(worldPosition);
+                this.colliders = [];
 
-                    const distance = cameraPosition.distanceTo(worldPosition);
-
-                    // Currently inside this object
-                    if (child.userData.visited) {
-
-                        if (distance > disappearDistance) {
-                            this.getSubSceneData(child).remove();
-
-                            child.visible = true;
-                            child.userData.visited = false;
-                        }
-                        else {
-                            return true; // still inside -> stay paused
-                        }
-                    }
-
-                    // Entering
-                    else if (distance < disappearDistance) {
-
-                        child.userData.visited = true;
-                        child.visible = false;
-                        const subSceneData = this.getSubSceneData(child);
-                        subSceneData.populateScene(
-                            worldPosition.clone().multiplyScalar(
-                                this.scale / subSceneData.scale
-                            )
-                        );
-
-                        return true;
-                    }
-                }
-
-                return false;
+                this.activeCollider = null;
+                this.activeSubScene = null;
             }
 
-            update() {
-                // Implement in subclasses
-            }
         }
 
 
-        class RotatingSceneData extends StaticSceneData {
+        const cubeSceneData = new SceneData({
 
-            constructor({
-                rotationSpeed = 0.02,
-                lockedRotationSpeed = 0.002,
-                lockDistance = 1,
-                populateGroup,
-                getMainSceneData,
-                ...baseOptions
-            }) {
+            scale: 0.1,
 
-                super(baseOptions);
+            // Entering this scene slows its parents 10x
+            timescale: 10,
 
-                this.rotationSpeed = rotationSpeed;
-                this.lockedRotationSpeed = lockedRotationSpeed;
-                this.lockDistance = lockDistance;
+            disapearDistance: 1.5,
 
-                this.populateGroup = populateGroup;
-                this.getMainSceneData = getMainSceneData;
-
-                this.orbitGroup = null;
-                this.lockedObject = null;
-                this.lastLockedPosition = new THREE.Vector3();
-            }
+            childScenes: [],
 
 
-            populateScene(position) {
+            populateScene: function (position) {
 
                 const group = new THREE.Group();
 
                 group.position.copy(position);
 
-                // Let this particular scene decide what goes in the group
-                this.populateGroup.call(this, group);
+
+                for (let i = 0; i < 4; i++) {
+
+                    const cube = new THREE.Mesh(
+                        new THREE.BoxGeometry(1, 1, 1),
+                        new THREE.MeshBasicMaterial({
+                            color: "yellow"
+                        })
+                    );
+
+
+                    // Put four cubes around a circle
+                    const angle =
+                        (i / 4) * Math.PI * 2;
+
+                    cube.position.set(
+                        Math.cos(angle) * 5,
+                        0,
+                        Math.sin(angle) * 5
+                    );
+
+
+                    group.add(cube);
+
+                    // Cube can be locked onto
+                    this.addCollider(cube);
+                }
+
 
                 this.scene.add(group);
 
                 this.orbitGroup = group;
-            }
+            },
 
 
-            checkCollision() {
-
-                if (!this.orbitGroup) return false;
-
-                this.scene.updateMatrixWorld(true);
-
-
-                // Already locked
-                if (this.lockedObject) {
-
-                    const position = new THREE.Vector3();
-
-                    this.lockedObject.getWorldPosition(position);
-
-                    const distance =
-                        this.camera.position.distanceTo(position);
-
-                    if (distance > this.lockDistance) {
-
-                        console.log("UNLOCKED");
-
-                        this.lockedObject = null;
-
-                        return false;
-                    }
-
-                    return true;
-                }
-
-
-                // Look for something to lock onto
-                for (const object of this.orbitGroup.children) {
-
-                    const position = new THREE.Vector3();
-
-                    object.getWorldPosition(position);
-
-                    const distance =
-                        this.camera.position.distanceTo(position);
-
-                    if (distance < this.lockDistance) {
-
-                        console.log("LOCKED");
-
-                        this.lockedObject = object;
-                        this.lastLockedPosition.copy(position);
-
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-
-            update() {
+            animate: function (deltaTime) {
 
                 if (!this.orbitGroup) return;
 
-                const rotationAmount = this.lockedObject
-                    ? this.lockedRotationSpeed
-                    : this.rotationSpeed;
-
-
-                // Rotate the reference frame
                 this.orbitGroup.rotation.y +=
-                    rotationAmount * this.timescale;
-
-                this.scene.updateMatrixWorld(true);
-
-
-                // Player inherits movement of locked object
-                if (this.lockedObject) {
-
-                    const newPosition = new THREE.Vector3();
-
-                    this.lockedObject.getWorldPosition(newPosition);
-
-                    const movement = newPosition
-                        .clone()
-                        .sub(this.lastLockedPosition);
-
-
-                    const mainSceneData = this.getMainSceneData();
-
-
-                    // Convert movement back to main-scene scale
-                    mainSceneData.camera.position.add(
-                        movement.multiplyScalar(
-                            this.scale / mainSceneData.scale
-                        )
-                    );
-
-
-                    // Rotate player's view with the reference frame
-                    mainSceneData.camera.rotation.y +=
-                        rotationAmount * this.timescale;
-
-
-                    this.lastLockedPosition.copy(newPosition);
-                }
+                    1.0 * deltaTime;
             }
+        });
+
+        const mainSceneData = new SceneData({
+
+            scale: 1,
+
+            timescale: 1,
+
+            disapearDistance: 1.5,
+
+            childScenes: [
+                cubeSceneData
+            ],
 
 
-            remove() {
+            getSubSceneData: function (sphere) {
 
-                super.remove();
-
-                this.lockedObject = null;
-                this.orbitGroup = null;
-            }
-        }
+                return cubeSceneData;
+            },
 
 
-        class OrbitingSceneData extends StaticSceneData {
-
-            constructor({
-                rotationSpeed = 0.01,
-                populateGroup,
-                ...baseOptions
-            }) {
-
-                super(baseOptions);
-
-                this.rotationSpeed = rotationSpeed;
-                this.populateGroup = populateGroup;
-
-                this.orbitGroup = null;
-                this.pause = false;
-            }
-
-
-            populateScene(position) {
+            populateScene: function () {
 
                 const group = new THREE.Group();
 
-                group.position.copy(position);
 
-                this.populateGroup.call(this, group);
+                for (let i = 0; i < 4; i++) {
+
+                    const sphere = new THREE.Mesh(
+                        new THREE.SphereGeometry(1, 32, 32),
+                        new THREE.MeshBasicMaterial({
+                            color: "green"
+                        })
+                    );
+
+
+                    const angle =
+                        (i / 4) * Math.PI * 2;
+
+                    sphere.position.set(
+                        Math.cos(angle) * 5,
+                        0,
+                        Math.sin(angle) * 5
+                    );
+
+
+                    group.add(sphere);
+
+                    // Sphere can be entered
+                    this.addCollider(sphere);
+                }
+
 
                 this.scene.add(group);
 
                 this.orbitGroup = group;
-            }
 
 
-            checkCollision() {
+                // ----------------------
+                // Background stars
+                // ----------------------
 
-                // Use StaticSceneData's normal descend/leave logic
-                this.pause = super.checkCollision();
-            }
+                const starCount = 2000;
+
+                const starPositions =
+                    new Float32Array(starCount * 3);
+
+                for (let i = 0; i < starCount; i++) {
+
+                    // Keep stars well outside the test area
+                    const distance =
+                        100 + Math.random() * 300;
+
+                    const theta =
+                        Math.random() * Math.PI * 2;
+
+                    const phi =
+                        Math.acos(2 * Math.random() - 1);
 
 
-            update() {
+                    starPositions[i * 3] =
+                        distance * Math.sin(phi) * Math.cos(theta);
 
-                if (this.orbitGroup && !this.pause) {
-                    this.orbitGroup.rotation.y +=
-                        this.rotationSpeed * this.timescale;
-                }
-            }
+                    starPositions[i * 3 + 1] =
+                        distance * Math.cos(phi);
 
-
-            remove() {
-
-                super.remove();
-
-                this.orbitGroup = null;
-                this.pause = false;
-            }
-        }
-
-        function checkCollision(sceneData) {
-
-            const disappearDistance = sceneData.disapearDistance;
-            const cameraPosition = sceneData.camera.position;
-
-            const children = sceneData.orbitGroup
-                ? sceneData.orbitGroup.children
-                : sceneData.scene.children;
-
-            sceneData.scene.updateMatrixWorld(true);
-
-            for (const child of children) {
-
-                const worldPosition = new THREE.Vector3();
-                child.getWorldPosition(worldPosition);
-
-                const distance = cameraPosition.distanceTo(worldPosition);
-
-                // Currently inside this object
-                if (child.userData.visited) {
-
-                    if (distance > disappearDistance) {
-                        sceneData.getSubSceneData(child).remove();
-
-                        child.visible = true;
-                        child.userData.visited = false;
-                    }
-                    else {
-                        return true; // still inside -> stay paused
-                    }
+                    starPositions[i * 3 + 2] =
+                        distance * Math.sin(phi) * Math.sin(theta);
                 }
 
-                // Entering
-                else if (distance < disappearDistance) {
 
-                    child.userData.visited = true;
-                    child.visible = false;
-                    const subSceneData = sceneData.getSubSceneData(child);
-                    subSceneData.populateScene(
-                        worldPosition.clone().multiplyScalar(
-                            sceneData.scale / subSceneData.scale
-                        )
+                const starGeometry =
+                    new THREE.BufferGeometry();
+
+                starGeometry.setAttribute(
+                    "position",
+                    new THREE.BufferAttribute(
+                        starPositions,
+                        3
+                    )
+                );
+
+
+                const starMaterial =
+                    new THREE.PointsMaterial({
+                        color: "white",
+                        size: 0.5
+                    });
+
+
+                const stars =
+                    new THREE.Points(
+                        starGeometry,
+                        starMaterial
                     );
 
-                    return true;
-                }
-            }
 
-            return false;
-        }
-
-        function generateCamera() {
-            const camera = new THREE.PerspectiveCamera(
-                75,
-                window.innerWidth / window.innerHeight,
-                0.1,
-                1000);
-            camera.rotation.order = "YXZ";
-            camera.position.z = 5;
-            return camera;
-        }
-
-        const yelloCubeSceneData = new RotatingSceneData({
-
-            scale: 0.001,
-            timescale: 1,
-            disapearDistance: 1,
-            childScenes: [],
-
-            rotationSpeed: 0.02,
-            lockedRotationSpeed: 0.002,
-            lockDistance: 1,
-
-            getMainSceneData: () => mainSceneData,
-
-            populateGroup: function (group) {
-
-                for (let i = 0; i < 10; i++) {
-
-                    const geometry =
-                        new THREE.BoxGeometry(1, 1, 1);
-
-                    const material =
-                        new THREE.MeshBasicMaterial({
-                            color: "yellow"
-                        });
-
-                    const cube =
-                        new THREE.Mesh(geometry, material);
-
-                    cube.position.set(
-                        Math.random() * 20 - 10,
-                        Math.random() * 20 - 10,
-                        Math.random() * 20 - 10
-                    );
-
-                    group.add(cube);
-                }
-            }
-        });
-        // Green Sphere Scene
-        const greenSphereSceneData = new OrbitingSceneData({
-
-            scale: 0.01,
-            timescale: 1,
-            disapearDistance: 1,
-
-            childScenes: [
-                yelloCubeSceneData
-            ],
-
-            rotationSpeed: 0.01,
-
-            getSubSceneData: function (child) {
-                return yelloCubeSceneData;
+                this.scene.add(stars);
             },
 
-            populateGroup: function (group) {
 
-                for (let i = 0; i < 10; i++) {
+            animate: function (deltaTime) {
 
-                    const sphereGeometry =
-                        new THREE.SphereGeometry(1, 32, 32);
+                if (!this.orbitGroup) return;
 
-                    const sphereMaterial =
-                        new THREE.MeshBasicMaterial({
-                            color: "green"
-                        });
-
-                    const sphere = new THREE.Mesh(
-                        sphereGeometry,
-                        sphereMaterial
-                    );
-
-                    sphere.position.set(
-                        Math.random() * 20 - 10,
-                        Math.random() * 20 - 10,
-                        Math.random() * 20 - 10
-                    );
-
-                    group.add(sphere);
-                }
+                this.orbitGroup.rotation.y +=
+                    1.0 * deltaTime;
             }
         });
 
-        // Red Sphere Scene
-        const redSphereSceneData = new StaticSceneData({
-            scale: .1,
-            timescale: 1,
-            disapearDistance: 1,
-            childScenes: [greenSphereSceneData],
-            populateScene: function (position) {
-                for (let i = 0; i < 10; i++) {
-                    const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
-                    const sphereMaterial = new THREE.MeshBasicMaterial({
-                        color: "red"
-                    });
-                    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-
-                    sphere.position.set(
-                        position.x + Math.random() * 20 - 10,
-                        position.y + Math.random() * 20 - 10,
-                        position.z + Math.random() * 20 - 10
-                    );
-
-                    this.scene.add(sphere);
-                }
-            }
-        });
-
-        const orangeSphereSceneData = new StaticSceneData({
-            scene: new THREE.Scene(),
-            camera: generateCamera(),
-            scale: .1,
-            disapearDistance: 1,
-            childScenes: [],
-            remove: function () {
-                this.scene.clear();
-                this.childScenes.forEach((scene) => scene.remove());
-            },
-            populateScene: function (position) {
-                for (let i = 0; i < 10; i++) {
-                    const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
-                    const sphereMaterial = new THREE.MeshBasicMaterial({
-                        color: "orange"
-                    });
-                    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-
-                    sphere.position.set(
-                        position.x + Math.random() * 20 - 10,
-                        position.y + Math.random() * 20 - 10,
-                        position.z + Math.random() * 20 - 10
-                    );
-
-                    this.scene.add(sphere);
-                }
-            }
-        });
-
-
-        // Cube Scene
-        const mainSceneDataOld = {
-            scene: new THREE.Scene(),
-            camera: generateCamera(),
-            scale: 1,
-            disapearDistance: 1,
-            childScenes: [redSphereSceneData, orangeSphereSceneData],
-            checkCollision: function () {
-                checkCollision(this)
-            },
-            getSubSceneData: function (child) {
-                console.log("getSubSceneData", child.userData.id);
-                if (child.userData.id % 2 === 0) {
-                    return redSphereSceneData;
-                } else {
-                    return orangeSphereSceneData;
-                }
-            },
-            populateScene: function () {
-                for (let i = 0; i < 100; i++) {
-                    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-                    const cubeMaterial1 = new THREE.MeshBasicMaterial({
-                        color: "blue"
-                    });
-
-                    const cubeMaterial2 = new THREE.MeshBasicMaterial({
-                        color: "purple"
-                    });
-                    const cubeMaterial = i % 2 ? cubeMaterial1 : cubeMaterial2;
-                    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-
-                    cube.position.set(
-                        Math.random() * 20 - 10,
-                        Math.random() * 20 - 10,
-                        Math.random() * 20 - 10
-                    );
-
-                    cube.userData.visited = false;
-                    cube.userData.id = i;
-
-                    this.scene.add(cube);
-                }
-            }
-        }
-
-        const mainSceneData = new StaticSceneData({
-            scale: 1, // scale
-            timescale: 1, // timescale
-            disapearDistance: 1, // disapearDistance
-            childScenes: [redSphereSceneData, orangeSphereSceneData],
-            getSubSceneData: function (child) {
-                console.log("getSubSceneData", child.userData.id);
-                if (child.userData.id % 2 === 0) {
-                    return redSphereSceneData;
-                } else {
-                    return orangeSphereSceneData;
-                }
-            },
-            populateScene: function () {
-                for (let i = 0; i < 100; i++) {
-                    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-                    const cubeMaterial1 = new THREE.MeshBasicMaterial({
-                        color: "blue"
-                    });
-
-                    const cubeMaterial2 = new THREE.MeshBasicMaterial({
-                        color: "purple"
-                    });
-                    const cubeMaterial = i % 2 ? cubeMaterial1 : cubeMaterial2;
-                    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-
-                    cube.position.set(
-                        Math.random() * 20 - 10,
-                        Math.random() * 20 - 10,
-                        Math.random() * 20 - 10
-                    );
-
-                    cube.userData.visited = false;
-                    cube.userData.id = i;
-
-                    this.scene.add(cube);
-                }
-            }
-        });
-
-
-
-
+        const activeSceneStack = [
+            mainSceneData
+        ];
         // start sim
         const scenesData = [mainSceneData];
 
         function addChildScenes(parentSceneData) {
-            // two loops to add child scenes and their children recursively
+
             parentSceneData.childScenes.forEach(childScene => {
                 scenesData.push(childScene);
             });
+
             parentSceneData.childScenes.forEach(childScene => {
                 addChildScenes(childScene);
             });
         }
 
-        addChildScenes(mainSceneData)
+        addChildScenes(mainSceneData);
 
 
         // Renderer
@@ -679,26 +574,61 @@
         scenesData[0].populateScene();
 
         addEventHandlers();
+        const clock = new THREE.Clock();
+
+        function updateTimeScales() {
+
+            let slowdown = 1;
+
+            for (let i = activeSceneStack.length - 1; i >= 0; i--) {
+
+                const sceneData = activeSceneStack[i];
+
+                sceneData.speedMultiplier = 1 / slowdown;
+
+                slowdown *= sceneData.timescale;
+            }
+        }
 
         function run() {
             setTimeout(() => {
+
+                const deltaTime = clock.getDelta();
+
                 moveCamera();
 
                 renderer.clear();
+
                 scenesData.forEach((data, i) => {
+
                     if (i !== 0) {
-                        data.camera.rotation.copy(scenesData[0].camera.rotation);
-                        data.camera.position.copy(scenesData[0].camera.position).multiplyScalar(1 / data.scale);
+
+                        data.camera.rotation.copy(
+                            scenesData[0].camera.rotation
+                        );
+
+                        data.camera.position
+                            .copy(scenesData[0].camera.position)
+                            .multiplyScalar(1 / data.scale);
+
                         renderer.clearDepth();
                     }
-                    data.checkCollision?.();
-                    data.update?.();
 
-                    renderer.render(data.scene, data.camera);
+                    data.checkCollision?.();
+
+                    data.update?.(deltaTime);
+
+                    renderer.render(
+                        data.scene,
+                        data.camera
+                    );
                 });
+
                 run();
+
             }, 10);
         }
+
         run();
 
 
