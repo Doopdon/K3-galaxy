@@ -100,10 +100,17 @@
                 const distance = cubeCamera.position.distanceTo(cube.position);
 
                 if (distance < 1 && !cube.userData.visited) {
+                    sphereScene.clear();
+
+                    for (const otherCube of cubeScene.children) {
+                        otherCube.userData.visited = false;
+                        otherCube.visible = true;
+                    }
 
                     cube.userData.visited = true;
+                    cube.visible = false;
 
-                    makeBalls(sphereCamera.position);
+                    makeBalls(cube.position.clone().multiplyScalar(10));
 
                     console.log("Entered cube!", cube.position);
                 }
