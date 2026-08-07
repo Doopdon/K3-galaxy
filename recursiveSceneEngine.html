@@ -11,6 +11,61 @@
 
         import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js";
 
+        class SpatialHashGrid {
+
+            constructor(cellSize) {
+                this.cellSize = cellSize;
+                this.cells = new Map();
+            }
+
+            getKey(position) {
+
+                const x = Math.floor(position.x / this.cellSize);
+                const y = Math.floor(position.y / this.cellSize);
+                const z = Math.floor(position.z / this.cellSize);
+
+                return `${x},${y},${z}`;
+            }
+
+            add(object, position) {
+
+                const key = this.getKey(position);
+
+                if (!this.cells.has(key)) {
+                    this.cells.set(key, []);
+                }
+
+                this.cells.get(key).push(object);
+            }
+
+            getNearby(position) {
+
+                const cx = Math.floor(position.x / this.cellSize);
+                const cy = Math.floor(position.y / this.cellSize);
+                const cz = Math.floor(position.z / this.cellSize);
+
+                const results = [];
+
+                for (let x = -1; x <= 1; x++) {
+                    for (let y = -1; y <= 1; y++) {
+                        for (let z = -1; z <= 1; z++) {
+
+                            const key =
+                                `${cx + x},${cy + y},${cz + z}`;
+
+                            const cell =
+                                this.cells.get(key);
+
+                            if (cell) {
+                                results.push(...cell);
+                            }
+                        }
+                    }
+                }
+
+                return results;
+            }
+        }
 
         class SceneData {
 
@@ -175,6 +230,10 @@
                 this.updateCameraLock();
             }
 
+            getColliders() {
+                return this.colliders;
+            }
+
             checkCollision() {
 
                 this.scene.updateMatrixWorld(true);
@@ -200,7 +259,7 @@
 
 
                 // Look for something to enter
-                for (const collider of this.colliders) {
+                for (const collider of this.getColliders()) {
 
                     const position = new THREE.Vector3();
 
@@ -530,7 +589,63 @@
                     .negate();
             }
         }
-        
+
+        class GalaxySceneData extends SceneData {
+            constructor(options) {
+                super(options);
+            }
+            buildCollisionGrid(
+                collisionFrame,
+                cellSize = this.disapearDistance * 2
+            ) {
+
+                this.collisionFrame = collisionFrame;
+
+                this.collisionGrid =
+                    new SpatialHashGrid(cellSize);
+
+                this.scene.updateMatrixWorld(true);
+
+                for (const collider of this.colliders) {
+
+                    const position = new THREE.Vector3();
+
+                    collider.getWorldPosition(position);
+
+                    collisionFrame.worldToLocal(position);
+
+                    this.collisionGrid.add(
+                        collider,
+                        position
+                    );
+                }
+            }
+
+            getColliders() {
+                return this.getNearbyColliders();
+            }
+
+            getNearbyColliders() {
+
+                // Small scene / no grid
+                if (!this.collisionGrid) {
+                    return this.colliders;
+                }
+
+                const cameraPosition =
+                    this.camera.position.clone();
+
+                // Camera and collisionFrame exist in same scene,
+                // so convert camera to the grid's local coordinates.
+                this.collisionFrame.worldToLocal(
+                    cameraPosition
+                );
+
+                return this.collisionGrid.getNearby(
+                    cameraPosition
+                );
+            }
+        }
         //world
         function createHabitatTexture() {
 
@@ -719,7 +834,7 @@
             }
         });
 
-        const mainSceneData = new SceneData({
+        const mainSceneData = new GalaxySceneData({
 
             scale: 1,
 
