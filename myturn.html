@@ -150,10 +150,18 @@
 
                 if (!this.orbitGroup) return;
 
-                // If we're locked to a cube, inherit its movement
+                let rotationAmount;
+
                 if (this.lockedCube) {
-                    this.orbitGroup.rotation.y += 0.002;
-                    this.scene.updateMatrixWorld(true);
+                    rotationAmount = 0.002;
+                } else {
+                    rotationAmount = 0.02;
+                }
+
+                this.orbitGroup.rotation.y += rotationAmount;
+                this.scene.updateMatrixWorld(true);
+
+                if (this.lockedCube) {
 
                     const newPosition = new THREE.Vector3();
 
@@ -167,10 +175,10 @@
                         movement.multiplyScalar(this.scale)
                     );
 
+                    // Rotate your view with the reference frame
+                    scenesData[0].camera.rotation.y += rotationAmount;
+
                     this.lastLockedPosition.copy(newPosition);
-                } else {
-                    this.orbitGroup.rotation.y += 0.02;
-                    this.scene.updateMatrixWorld(true);
                 }
             }
         }
