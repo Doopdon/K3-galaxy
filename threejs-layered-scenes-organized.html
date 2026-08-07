@@ -234,6 +234,7 @@
           cameraOffset = [0, 0, 0],
           create,
           update = null,
+          onClick = null,
           dispose = null,
         } = sceneData;
 
@@ -252,6 +253,7 @@
         this.renderOrder = renderOrder;
         this.clearDepth = clearDepth;
         this.updateCallback = update;
+        this.clickCallback = onClick;
         this.disposeCallback = dispose;
         this.userData = {};
 
@@ -295,6 +297,10 @@
       resize(width, height) {
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
+      }
+
+      handleClick(event, renderer) {
+        return this.clickCallback?.(this, event, renderer) ?? false;
       }
 
       dispose() {
@@ -373,6 +379,21 @@
           layer.syncCamera(masterCamera);
           layer.update(deltaSeconds, elapsedSeconds, masterCamera);
         }
+      }
+
+      handleClick(event) {
+        // Check front-most scenes first. Returning true stops the click from
+        // falling through to scenes rendered behind the selected scene.
+        for (let index = this.layers.length - 1; index >= 0; index -= 1) {
+          const layer = this.layers[index];
+          if (!layer.enabled || !layer.clickCallback) continue;
+
+          if (layer.handleClick(event, this.renderer)) {
+            return true;
+          }
+        }
+
+        return false;
       }
 
       render() {
@@ -461,7 +482,7 @@
 
       if (temporaryMovement.lengthSq() > 0) {
         const boost =
-          keys.has("ShiftLeft") || keys.has("ShiftRight") ? 5 : 1;
+          keys.has("ShiftLeft") || keys.has("ShiftRight") ? 50 : 1;
 
         temporaryMovement
           .normalize()
@@ -552,11 +573,15 @@
     let dragging = false;
     let lastPointerX = 0;
     let lastPointerY = 0;
+    let pointerDownX = 0;
+    let pointerDownY = 0;
 
     renderer.domElement.addEventListener("pointerdown", (event) => {
       dragging = true;
       lastPointerX = event.clientX;
       lastPointerY = event.clientY;
+      pointerDownX = event.clientX;
+      pointerDownY = event.clientY;
       renderer.domElement.setPointerCapture(event.pointerId);
     });
 
@@ -580,6 +605,14 @@
     renderer.domElement.addEventListener("pointerup", (event) => {
       dragging = false;
       renderer.domElement.releasePointerCapture(event.pointerId);
+
+      const movedX = event.clientX - pointerDownX;
+      const movedY = event.clientY - pointerDownY;
+      const wasClick = movedX * movedX + movedY * movedY <= 25;
+
+      if (wasClick) {
+        sceneManager.handleClick(event);
+      }
     });
 
     renderer.domElement.addEventListener("pointercancel", () => {
@@ -753,11 +786,63 @@
         const galaxy = new THREE.Points(geometry, material);
         galaxy.rotation.x = -0.13;
         layer.userData.galaxy = galaxy;
+
+        // These objects are reused for every click so selecting stars does
+        // not create unnecessary garbage.
+        layer.userData.starRaycaster = new THREE.Raycaster();
+        layer.userData.starRaycaster.params.Points.threshold = 3.5;
+        layer.userData.clickPointer = new THREE.Vector2();
+        layer.userData.clickedLocalPosition = new THREE.Vector3();
+        layer.userData.clickedWorldPosition = new THREE.Vector3();
+
         layer.scene.add(galaxy);
       },
 
+      onClick(layer, event, renderer) {
+        const galaxy = layer.userData.galaxy;
+        const raycaster = layer.userData.starRaycaster;
+        const pointer = layer.userData.clickPointer;
+        const canvasBounds = renderer.domElement.getBoundingClientRect();
+
+        pointer.x =
+          ((event.clientX - canvasBounds.left) / canvasBounds.width) * 2 - 1;
+        pointer.y =
+          -((event.clientY - canvasBounds.top) / canvasBounds.height) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, layer.camera);
+        galaxy.updateMatrixWorld(true);
+
+        const hit = raycaster.intersectObject(galaxy, false)[0];
+        if (!hit || hit.index == null) return false;
+
+        const positionAttribute = galaxy.geometry.getAttribute("position");
+        const localPosition = layer.userData.clickedLocalPosition;
+        const worldPosition = layer.userData.clickedWorldPosition;
+
+        localPosition.fromBufferAttribute(positionAttribute, hit.index);
+        worldPosition.copy(localPosition);
+        galaxy.localToWorld(worldPosition);
+
+        console.log("Clicked galaxy star", {
+          index: hit.index,
+          localPosition: {
+            x: localPosition.x,
+            y: localPosition.y,
+            z: localPosition.z,
+          },
+          worldPosition: {
+            x: worldPosition.x,
+            y: worldPosition.y,
+            z: worldPosition.z,
+          },
+          distanceFromCamera: hit.distance,
+        });
+
+        return true;
+      },
+
       update(layer, deltaSeconds) {
-        layer.userData.galaxy.rotation.y += deltaSeconds * 0.006;
+        layer.userData.galaxy.rotation.y += deltaSeconds * 0.06;
       },
     };
   </script>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Red Ball</title>
+</head>
+
+<body style="margin: 0; overflow: hidden;">
+
+<script type="module">
+
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js";
+
+
+// Scene
+const scene = new THREE.Scene();
+
+
+// Camera
+const camera = new THREE.PerspectiveCamera(
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  1000
+);
+
+camera.position.z = 5;
+
+// Renderer
+const renderer = new THREE.WebGLRenderer();
+
+renderer.setSize(
+  window.innerWidth,
+  window.innerHeight
+);
+
+document.body.appendChild(renderer.domElement);
+
+const geometry = new THREE.SphereGeometry(1, 32, 32);
+const material = new THREE.MeshBasicMaterial({
+  color: "red"
+});
+
+function makeBall() {
+    const b = new THREE.Mesh(geometry, material);
+
+    b.position.set(
+        Math.random() * 20 - 10,
+        Math.random() * 20 - 10,
+        Math.random() * -30
+    );
+
+    scene.add(b);
+}
+
+
+for(let i = 0; i < 100; i++) {
+    makeBall();
+}
+
+camera.rotation.order = "YXZ";
+let keys = {};
+function addEventHandlers() {
+    addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+    addEventListener("keyup",   e => keys[e.key.toLowerCase()] = false);
+
+    renderer.domElement.addEventListener("click", () => renderer.domElement.requestPointerLock());
+
+    addEventListener("mousemove", e => {
+        if (document.pointerLockElement !== renderer.domElement) return;
+
+        camera.rotation.y -= e.movementX * 0.002;
+        camera.rotation.x -= e.movementY * 0.002;
+    });
+}
+
+function moveCamera() {
+    if (keys["w"]) camera.translateZ(-0.1);
+    if (keys["s"]) camera.translateZ( 0.1);
+    if (keys["a"]) camera.translateX(-0.1);
+    if (keys["d"]) camera.translateX( 0.1);
+
+    if (keys["arrowup"])    camera.rotation.x += 0.01;
+    if (keys["arrowdown"])  camera.rotation.x -= 0.01;
+    if (keys["arrowleft"])  camera.rotation.y += 0.01;
+    if (keys["arrowright"]) camera.rotation.y -= 0.01;
+}
+
+addEventHandlers();
+let i =0
+function run() {
+    setTimeout(() => {
+        moveCamera();
+        renderer.render(scene, camera);
+        run();
+    }, 10);
+}
+run();
+
+
+</script>
+
+</body>
+</html>
