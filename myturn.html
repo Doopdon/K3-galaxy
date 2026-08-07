@@ -11,30 +11,127 @@
 
         import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js";
 
+        // Sphere Scene
+        const sphereSceneData = {
+            scene: new THREE.Scene(),
+            camera: new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000),
+            scale: .1,
+            populateScene: function (position) {
+                for (let i = 0; i < 10; i++) {
+                    const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
+                    const sphereMaterial = new THREE.MeshBasicMaterial({
+                        color: "red"
+                    });
+                    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
 
-        // Scene
-        const sphereScene = new THREE.Scene();
+                    sphere.position.set(
+                        position.x + Math.random() * 20 - 10,
+                        position.y + Math.random() * 20 - 10,
+                        position.z + Math.random() * 20 - 10
+                    );
 
-        // Camera
-        const sphereCamera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            1000
-        );
-        sphereCamera.rotation.order = "YXZ";
-        sphereCamera.position.z = 5;
+                    this.scene.add(sphere);
+                }
+            }
+        }
+        sphereSceneData.camera.rotation.order = "YXZ";
+        sphereSceneData.camera.position.z = 5;
+
+        const greenSphereSceneData = {
+            scene: new THREE.Scene(),
+            camera: new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000),
+            scale: .01,
+            populateScene: function (position) {
+                for (let i = 0; i < 10; i++) {
+                    const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
+                    const sphereMaterial = new THREE.MeshBasicMaterial({
+                        color: "green"
+                    });
+                    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+
+                    sphere.position.set(
+                        position.x + Math.random() * 20 - 10,
+                        position.y + Math.random() * 20 - 10,
+                        position.z + Math.random() * 20 - 10
+                    );
+
+                    this.scene.add(sphere);
+                }
+            }
+        }
+        greenSphereSceneData.camera.rotation.order = "YXZ";
+        greenSphereSceneData.camera.position.z = 5;
 
 
-        const cubeScene = new THREE.Scene();
+        // Cube
+        const cubeSceneData = {
+            scene: new THREE.Scene(),
+            camera: new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                1000),
+            scale: 1,
+            populateScene: function () {
+                for (let i = 0; i < 100; i++) {
+                    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+                    const cubeMaterial = new THREE.MeshBasicMaterial({
+                        color: "blue"
+                    });
+                    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
 
-        const cubeCamera = new THREE.PerspectiveCamera(
-            75,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            2000
-        );
-        cubeCamera.rotation.order = "YXZ";
+                    cube.position.set(
+                        Math.random() * 20 - 10,
+                        Math.random() * 20 - 10,
+                        Math.random() * 20 - 10
+                    );
+
+                    cube.userData.visited = false;
+
+                    this.scene.add(cube);
+                }
+            },
+            checkCollision: function () {
+                const cameraPosition = this.camera.position;
+                for (const cube of this.scene.children) {
+                    if (cube.userData.visited) continue;
+
+                    const distance = cameraPosition.distanceTo(cube.position);
+                    if (distance < 1) {
+                        sphereSceneData.scene.clear();
+                        for (const otherCube of this.scene.children) {
+                            otherCube.userData.visited = false;
+                            otherCube.visible = true;
+                        }
+                        cube.userData.visited = true;
+                        cube.visible = false;
+
+                        sphereSceneData.populateScene(cube.position.clone().multiplyScalar(1/sphereSceneData.scale));
+
+                        console.log("Entered cube!", cube.position);
+                    }
+                }
+            }
+        }
+        cubeSceneData.camera.rotation.order = "YXZ";
+        cubeSceneData.camera.position.z = 5;
+
+
+
+
+
+        const scenesData = [
+            cubeSceneData,
+            sphereSceneData
+        ];
 
 
         // Renderer
@@ -51,79 +148,9 @@
 
 
 
-        // Sphere 
-        const geometry = new THREE.SphereGeometry(1, 32, 32);
-        const material = new THREE.MeshBasicMaterial({
-            color: "red"
-        });
-
-        function makeBalls(position) {
-            for (let i = 0; i < 100; i++) {
-                const b = new THREE.Mesh(geometry, material);
-
-                b.position.set(
-                    position.x + Math.random() * 20 - 10,
-                    position.y + Math.random() * 20 - 10,
-                    position.z + Math.random() * 20 - 10
-                );
-
-                sphereScene.add(b);
-            }
-        }
-
-
-
-        //cube
-        const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-
-        const cubeMaterial = new THREE.MeshBasicMaterial({
-            color: "blue"
-        });
-
-        function makeCube() {
-            const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-
-            cube.position.set(
-                Math.random() * 20 - 10,
-                Math.random() * 20 - 10,
-                Math.random() * 20 - 10
-            );
-
-            cube.userData.visited = false;
-
-            cubeScene.add(cube);
-        }
-
-        function checkCubes() {
-            for (const cube of cubeScene.children) {
-
-                const distance = cubeCamera.position.distanceTo(cube.position);
-
-                if (distance < 1 && !cube.userData.visited) {
-                    sphereScene.clear();
-
-                    for (const otherCube of cubeScene.children) {
-                        otherCube.userData.visited = false;
-                        otherCube.visible = true;
-                    }
-
-                    cube.userData.visited = true;
-                    cube.visible = false;
-
-                    makeBalls(cube.position.clone().multiplyScalar(10));
-
-                    console.log("Entered cube!", cube.position);
-                }
-            }
-        }
-
-        for (let i = 0; i < 100; i++) {
-            makeCube();
-        }
-
-
         let keys = {};
         function addEventHandlers() {
+            let mainCamera = scenesData[0].camera;
             addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
             addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
@@ -132,12 +159,12 @@
             addEventListener("mousemove", e => {
                 if (document.pointerLockElement !== renderer.domElement) return;
 
-                sphereCamera.rotation.y -= e.movementX * 0.002;
-                sphereCamera.rotation.x -= e.movementY * 0.002;
+                mainCamera.rotation.y -= e.movementX * 0.002;
+                mainCamera.rotation.x -= e.movementY * 0.002;
 
-                sphereCamera.rotation.x = Math.max(
+                mainCamera.rotation.x = Math.max(
                     -Math.PI / 2,
-                    Math.min(Math.PI / 2, sphereCamera.rotation.x)
+                    Math.min(Math.PI / 2, mainCamera.rotation.x)
                 );
             });
 
@@ -145,21 +172,24 @@
         }
 
         function moveCamera() {
-            if (keys["w"]) sphereCamera.translateZ(-0.1);
-            if (keys["s"]) sphereCamera.translateZ(0.1);
-            if (keys["a"]) sphereCamera.translateX(-0.1);
-            if (keys["d"]) sphereCamera.translateX(0.1);
+            let mainCamera = scenesData[0].camera;
+            if (keys["w"]) mainCamera.translateZ(-0.1);
+            if (keys["s"]) mainCamera.translateZ(0.1);
+            if (keys["a"]) mainCamera.translateX(-0.1);
+            if (keys["d"]) mainCamera.translateX(0.1);
 
-            if (keys["arrowup"]) sphereCamera.rotation.x += 0.01;
-            if (keys["arrowdown"]) sphereCamera.rotation.x -= 0.01;
-            if (keys["arrowleft"]) sphereCamera.rotation.y += 0.01;
-            if (keys["arrowright"]) sphereCamera.rotation.y -= 0.01;
+            if (keys["arrowup"]) mainCamera.rotation.x += 0.01;
+            if (keys["arrowdown"]) mainCamera.rotation.x -= 0.01;
+            if (keys["arrowleft"]) mainCamera.rotation.y += 0.01;
+            if (keys["arrowright"]) mainCamera.rotation.y -= 0.01;
 
-            sphereCamera.rotation.x = Math.max(
+            mainCamera.rotation.x = Math.max(
                 -Math.PI / 2,
-                Math.min(Math.PI / 2, sphereCamera.rotation.x)
+                Math.min(Math.PI / 2, mainCamera.rotation.x)
             );
         }
+
+        scenesData[0].populateScene();
 
         addEventHandlers();
 
@@ -167,16 +197,16 @@
             setTimeout(() => {
                 moveCamera();
 
-                cubeCamera.rotation.copy(sphereCamera.rotation);
-                cubeCamera.position.copy(sphereCamera.position).multiplyScalar(0.1);
-                checkCubes();
-                
-                
                 renderer.clear();
-                renderer.render(cubeScene, cubeCamera);
-                renderer.clearDepth();
-                renderer.render(sphereScene, sphereCamera);
-
+                scenesData.forEach((data, i) => {
+                    if (i !== 0) {
+                        data.camera.rotation.copy(scenesData[0].camera.rotation);
+                        data.camera.position.copy(scenesData[0].camera.position).multiplyScalar(1/data.scale);
+                        renderer.clearDepth();
+                    }
+                    data.checkCollision?.();
+                    renderer.render(data.scene, data.camera);
+                });
                 run();
             }, 10);
         }
