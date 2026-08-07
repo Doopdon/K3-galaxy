@@ -79,8 +79,38 @@
             scale: .001,
             childScenes: [],
 
+            lockedCube: null,
+            lastLockedPosition: new THREE.Vector3(),
+
             remove: function () {
                 this.scene.clear();
+                this.lockedCube = null;
+                this.orbitGroup = null;
+            },
+
+            checkCollision: function () {
+
+                if (!this.orbitGroup?.children) return;
+
+                this.scene.updateMatrixWorld(true);
+
+                for (const cube of this.orbitGroup.children) {
+
+                    const cubePosition = new THREE.Vector3();
+                    cube.getWorldPosition(cubePosition);
+
+                    const distance = this.camera.position.distanceTo(cubePosition);
+
+                    if (!this.lockedCube && distance < 1) {
+
+                        console.log("LOCKED");
+
+                        this.lockedCube = cube;
+                        this.lastLockedPosition.copy(cubePosition);
+
+                        break;
+                    }
+                }
             },
 
             populateScene: function (position) {
@@ -117,8 +147,30 @@
             },
 
             update: function () {
-                if (this.orbitGroup) {
-                    this.orbitGroup.rotation.y += 0.01;
+
+                if (!this.orbitGroup) return;
+
+                // If we're locked to a cube, inherit its movement
+                if (this.lockedCube) {
+                    this.orbitGroup.rotation.y += 0.002;
+                    this.scene.updateMatrixWorld(true);
+
+                    const newPosition = new THREE.Vector3();
+
+                    this.lockedCube.getWorldPosition(newPosition);
+
+                    const movement = newPosition
+                        .clone()
+                        .sub(this.lastLockedPosition);
+
+                    scenesData[0].camera.position.add(
+                        movement.multiplyScalar(this.scale)
+                    );
+
+                    this.lastLockedPosition.copy(newPosition);
+                } else {
+                    this.orbitGroup.rotation.y += 0.02;
+                    this.scene.updateMatrixWorld(true);
                 }
             }
         }
