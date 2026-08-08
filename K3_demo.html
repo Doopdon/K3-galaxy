@@ -344,7 +344,6 @@
             }
 
             leaveCollider() {
-                console.log("LEAVING COLLIDER", this);
                 if (!this.activeCollider) return;
 
 
@@ -650,7 +649,7 @@
         }
 
         // Wolrd
-        function makeGlowingSphere(radius, coreColor, glowColor) {
+        function makeHighDefStar(radius, coreColor, glowColor) {
             const group = new THREE.Group();
 
             const core = new THREE.Mesh(
@@ -678,9 +677,54 @@
             return group;
         }
 
+        function makeGlowingSphere(radius, coreColor, glowColor) {
+
+            const canvas = document.createElement("canvas");
+            canvas.width = 64;
+            canvas.height = 64;
+
+            const ctx = canvas.getContext("2d");
+
+            const gradient = ctx.createRadialGradient(
+                32, 32, 0,
+                32, 32, 32
+            );
+
+            gradient.addColorStop(0, "rgba(255,255,255,1)");
+            gradient.addColorStop(0.15, "rgba(255,255,255,0.7)");
+            gradient.addColorStop(0.4, "rgba(255,255,255,0.25)");
+            gradient.addColorStop(1, "rgba(255,255,255,0)");
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 64, 64);
+
+            const texture =
+                new THREE.CanvasTexture(canvas);
+
+            const material =
+                new THREE.SpriteMaterial({
+                    map: texture,
+                    color: glowColor,
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending
+                });
+
+            const glow =
+                new THREE.Sprite(material);
+
+            glow.scale.set(
+                radius * 4,
+                radius * 4,
+                1
+            );
+
+            return glow;
+        }
+
         const solarSystemSceneData = new SceneData({
 
-            scale: 0.01,
+            scale: 0.001,
 
             timescale: 10,
 
@@ -701,7 +745,7 @@
                     .normalize();
 
                 // Glowing sun
-                const sun = makeGlowingSphere(1.0, 0xffdd66, 0xffaa22);
+                const sun = makeHighDefStar(1.0, 0xffdd66, 0xffaa22);
                 group.add(sun);
 
                 this.planetPivots = [];
@@ -755,13 +799,72 @@
             }
         });
 
+
+        function makeStarTexture() {
+
+            const canvas =
+                document.createElement("canvas");
+
+            canvas.width = 64;
+            canvas.height = 64;
+
+            const context =
+                canvas.getContext("2d");
+
+            const gradient =
+                context.createRadialGradient(
+                    32, 32, 0,
+                    32, 32, 32
+                );
+
+            gradient.addColorStop(
+                0.00,
+                "rgba(255,255,255,1)"
+            );
+
+            gradient.addColorStop(
+                0.10,
+                "rgba(255,255,255,0.96)"
+            );
+
+            gradient.addColorStop(
+                0.32,
+                "rgba(255,255,255,0.38)"
+            );
+
+            gradient.addColorStop(
+                1.00,
+                "rgba(255,255,255,0)"
+            );
+
+            context.fillStyle =
+                gradient;
+
+            context.fillRect(
+                0,
+                0,
+                64,
+                64
+            );
+
+            const texture =
+                new THREE.CanvasTexture(
+                    canvas
+                );
+
+            texture.colorSpace =
+                THREE.SRGBColorSpace;
+
+            return texture;
+        }
+
         const galaxySceneData = new GalaxySceneData({
 
             scale: 1,
 
             timescale: 1,
 
-            disapearDistance: 1.5,
+            disapearDistance: .1,
 
             childScenes: [
                 solarSystemSceneData
@@ -775,9 +878,22 @@
 
                 const group = new THREE.Group();
 
-                const starCount = 100;
+                const starCount = 100000;
                 const galaxyRadius = 40;
                 const armCount = 5;
+
+                const positions =
+                    new Float32Array(
+                        starCount * 3
+                    );
+
+                const colors =
+                    new Float32Array(
+                        starCount * 3
+                    );
+
+                const color =
+                    new THREE.Color();
 
                 for (let i = 0; i < starCount; i++) {
 
@@ -792,6 +908,21 @@
                     const x = Math.cos(angle) * distance;
                     const z = Math.sin(angle) * distance;
                     const y = (Math.random() - 0.5) * 4;
+
+                    const i3 = i * 3;
+
+                    positions[i3] = x;
+                    positions[i3 + 1] = y;
+                    positions[i3 + 2] = z;
+                    
+                    colors[i3] =
+                        color.r;
+
+                    colors[i3 + 1] =
+                        color.g;
+
+                    colors[i3 + 2] =
+                        color.b;
 
                     let coreColor = 0xffffff;
                     let glowColor = 0xaaccff;
@@ -808,48 +939,198 @@
                         glowColor = 0xaaccff;
                     }
 
-                    const star = makeGlowingSphere(0.35, coreColor, glowColor);
-                    star.position.set(x, y, z);
+                    color.setHex(coreColor);
 
-                    group.add(star);
-                    this.addCollider(star);
                 }
+
+                const geometry =
+                    new THREE.BufferGeometry();
+
+                geometry.setAttribute(
+                    "position",
+                    new THREE.BufferAttribute(
+                        positions,
+                        3
+                    )
+                );
+
+                geometry.setAttribute(
+                    "color",
+                    new THREE.BufferAttribute(
+                        colors,
+                        3
+                    )
+                );
+
+
+                const material =
+                    new THREE.PointsMaterial({
+
+                        size: 0.12,
+
+                        sizeAttenuation: true,
+
+                        map: makeStarTexture(),
+
+                        transparent: true,
+
+                        opacity: 0.9,
+
+                        alphaTest: 0.01,
+
+                        depthWrite: false,
+
+                        blending:
+                            THREE.AdditiveBlending,
+
+                        vertexColors: true
+                    });
+
+
+                const stars =
+                    new THREE.Points(
+                        geometry,
+                        material
+                    );
+
+
+                group.add(stars);
+                // this.colliders = [...stars]
 
                 this.rootGroup.add(group);
                 this.orbitGroup = group;
 
                 // Background stars
                 const bgCount = 2000;
-                const bgPositions = new Float32Array(bgCount * 3);
 
-                for (let i = 0; i < bgCount; i++) {
-                    const distance = 150 + Math.random() * 300;
-                    const theta = Math.random() * Math.PI * 2;
-                    const phi = Math.acos(2 * Math.random() - 1);
 
-                    bgPositions[i * 3] =
-                        distance * Math.sin(phi) * Math.cos(theta);
+                // ----------------------
+                // Shared background glow
+                // ----------------------
 
-                    bgPositions[i * 3 + 1] =
-                        distance * Math.cos(phi);
+                const canvas = document.createElement("canvas");
 
-                    bgPositions[i * 3 + 2] =
-                        distance * Math.sin(phi) * Math.sin(theta);
-                }
+                canvas.width = 64;
+                canvas.height = 64;
 
-                const bgGeometry = new THREE.BufferGeometry();
-                bgGeometry.setAttribute(
-                    "position",
-                    new THREE.BufferAttribute(bgPositions, 3)
+                const ctx = canvas.getContext("2d");
+
+                const gradient = ctx.createRadialGradient(
+                    32, 32, 0,
+                    32, 32, 32
                 );
 
-                const bgMaterial = new THREE.PointsMaterial({
-                    color: "white",
-                    size: 0.35
-                });
+                gradient.addColorStop(
+                    0,
+                    "rgba(255,255,255,0.8)"
+                );
 
-                const backgroundStars = new THREE.Points(bgGeometry, bgMaterial);
-                this.scene.add(backgroundStars);
+                gradient.addColorStop(
+                    0.15,
+                    "rgba(255,255,255,0.35)"
+                );
+
+                gradient.addColorStop(
+                    0.5,
+                    "rgba(255,255,255,0.08)"
+                );
+
+                gradient.addColorStop(
+                    1,
+                    "rgba(255,255,255,0)"
+                );
+
+                ctx.fillStyle = gradient;
+                ctx.fillRect(
+                    0,
+                    0,
+                    64,
+                    64
+                );
+
+
+                const backgroundTexture =
+                    new THREE.CanvasTexture(canvas);
+
+
+                const backgroundMaterial =
+                    new THREE.SpriteMaterial({
+
+                        map: backgroundTexture,
+
+                        color: 0xffffff,
+
+                        transparent: true,
+
+                        opacity: 0.8,
+
+                        depthWrite: false,
+
+                        blending:
+                            THREE.AdditiveBlending,
+
+                        sizeAttenuation: false
+                    });
+
+
+                // ----------------------
+                // Background stars
+                // ----------------------
+
+
+
+                for (let i = 0; i < bgCount; i++) {
+
+                    const distance =
+                        150 +
+                        Math.random() * 300;
+
+                    const theta =
+                        Math.random() *
+                        Math.PI *
+                        2;
+
+                    const phi =
+                        Math.acos(
+                            2 * Math.random() - 1
+                        );
+
+
+                    const star =
+                        new THREE.Sprite(
+                            backgroundMaterial
+                        );
+
+
+                    star.position.set(
+
+                        distance *
+                        Math.sin(phi) *
+                        Math.cos(theta),
+
+                        distance *
+                        Math.cos(phi),
+
+                        distance *
+                        Math.sin(phi) *
+                        Math.sin(theta)
+                    );
+
+
+                    // Slight size variation
+                    const size =
+                        0.005 +
+                        Math.random() * 0.005;
+
+                    star.scale.set(
+                        size,
+                        size,
+                        1
+                    );
+
+
+                    this.scene.add(star);
+                }
             },
 
             animate: function (deltaTime) {
