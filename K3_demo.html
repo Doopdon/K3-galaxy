@@ -883,9 +883,15 @@
 
             timescale: 1,
 
-            disapearDistance: 0.1,
+            disapearDistance: 0.5,
 
-            childScenes: [],
+            childScenes: [
+                solarSystemSceneData
+            ],
+
+            getSubSceneData: function (star) {
+                return solarSystemSceneData;
+            },
 
             populateScene: function () {
 
@@ -976,6 +982,15 @@
 
                         temperature = Math.random() * 1.25;
                     }
+
+                    const collider =
+                        new StarCollider(
+                            new THREE.Vector3(x, y, z),
+                            group,
+                            i
+                        );
+
+                    this.addCollider(collider);
 
                     positions[i3] = x;
                     positions[i3 + 1] = y;
