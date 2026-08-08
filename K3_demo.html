@@ -9,7 +9,11 @@
 
     <script type="module">
 
-        import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.0/build/three.module.js";
+        import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/+esm";
+        import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/postprocessing/EffectComposer.js/+esm";
+        import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/postprocessing/RenderPass.js/+esm";
+        import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/postprocessing/UnrealBloomPass.js/+esm";
+
 
         class SpatialHashGrid {
 
@@ -1122,6 +1126,31 @@
             renderer.domElement
         );
 
+        const composer =
+            new EffectComposer(renderer);
+
+        composer.addPass(
+            new RenderPass(
+                galaxySceneData.scene,
+                galaxySceneData.camera
+            )
+        );
+
+        const bloomPass =
+            new UnrealBloomPass(
+                new THREE.Vector2(
+                    window.innerWidth,
+                    window.innerHeight
+                ),
+                0.95,
+                0.72,
+                0.06
+            );
+
+        composer.addPass(
+            bloomPass
+        );
+
 
 
         let keys = {};
@@ -1406,10 +1435,17 @@
 
                     data.update?.(deltaTime);
 
-                    renderer.render(
-                        data.scene,
-                        data.camera
-                    );
+                    if (data === galaxySceneData) {
+
+                        composer.render();
+
+                    } else {
+
+                        renderer.render(
+                            data.scene,
+                            data.camera
+                        );
+                    }
                 });
 
                 const currentScene =
