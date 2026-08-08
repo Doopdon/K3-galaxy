@@ -326,7 +326,7 @@
                 subScene.updateParentLock();
                 subScene.populateScene();
 
-                subScene.alignCameraUp();
+                // subScene.alignCameraUp();
 
 
                 // Add child to active hierarchy
@@ -363,7 +363,7 @@
 
                 updateTimeScales();
 
-                this.alignCameraUp()
+                // this.alignCameraUp()
             }
 
             updateCameraLock() {
@@ -1228,6 +1228,16 @@
 
         let keys = {};
 
+        const UP_CHANGE_DELAY = 500;
+
+        let upScene =
+            activeSceneStack[
+            activeSceneStack.length - 1
+            ];
+
+        let pendingUpScene = null;
+        let pendingUpSince = 0;
+
 
         function getCurrentUp() {
 
@@ -1236,7 +1246,49 @@
                 activeSceneStack.length - 1
                 ];
 
-            return currentScene.getWorldUp();
+
+            // We're still in the scene whose
+            // orientation we're already using.
+            if (currentScene === upScene) {
+
+                pendingUpScene = null;
+
+                return upScene.getWorldUp();
+            }
+
+
+            // We just entered a different scene.
+            // Start the half-second timer.
+            if (currentScene !== pendingUpScene) {
+
+                pendingUpScene =
+                    currentScene;
+
+                pendingUpSince =
+                    performance.now();
+            }
+
+
+            // Have we stayed in that scene
+            // for half a second?
+            if (
+                performance.now() -
+                pendingUpSince >
+                UP_CHANGE_DELAY
+            ) {
+
+                upScene =
+                    pendingUpScene;
+
+                pendingUpScene =
+                    null;
+
+                // NOW adopt the new north pole
+                upScene.alignCameraUp();
+            }
+
+
+            return upScene.getWorldUp();
         }
 
 
@@ -1467,8 +1519,7 @@
                     activeSceneStack.length - 1
                     ];
 
-                const up =
-                    currentScene.getWorldUp();
+                const up = getCurrentUp();
 
                 scenesData[0].camera.up.copy(up);
 
