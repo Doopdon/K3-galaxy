@@ -83,10 +83,10 @@
                 this.scene = new THREE.Scene();
 
                 this.camera = new THREE.PerspectiveCamera(
-                    75,
+                    70,
                     window.innerWidth / window.innerHeight,
-                    0.1,
-                    1000
+                    0.05,
+                    7000
                 );
 
                 this.camera.rotation.order = "YXZ";
@@ -799,65 +799,6 @@
             }
         });
 
-
-        function makeStarTexture() {
-
-            const canvas =
-                document.createElement("canvas");
-
-            canvas.width = 64;
-            canvas.height = 64;
-
-            const context =
-                canvas.getContext("2d");
-
-            const gradient =
-                context.createRadialGradient(
-                    32, 32, 0,
-                    32, 32, 32
-                );
-
-            gradient.addColorStop(
-                0.00,
-                "rgba(255,255,255,1)"
-            );
-
-            gradient.addColorStop(
-                0.10,
-                "rgba(255,255,255,0.96)"
-            );
-
-            gradient.addColorStop(
-                0.32,
-                "rgba(255,255,255,0.38)"
-            );
-
-            gradient.addColorStop(
-                1.00,
-                "rgba(255,255,255,0)"
-            );
-
-            context.fillStyle =
-                gradient;
-
-            context.fillRect(
-                0,
-                0,
-                64,
-                64
-            );
-
-            const texture =
-                new THREE.CanvasTexture(
-                    canvas
-                );
-
-            texture.colorSpace =
-                THREE.SRGBColorSpace;
-
-            return texture;
-        }
-
         class StarCollider {
 
             constructor(position, frame, index) {
@@ -897,22 +838,39 @@
         }
 
         function randomGaussian() {
-
             let u = 0;
             let v = 0;
 
-            while (u === 0)
-                u = Math.random();
+            while (u === 0) u = Math.random();
+            while (v === 0) v = Math.random();
 
-            while (v === 0)
-                v = Math.random();
+            return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+        }
 
-            return Math.sqrt(
-                -2 * Math.log(u)
-            ) *
-                Math.cos(
-                    2 * Math.PI * v
-                );
+        function makeStarTexture() {
+            const canvas = document.createElement("canvas");
+            canvas.width = 64;
+            canvas.height = 64;
+
+            const context = canvas.getContext("2d");
+
+            const gradient = context.createRadialGradient(
+                32, 32, 0,
+                32, 32, 32
+            );
+
+            gradient.addColorStop(0.00, "rgba(255,255,255,1)");
+            gradient.addColorStop(0.10, "rgba(255,255,255,0.96)");
+            gradient.addColorStop(0.32, "rgba(255,255,255,0.38)");
+            gradient.addColorStop(1.00, "rgba(255,255,255,0)");
+
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 64, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+
+            return texture;
         }
 
         const galaxySceneData = new GalaxySceneData({
@@ -921,476 +879,192 @@
 
             timescale: 1,
 
-            disapearDistance: .1,
+            disapearDistance: 0.1,
 
-            childScenes: [
-                solarSystemSceneData
-            ],
-
-            getSubSceneData: function (star) {
-                return solarSystemSceneData;
-            },
+            childScenes: [],
 
             populateScene: function () {
 
+                const STAR_COUNT = 130000;
+                const GALAXY_RADIUS = 650;
+                const GALAXY_THICKNESS = 48;
+                const ARM_COUNT = 2;
+
                 const group = new THREE.Group();
 
-                const starCount = 100000;
-                const galaxyRadius = 40;
-                const galaxyThickness = 3;
-                const armCount = 2;
+                const positions = new Float32Array(STAR_COUNT * 3);
+                const colors = new Float32Array(STAR_COUNT * 3);
+                const color = new THREE.Color();
 
-                const positions =
-                    new Float32Array(
-                        starCount * 3
-                    );
-
-                const colors =
-                    new Float32Array(
-                        starCount * 3
-                    );
-
-                const color =
-                    new THREE.Color();
-
-                for (let i = 0; i < starCount; i++) {
-
-                    const component =
-                        Math.random();
+                for (let i = 0; i < STAR_COUNT; i++) {
+                    const i3 = i * 3;
+                    const component = Math.random();
 
                     let x;
                     let y;
                     let z;
                     let radius;
-
+                    let temperature;
 
                     if (component < 0.72) {
+                        // Spiral disk
+                        radius = Math.pow(Math.random(), 0.52) * GALAXY_RADIUS;
 
-                        // ----------------------
-                        // SPIRAL DISK
-                        // ----------------------
-
-                        radius =
-                            Math.pow(
-                                Math.random(),
-                                0.52
-                            ) *
-                            galaxyRadius;
-
-
-                        const arm =
-                            Math.floor(
-                                Math.random() *
-                                armCount
-                            );
-
-
-                        const armBase =
-                            arm *
-                            (
-                                Math.PI *
-                                2 /
-                                armCount
-                            );
-
-
-                        const winding =
-                            radius * 0.18;
-
-
-                        // Arms get fuzzier farther out
+                        const arm = Math.floor(Math.random() * ARM_COUNT);
+                        const armBase = arm * (Math.PI * 2 / ARM_COUNT);
+                        const winding = radius * 0.018;
                         const spread =
-                            0.80 +
-                            Math.pow(
-                                radius /
-                                galaxyRadius,
-                                1.2
-                            ) *
-                            0.04;
-
+                            0.20 +
+                            Math.pow(radius / GALAXY_RADIUS, 1.2) * 0.1;
 
                         const angle =
                             armBase +
                             winding +
-                            randomGaussian() *
-                            spread;
+                            randomGaussian() * spread;
 
-
-                        // Don't force every star to exactly
-                        // the spiral-arm radius
                         const radialScatter =
-                            randomGaussian() *
-                            (
-                                0.5 +
-                                radius * 0.035
-                            );
-
+                            randomGaussian() * (8 + radius * 0.035);
 
                         const scatteredRadius =
-                            radius +
-                            radialScatter;
+                            radius + radialScatter;
 
+                        x = Math.cos(angle) * scatteredRadius;
+                        z = Math.sin(angle) * scatteredRadius;
 
-                        x =
-                            Math.cos(angle) *
-                            scatteredRadius;
-
-                        z =
-                            Math.sin(angle) *
-                            scatteredRadius;
-
-
-                        // Thick center, thin outer disk
                         const diskHeight =
-                            0.3 +
-                            (
-                                1 -
-                                radius /
-                                galaxyRadius
-                            ) *
-                            galaxyThickness;
+                            3.5 +
+                            (1 - radius / GALAXY_RADIUS) * GALAXY_THICKNESS;
 
+                        y = randomGaussian() * diskHeight;
 
-                        y =
-                            randomGaussian() *
-                            diskHeight;
+                        // Outer arms skew slightly blue; inner stars skew warm
+                        temperature =
+                            Math.random() +
+                            (radius / GALAXY_RADIUS) * 0.45;
+
+                    } else if (component < 0.93) {
+                        // Dense central bulge
+                        radius = Math.pow(Math.random(), 2.1) * 190;
+
+                        const theta = Math.random() * Math.PI * 2;
+                        const phi = Math.acos(2 * Math.random() - 1);
+
+                        x = Math.sin(phi) * Math.cos(theta) * radius * 1.25;
+                        z = Math.sin(phi) * Math.sin(theta) * radius * 1.25;
+                        y = Math.cos(phi) * radius * 0.48;
+
+                        x += randomGaussian() * 5;
+                        y += randomGaussian() * 3;
+                        z += randomGaussian() * 5;
+
+                        temperature = Math.random() * 0.72;
+
+                    } else {
+                        // Sparse halo
+                        radius = Math.pow(Math.random(), 0.34) * GALAXY_RADIUS * 1.18;
+
+                        const theta = Math.random() * Math.PI * 2;
+                        const phi = Math.acos(2 * Math.random() - 1);
+
+                        x = Math.sin(phi) * Math.cos(theta) * radius;
+                        z = Math.sin(phi) * Math.sin(theta) * radius;
+                        y = Math.cos(phi) * radius * 0.42;
+
+                        temperature = Math.random() * 1.25;
                     }
-                    else if (component < 0.93) {
-
-                        // ----------------------
-                        // CENTRAL BULGE
-                        // ----------------------
-
-                        radius =
-                            Math.pow(
-                                Math.random(),
-                                2.1
-                            ) *
-                            12;
-
-
-                        const theta =
-                            Math.random() *
-                            Math.PI *
-                            2;
-
-                        const phi =
-                            Math.acos(
-                                2 *
-                                Math.random() -
-                                1
-                            );
-
-
-                        x =
-                            Math.sin(phi) *
-                            Math.cos(theta) *
-                            radius *
-                            1.25;
-
-                        z =
-                            Math.sin(phi) *
-                            Math.sin(theta) *
-                            radius *
-                            1.25;
-
-                        y =
-                            Math.cos(phi) *
-                            radius *
-                            0.48;
-
-
-                        // Mess it up slightly
-                        x += randomGaussian() * 0.4;
-                        y += randomGaussian() * 0.2;
-                        z += randomGaussian() * 0.4;
-                    }
-                    else {
-
-                        // ----------------------
-                        // SPARSE HALO
-                        // ----------------------
-
-                        radius =
-                            Math.pow(
-                                Math.random(),
-                                0.34
-                            ) *
-                            galaxyRadius *
-                            1.18;
-
-
-                        const theta =
-                            Math.random() *
-                            Math.PI *
-                            2;
-
-                        const phi =
-                            Math.acos(
-                                2 *
-                                Math.random() -
-                                1
-                            );
-
-
-                        x =
-                            Math.sin(phi) *
-                            Math.cos(theta) *
-                            radius;
-
-                        z =
-                            Math.sin(phi) *
-                            Math.sin(theta) *
-                            radius;
-
-                        y =
-                            Math.cos(phi) *
-                            radius *
-                            0.42;
-                    }
-
-                    const collider =
-                        new StarCollider(
-                            new THREE.Vector3(x, y, z),
-                            group,
-                            i
-                        );
-
-                    this.addCollider(collider);
-
-                    const i3 = i * 3;
 
                     positions[i3] = x;
                     positions[i3 + 1] = y;
                     positions[i3 + 2] = z;
 
-                    colors[i3] =
-                        color.r;
-
-                    colors[i3 + 1] =
-                        color.g;
-
-                    colors[i3 + 2] =
-                        color.b;
-
-                    let coreColor = 0xffffff;
-                    let glowColor = 0xaaccff;
-
-                    const r = Math.random();
-                    if (r < 0.2) {
-                        coreColor = 0xaaccff;
-                        glowColor = 0x6699ff;
-                    } else if (r < 0.4) {
-                        coreColor = 0xffddaa;
-                        glowColor = 0xff8844;
+                    if (temperature < 0.26) {
+                        color.setRGB(
+                            1.00,
+                            0.55 + Math.random() * 0.18,
+                            0.34
+                        );
+                    } else if (temperature < 0.70) {
+                        color.setRGB(
+                            1.00,
+                            0.80 + Math.random() * 0.16,
+                            0.62 + Math.random() * 0.18
+                        );
+                    } else if (temperature < 1.08) {
+                        const whiteness = 0.84 + Math.random() * 0.16;
+                        color.setRGB(
+                            whiteness,
+                            whiteness,
+                            1.00
+                        );
                     } else {
-                        coreColor = 0xffffff;
-                        glowColor = 0xaaccff;
+                        color.setRGB(
+                            0.58 + Math.random() * 0.12,
+                            0.72 + Math.random() * 0.12,
+                            1.00
+                        );
                     }
 
-                    color.setHex(coreColor);
+                    const brightness =
+                        0.42 + Math.random() * 0.58;
 
+                    colors[i3] = color.r * brightness;
+                    colors[i3 + 1] = color.g * brightness;
+                    colors[i3 + 2] = color.b * brightness;
                 }
 
-                const geometry =
-                    new THREE.BufferGeometry();
+                const geometry = new THREE.BufferGeometry();
 
                 geometry.setAttribute(
                     "position",
-                    new THREE.BufferAttribute(
-                        positions,
-                        3
-                    )
+                    new THREE.BufferAttribute(positions, 3)
                 );
 
                 geometry.setAttribute(
                     "color",
-                    new THREE.BufferAttribute(
-                        colors,
-                        3
-                    )
+                    new THREE.BufferAttribute(colors, 3)
                 );
 
+                geometry.computeBoundingSphere();
 
-                const material =
-                    new THREE.PointsMaterial({
+                const material = new THREE.PointsMaterial({
+                    size: 0.75,
+                    sizeAttenuation: true,
+                    map: makeStarTexture(),
+                    transparent: true,
+                    opacity: 0.9,
+                    alphaTest: 0.01,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending,
+                    vertexColors: true
+                });
 
-                        size: 0.12,
-
-                        sizeAttenuation: true,
-
-                        map: makeStarTexture(),
-
-                        transparent: true,
-
-                        opacity: 0.9,
-
-                        alphaTest: 0.01,
-
-                        depthWrite: false,
-
-                        blending:
-                            THREE.AdditiveBlending,
-
-                        vertexColors: true
-                    });
-
-
-                const stars =
-                    new THREE.Points(
-                        geometry,
-                        material
-                    );
-
+                const stars = new THREE.Points(geometry, material);
 
                 group.add(stars);
-                // this.colliders = [...stars]
+
+                // Match the tilt from the good version
+                group.rotation.x = THREE.MathUtils.degToRad(-8);
+                group.rotation.z = THREE.MathUtils.degToRad(5);
 
                 this.rootGroup.add(group);
                 this.orbitGroup = group;
 
-                // Background stars
-                const bgCount = 2000;
-
-
-                // ----------------------
-                // Shared background glow
-                // ----------------------
-
-                const canvas = document.createElement("canvas");
-
-                canvas.width = 64;
-                canvas.height = 64;
-
-                const ctx = canvas.getContext("2d");
-
-                const gradient = ctx.createRadialGradient(
-                    32, 32, 0,
-                    32, 32, 32
-                );
-
-                gradient.addColorStop(
-                    0,
-                    "rgba(255,255,255,0.8)"
-                );
-
-                gradient.addColorStop(
-                    0.15,
-                    "rgba(255,255,255,0.35)"
-                );
-
-                gradient.addColorStop(
-                    0.5,
-                    "rgba(255,255,255,0.08)"
-                );
-
-                gradient.addColorStop(
-                    1,
-                    "rgba(255,255,255,0)"
-                );
-
-                ctx.fillStyle = gradient;
-                ctx.fillRect(
-                    0,
-                    0,
-                    64,
-                    64
-                );
-
-
-                const backgroundTexture =
-                    new THREE.CanvasTexture(canvas);
-
-
-                const backgroundMaterial =
-                    new THREE.SpriteMaterial({
-
-                        map: backgroundTexture,
-
-                        color: 0xffffff,
-
-                        transparent: true,
-
-                        opacity: 0.8,
-
-                        depthWrite: false,
-
-                        blending:
-                            THREE.AdditiveBlending,
-
-                        sizeAttenuation: false
-                    });
-
-
-                // ----------------------
-                // Background stars
-                // ----------------------
-
-
-
-                for (let i = 0; i < bgCount; i++) {
-
-                    const distance =
-                        150 +
-                        Math.random() * 300;
-
-                    const theta =
-                        Math.random() *
-                        Math.PI *
-                        2;
-
-                    const phi =
-                        Math.acos(
-                            2 * Math.random() - 1
-                        );
-
-
-                    const star =
-                        new THREE.Sprite(
-                            backgroundMaterial
-                        );
-
-
-                    star.position.set(
-
-                        distance *
-                        Math.sin(phi) *
-                        Math.cos(theta),
-
-                        distance *
-                        Math.cos(phi),
-
-                        distance *
-                        Math.sin(phi) *
-                        Math.sin(theta)
-                    );
-
-
-                    // Slight size variation
-                    const size =
-                        0.005 +
-                        Math.random() * 0.005;
-
-                    star.scale.set(
-                        size,
-                        size,
-                        1
-                    );
-
-
-                    this.scene.add(star);
-                }
+                // Save if you want colliders later
+                this.starPositions = positions;
+                this.starColors = colors;
+                this.starPoints = stars;
             },
 
             animate: function (deltaTime) {
-
                 if (!this.orbitGroup) return;
 
-                this.orbitGroup.rotation.y += 0.003 * deltaTime;
+                // Slow it way down
+                this.orbitGroup.rotation.y += 0.0006 * deltaTime;
             }
         });
 
-
+        galaxySceneData.scene.background = new THREE.Color(0x000003);
+        galaxySceneData.scene.fog = new THREE.FogExp2(0x000003, 0.00024);
 
         // Engine logic 
         const mainSceneData = galaxySceneData;
@@ -1415,16 +1089,38 @@
         addChildScenes(mainSceneData);
 
         // Renderer
-        const renderer = new THREE.WebGLRenderer();
+        const renderer =
+            new THREE.WebGLRenderer({
+                antialias: false,
+                powerPreference: "high-performance"
+            });
+
+        renderer.setPixelRatio(
+            Math.min(
+                window.devicePixelRatio,
+                2
+            )
+        );
 
         renderer.setSize(
             window.innerWidth,
             window.innerHeight
         );
 
+        renderer.outputColorSpace =
+            THREE.SRGBColorSpace;
+
+        renderer.toneMapping =
+            THREE.ACESFilmicToneMapping;
+
+        renderer.toneMappingExposure =
+            1.12;
+
         renderer.autoClear = false;
 
-        document.body.appendChild(renderer.domElement);
+        document.body.appendChild(
+            renderer.domElement
+        );
 
 
 
