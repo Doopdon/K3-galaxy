@@ -927,7 +927,7 @@ const galaxySceneData = new GalaxySceneData({
 
     timescale: 1,
 
-    disapearDistance: 0.5,
+    disapearDistance: 5,
 
     childScenes: [
         solarSystemSceneData

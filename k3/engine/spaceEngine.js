@@ -264,9 +264,7 @@ function addEventHandlers() {
     });
 }
 
-
 let speed = 1;
-
 
 function moveCamera() {
 

@@ -84,6 +84,12 @@ function makeGlowingSphere(radius, glowColor) {
     return glow;
 }
 
+const textureLoader = new THREE.TextureLoader();
+
+const skyTexture = textureLoader.load("skybox.png");
+
+skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+
 const solarSystemSceneData = new SceneData({
 
     scale: 0.001,
@@ -162,32 +168,31 @@ const solarSystemSceneData = new SceneData({
                     );
 
 
-            const ball =
-                new THREE.Mesh(
+            const ball = new THREE.Mesh(
 
-                    new THREE.SphereGeometry(
-                        size,
-                        24,
-                        24
-                    ),
+                new THREE.SphereGeometry(
+                    size,
+                    24,
+                    24
+                ),
 
-                    new THREE.MeshPhysicalMaterial({
+                new THREE.MeshPhysicalMaterial({
 
-                        color,
+                    color,
 
-                        metalness:
-                            0.65 +
-                            Math.random() * 0.25,
+                    metalness:
+                        0.75 +
+                        Math.random() * 0.20,
 
-                        roughness:
-                            0.18 +
-                            Math.random() * 0.22,
+                    roughness:
+                        0.20 +
+                        Math.random() * 0.20,
 
-                        clearcoat: 0.8,
+                    clearcoat: 0.8,
 
-                        clearcoatRoughness: 0.08
-                    })
-                );
+                    clearcoatRoughness: 0.08,
+                })
+            );
 
 
             ball.position.x =
@@ -248,3 +253,8 @@ const solarSystemSceneData = new SceneData({
         }
     }
 });
+
+solarSystemSceneData.scene.background = skyTexture;
+solarSystemSceneData.scene.environment = skyTexture;
+
+solarSystemSceneData.scene.environmentIntensity = 10;
