@@ -877,6 +877,855 @@
             return texture;
         }
 
+        function buildGalaxyConnectionNetwork(
+            sourcePositions,
+            group,
+            neighborCount = 6
+        ) {
+
+            const count =
+                sourcePositions.length / 3;
+
+
+            const workerSource = String.raw`
+
+        self.onmessage = (event) => {
+
+            const {
+                positionsBuffer,
+                count,
+                neighborCount
+            } = event.data;
+
+
+            const positions =
+                new Float32Array(
+                    positionsBuffer
+                );
+
+
+            const indices =
+                new Int32Array(count);
+
+
+            for (let i = 0; i < count; i++) {
+                indices[i] = i;
+            }
+
+
+
+            // ========================================
+            // KD TREE
+            // ========================================
+
+            const coordinate =
+                (pointIndex, axis) =>
+                    positions[
+                        pointIndex * 3 + axis
+                    ];
+
+
+            function swap(a, b) {
+
+                const temp =
+                    indices[a];
+
+                indices[a] =
+                    indices[b];
+
+                indices[b] =
+                    temp;
+            }
+
+
+            function partition(
+                left,
+                right,
+                pivotIndex,
+                axis
+            ) {
+
+                const pivotValue =
+                    coordinate(
+                        indices[pivotIndex],
+                        axis
+                    );
+
+
+                swap(
+                    pivotIndex,
+                    right
+                );
+
+
+                let storeIndex =
+                    left;
+
+
+                for (
+                    let i = left;
+                    i < right;
+                    i++
+                ) {
+
+                    if (
+                        coordinate(
+                            indices[i],
+                            axis
+                        ) <
+                        pivotValue
+                    ) {
+
+                        swap(
+                            storeIndex,
+                            i
+                        );
+
+                        storeIndex++;
+                    }
+                }
+
+
+                swap(
+                    right,
+                    storeIndex
+                );
+
+
+                return storeIndex;
+            }
+
+
+            function quickSelect(
+                left,
+                right,
+                target,
+                axis
+            ) {
+
+                while (
+                    left < right
+                ) {
+
+                    let pivotIndex =
+                        (left + right) >> 1;
+
+
+                    pivotIndex =
+                        partition(
+                            left,
+                            right,
+                            pivotIndex,
+                            axis
+                        );
+
+
+                    if (
+                        target ===
+                        pivotIndex
+                    ) {
+                        return;
+                    }
+
+
+                    if (
+                        target <
+                        pivotIndex
+                    ) {
+
+                        right =
+                            pivotIndex - 1;
+
+                    } else {
+
+                        left =
+                            pivotIndex + 1;
+                    }
+                }
+            }
+
+
+            function buildTree(
+                left,
+                right,
+                depth
+            ) {
+
+                if (
+                    left > right
+                ) return;
+
+
+                const middle =
+                    (left + right) >> 1;
+
+
+                quickSelect(
+                    left,
+                    right,
+                    middle,
+                    depth % 3
+                );
+
+
+                buildTree(
+                    left,
+                    middle - 1,
+                    depth + 1
+                );
+
+
+                buildTree(
+                    middle + 1,
+                    right,
+                    depth + 1
+                );
+            }
+
+
+            console.log(
+                "Worker: building KD tree"
+            );
+
+
+            buildTree(
+                0,
+                count - 1,
+                0
+            );
+
+
+
+            // ========================================
+            // NEAREST NEIGHBOR SEARCH
+            // ========================================
+
+            const nearestIndices =
+                new Int32Array(
+                    neighborCount
+                );
+
+
+            const nearestDistances =
+                new Float64Array(
+                    neighborCount
+                );
+
+
+            let nearestSize = 0;
+            let worstSlot = 0;
+            let worstDistance =
+                Infinity;
+
+
+            let targetIndex = 0;
+            let targetX = 0;
+            let targetY = 0;
+            let targetZ = 0;
+
+
+            function refreshWorst() {
+
+                if (
+                    nearestSize <
+                    neighborCount
+                ) {
+
+                    worstDistance =
+                        Infinity;
+
+                    worstSlot =
+                        nearestSize;
+
+                    return;
+                }
+
+
+                worstSlot = 0;
+
+                worstDistance =
+                    nearestDistances[0];
+
+
+                for (
+                    let i = 1;
+                    i < nearestSize;
+                    i++
+                ) {
+
+                    if (
+                        nearestDistances[i] >
+                        worstDistance
+                    ) {
+
+                        worstDistance =
+                            nearestDistances[i];
+
+                        worstSlot = i;
+                    }
+                }
+            }
+
+
+            function consider(
+                pointIndex
+            ) {
+
+                if (
+                    pointIndex ===
+                    targetIndex
+                ) return;
+
+
+                const offset =
+                    pointIndex * 3;
+
+
+                const dx =
+                    positions[offset] -
+                    targetX;
+
+                const dy =
+                    positions[offset + 1] -
+                    targetY;
+
+                const dz =
+                    positions[offset + 2] -
+                    targetZ;
+
+
+                const distanceSquared =
+                    dx * dx +
+                    dy * dy +
+                    dz * dz;
+
+
+                if (
+                    nearestSize <
+                    neighborCount
+                ) {
+
+                    nearestIndices[
+                        nearestSize
+                    ] = pointIndex;
+
+                    nearestDistances[
+                        nearestSize
+                    ] = distanceSquared;
+
+
+                    nearestSize++;
+
+                    refreshWorst();
+
+                } else if (
+                    distanceSquared <
+                    worstDistance
+                ) {
+
+                    nearestIndices[
+                        worstSlot
+                    ] = pointIndex;
+
+                    nearestDistances[
+                        worstSlot
+                    ] = distanceSquared;
+
+
+                    refreshWorst();
+                }
+            }
+
+
+            function searchTree(
+                left,
+                right,
+                depth
+            ) {
+
+                if (
+                    left > right
+                ) return;
+
+
+                const middle =
+                    (left + right) >> 1;
+
+                const pointIndex =
+                    indices[middle];
+
+                const axis =
+                    depth % 3;
+
+
+                const targetCoordinate =
+                    axis === 0
+                        ? targetX
+                        : axis === 1
+                            ? targetY
+                            : targetZ;
+
+
+                const difference =
+                    targetCoordinate -
+                    positions[
+                        pointIndex * 3 +
+                        axis
+                    ];
+
+
+                if (
+                    difference <= 0
+                ) {
+
+                    searchTree(
+                        left,
+                        middle - 1,
+                        depth + 1
+                    );
+
+
+                    consider(
+                        pointIndex
+                    );
+
+
+                    if (
+                        difference *
+                        difference <
+                        worstDistance
+                    ) {
+
+                        searchTree(
+                            middle + 1,
+                            right,
+                            depth + 1
+                        );
+                    }
+
+                } else {
+
+                    searchTree(
+                        middle + 1,
+                        right,
+                        depth + 1
+                    );
+
+
+                    consider(
+                        pointIndex
+                    );
+
+
+                    if (
+                        difference *
+                        difference <
+                        worstDistance
+                    ) {
+
+                        searchTree(
+                            left,
+                            middle - 1,
+                            depth + 1
+                        );
+                    }
+                }
+            }
+
+
+
+            // ========================================
+            // BUILD UNIQUE CONNECTION LIST
+            // ========================================
+
+            const edgeSet =
+                new Set();
+
+
+            for (
+                targetIndex = 0;
+                targetIndex < count;
+                targetIndex++
+            ) {
+
+                const offset =
+                    targetIndex * 3;
+
+
+                targetX =
+                    positions[offset];
+
+                targetY =
+                    positions[offset + 1];
+
+                targetZ =
+                    positions[offset + 2];
+
+
+                nearestSize = 0;
+
+                worstSlot = 0;
+
+                worstDistance =
+                    Infinity;
+
+
+                searchTree(
+                    0,
+                    count - 1,
+                    0
+                );
+
+
+                for (
+                    let i = 0;
+                    i < nearestSize;
+                    i++
+                ) {
+
+                    const neighbor =
+                        nearestIndices[i];
+
+
+                    const low =
+                        Math.min(
+                            targetIndex,
+                            neighbor
+                        );
+
+                    const high =
+                        Math.max(
+                            targetIndex,
+                            neighbor
+                        );
+
+
+                    edgeSet.add(
+                        low * count +
+                        high
+                    );
+                }
+            }
+
+
+
+            // ========================================
+            // CREATE LINE BUFFERS
+            // ========================================
+
+            const edgeCount =
+                edgeSet.size;
+
+
+            const linePositions =
+                new Float32Array(
+                    edgeCount * 6
+                );
+
+
+            const lineColors =
+                new Float32Array(
+                    edgeCount * 6
+                );
+
+
+            let writeOffset = 0;
+
+
+            for (
+                const key of edgeSet
+            ) {
+
+                const first =
+                    Math.floor(
+                        key / count
+                    );
+
+                const second =
+                    key -
+                    first * count;
+
+
+                const a =
+                    first * 3;
+
+                const b =
+                    second * 3;
+
+
+                const dx =
+                    positions[a] -
+                    positions[b];
+
+                const dy =
+                    positions[a + 1] -
+                    positions[b + 1];
+
+                const dz =
+                    positions[a + 2] -
+                    positions[b + 2];
+
+
+                const distance =
+                    Math.sqrt(
+                        dx * dx +
+                        dy * dy +
+                        dz * dz
+                    );
+
+
+                // Exact old-galaxy brightness logic
+                const intensity =
+                    Math.max(
+                        0.055,
+                        Math.min(
+                            0.72,
+                            1.1 /
+                            (
+                                1 +
+                                distance *
+                                0.075
+                            )
+                        )
+                    );
+
+
+                linePositions[
+                    writeOffset
+                ] =
+                    positions[a];
+
+                linePositions[
+                    writeOffset + 1
+                ] =
+                    positions[a + 1];
+
+                linePositions[
+                    writeOffset + 2
+                ] =
+                    positions[a + 2];
+
+
+                linePositions[
+                    writeOffset + 3
+                ] =
+                    positions[b];
+
+                linePositions[
+                    writeOffset + 4
+                ] =
+                    positions[b + 1];
+
+                linePositions[
+                    writeOffset + 5
+                ] =
+                    positions[b + 2];
+
+
+                const redBrightness =
+                    intensity * 0.2;
+
+
+                lineColors[
+                    writeOffset
+                ] =
+                    redBrightness;
+
+                lineColors[
+                    writeOffset + 1
+                ] =
+                    redBrightness *
+                    0.025;
+
+                lineColors[
+                    writeOffset + 2
+                ] = 0;
+
+
+                lineColors[
+                    writeOffset + 3
+                ] =
+                    redBrightness;
+
+                lineColors[
+                    writeOffset + 4
+                ] =
+                    redBrightness *
+                    0.025;
+
+                lineColors[
+                    writeOffset + 5
+                ] = 0;
+
+
+                writeOffset += 6;
+            }
+
+
+            self.postMessage(
+                {
+                    edgeCount,
+
+                    positionsBuffer:
+                        linePositions.buffer,
+
+                    colorsBuffer:
+                        lineColors.buffer
+                },
+                [
+                    linePositions.buffer,
+                    lineColors.buffer
+                ]
+            );
+        };
+
+    `;
+
+
+
+            // ========================================
+            // START WORKER
+            // ========================================
+
+            const blob =
+                new Blob(
+                    [workerSource],
+                    {
+                        type:
+                            "text/javascript"
+                    }
+                );
+
+
+            const url =
+                URL.createObjectURL(
+                    blob
+                );
+
+
+            const worker =
+                new Worker(url);
+
+
+            worker.onmessage =
+                event => {
+
+                    console.log(
+                        "Galaxy links:",
+                        event.data.edgeCount
+                    );
+
+
+                    const geometry =
+                        new THREE.BufferGeometry();
+
+
+                    geometry.setAttribute(
+                        "position",
+                        new THREE.BufferAttribute(
+                            new Float32Array(
+                                event.data
+                                    .positionsBuffer
+                            ),
+                            3
+                        )
+                    );
+
+
+                    geometry.setAttribute(
+                        "color",
+                        new THREE.BufferAttribute(
+                            new Float32Array(
+                                event.data
+                                    .colorsBuffer
+                            ),
+                            3
+                        )
+                    );
+
+
+                    geometry.computeBoundingSphere();
+
+
+                    const material =
+                        new THREE.LineBasicMaterial({
+
+                            vertexColors: true,
+
+                            transparent: true,
+
+                            opacity: 0.78,
+
+                            depthWrite: false,
+
+                            blending:
+                                THREE.AdditiveBlending
+                        });
+
+
+                    const lines =
+                        new THREE.LineSegments(
+                            geometry,
+                            material
+                        );
+
+
+                    // IMPORTANT:
+                    // lines live in the SAME group as stars,
+                    // so tilt + galaxy rotation happen automatically.
+                    group.add(lines);
+
+
+                    worker.terminate();
+
+                    URL.revokeObjectURL(
+                        url
+                    );
+                };
+
+
+            worker.onerror =
+                error => {
+
+                    console.error(
+                        "Galaxy connection worker failed:",
+                        error
+                    );
+
+                    worker.terminate();
+
+                    URL.revokeObjectURL(
+                        url
+                    );
+                };
+
+
+            // COPY IT!
+            //
+            // Transferring the original positions.buffer
+            // would detach your actual galaxy array.
+            const positionCopy =
+                sourcePositions.slice();
+
+
+            worker.postMessage(
+                {
+                    positionsBuffer:
+                        positionCopy.buffer,
+
+                    count,
+
+                    neighborCount
+                },
+                [
+                    positionCopy.buffer
+                ]
+            );
+
+
+            return worker;
+        }
+
         const galaxySceneData = new GalaxySceneData({
 
             scale: 1,
@@ -1067,6 +1916,13 @@
 
                 this.rootGroup.add(group);
                 this.orbitGroup = group;
+
+                this.connectionWorker =
+                    buildGalaxyConnectionNetwork(
+                        positions,
+                        group,
+                        6
+                    );
 
                 // Save if you want colliders later
                 this.starPositions = positions;
