@@ -1,20 +1,36 @@
 function makeHighDefStar(radius, coreColor, glowColor) {
+
     const group = new THREE.Group();
 
-    // Smaller, less obvious solid core
+    // Actual luminous surface
     const core = new THREE.Mesh(
-        new THREE.SphereGeometry(radius * 0.75, 32, 32),
-        new THREE.MeshBasicMaterial({
-            color: coreColor
+        new THREE.SphereGeometry(radius, 48, 48),
+
+        new THREE.MeshStandardMaterial({
+            color: coreColor,
+
+            emissive: coreColor,
+            emissiveIntensity: 8,
+
+            metalness: 0,
+            roughness: 0.8
         })
     );
 
-    // Reuse your soft radial glow function
-    const glow1 = makeGlowingSphere(radius * 3.5, coreColor, glowColor);
-    const glow2 = makeGlowingSphere(radius * 7.0, coreColor, glowColor);
+    // Tight corona
+    const glow1 = makeGlowingSphere(
+        radius * 1.6,
+        glowColor
+    );
 
-    glow1.material.opacity = 0.9;
-    glow2.material.opacity = 0.35;
+    // Very faint outer haze
+    const glow2 = makeGlowingSphere(
+        radius * 2.5,
+        glowColor
+    );
+
+    glow1.material.opacity = 0.65;
+    glow2.material.opacity = 0.18;
 
     group.add(glow2);
     group.add(glow1);
@@ -25,45 +41,43 @@ function makeHighDefStar(radius, coreColor, glowColor) {
     return group;
 }
 
-function makeGlowingSphere(radius, coreColor, glowColor) {
+function makeGlowingSphere(radius, glowColor) {
 
     const canvas = document.createElement("canvas");
-    canvas.width = 64;
-    canvas.height = 64;
+
+    canvas.width = 128;
+    canvas.height = 128;
 
     const ctx = canvas.getContext("2d");
 
     const gradient = ctx.createRadialGradient(
-        32, 32, 0,
-        32, 32, 32
+        64, 64, 0,
+        64, 64, 64
     );
 
-    gradient.addColorStop(0, "rgba(255,255,255,1)");
-    gradient.addColorStop(0.15, "rgba(255,255,255,0.7)");
-    gradient.addColorStop(0.4, "rgba(255,255,255,0.25)");
-    gradient.addColorStop(1, "rgba(255,255,255,0)");
+    gradient.addColorStop(0.00, "rgba(255,255,255,1)");
+    gradient.addColorStop(0.20, "rgba(255,255,255,0.6)");
+    gradient.addColorStop(0.50, "rgba(255,255,255,0.12)");
+    gradient.addColorStop(1.00, "rgba(255,255,255,0)");
 
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillRect(0, 0, 128, 128);
 
-    const texture =
-        new THREE.CanvasTexture(canvas);
+    const texture = new THREE.CanvasTexture(canvas);
 
-    const material =
-        new THREE.SpriteMaterial({
-            map: texture,
-            color: glowColor,
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending
-        });
+    const material = new THREE.SpriteMaterial({
+        map: texture,
+        color: glowColor,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
 
-    const glow =
-        new THREE.Sprite(material);
+    const glow = new THREE.Sprite(material);
 
     glow.scale.set(
-        radius * 4,
-        radius * 4,
+        radius * 2,
+        radius * 2,
         1
     );
 
@@ -96,39 +110,22 @@ const solarSystemSceneData = new SceneData({
         const sun = makeHighDefStar(1.0, 0xffdd66, 0xffaa22);
         group.add(sun);
 
-        const sunLight =
-            new THREE.PointLight(
-                0xffddaa,
-                40,
-                100
-            );
+        const sunLight = new THREE.PointLight(
+            0xffe0aa,
+            1500,
+            0,
+            2
+        );
 
         group.add(sunLight);
 
-
-        const fillLight =
-            new THREE.HemisphereLight(
-                0x88aaff,
-                0x221100,
-                1.5
-            );
-
-        group.add(fillLight);
-
-
-        const rimLight =
-            new THREE.DirectionalLight(
-                0xaaccff,
-                4
-            );
-
-        rimLight.position.set(
-            -10,
-            8,
-            -6
+        const fillLight = new THREE.HemisphereLight(
+            0x6688aa,
+            0x080808,
+            0.08
         );
 
-        group.add(rimLight);
+        group.add(fillLight);
 
         this.planetPivots = [];
 
@@ -178,17 +175,17 @@ const solarSystemSceneData = new SceneData({
 
                         color,
 
-                        metalness: 1,
+                        metalness:
+                            0.65 +
+                            Math.random() * 0.25,
 
                         roughness:
-                            0.08 +
-                            Math.random() *
-                            0.22,
+                            0.18 +
+                            Math.random() * 0.22,
 
-                        clearcoat: 0.4,
+                        clearcoat: 0.8,
 
-                        clearcoatRoughness:
-                            0.12
+                        clearcoatRoughness: 0.08
                     })
                 );
 
