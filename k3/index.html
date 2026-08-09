@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>K3</title>
+</head>
+
+<body style="margin: 0; overflow: hidden;">
+
+    <script type="module">
+
+        import * as THREE
+            from "https://cdn.jsdelivr.net/npm/three@0.180.0/+esm";
+
+        import { EffectComposer }
+            from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/postprocessing/EffectComposer.js/+esm";
+
+        import { RenderPass }
+            from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/postprocessing/RenderPass.js/+esm";
+
+        import { UnrealBloomPass }
+            from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/postprocessing/UnrealBloomPass.js/+esm";
+
+
+        // Make them available to ordinary JS files
+        window.THREE = THREE;
+        window.EffectComposer = EffectComposer;
+        window.RenderPass = RenderPass;
+        window.UnrealBloomPass = UnrealBloomPass;
+
+
+        function loadScript(path) {
+
+            return new Promise((resolve, reject) => {
+
+                const script =
+                    document.createElement("script");
+
+                script.src = path;
+
+                script.onload = resolve;
+                script.onerror = reject;
+
+                document.body.appendChild(script);
+            });
+        }
+
+
+        // Load in dependency order
+        await loadScript(
+            "engine/sceneDataClasses.js"
+        );
+
+        await loadScript(
+            "scenes/starSystemScene.js"
+        );
+
+        await loadScript(
+            "scenes/galaxyScene.js"
+        );
+
+        await loadScript(
+            "engine/spaceEngine.js"
+        );
+
+
+        // Everything now exists
+        window.run();
+
+    </script>
+</body>
+
+</html>

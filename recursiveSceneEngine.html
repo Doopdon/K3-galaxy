@@ -1207,16 +1207,16 @@
 
                 renderer.clear();
 
-                scenesData.forEach((data, i) => {
+                activeSceneStack.forEach((data, i) => {
 
                     if (i !== 0) {
 
                         data.camera.rotation.copy(
-                            scenesData[0].camera.rotation
+                            activeSceneStack[0].camera.rotation
                         );
 
                         data.camera.position
-                            .copy(scenesData[0].camera.position)
+                            .copy(activeSceneStack[0].camera.position)
                             .multiplyScalar(1 / data.scale);
 
                         renderer.clearDepth();

@@ -679,7 +679,7 @@
 
             return group;
         }
-        
+
         function makeGlowingSphere(radius, coreColor, glowColor) {
 
             const canvas = document.createElement("canvas");
@@ -2406,16 +2406,18 @@
 
                 renderer.clear();
 
-                scenesData.forEach((data, i) => {
+                let timers = [0];
+
+                activeSceneStack.forEach((data, i) => {
 
                     if (i !== 0) {
 
                         data.camera.rotation.copy(
-                            scenesData[0].camera.rotation
+                            activeSceneStack[0].camera.rotation
                         );
 
                         data.camera.position
-                            .copy(scenesData[0].camera.position)
+                            .copy(activeSceneStack[0].camera.position)
                             .multiplyScalar(1 / data.scale);
 
                         renderer.clearDepth();
@@ -2425,8 +2427,12 @@
 
                     data.update?.(deltaTime);
 
-                    if (data === galaxySceneData) {
+                    if(activeSceneStack == 1 && data === galaxySceneData){
+                        composer.render();
+                    }
 
+                    else if (data === galaxySceneData && timers[0]++ >= 10) {
+                        timers[0] = 0;
                         composer.render();
 
                     } else {
