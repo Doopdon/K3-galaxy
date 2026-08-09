@@ -1,5 +1,3 @@
-const mainSceneData = galaxySceneData;
-
 const activeSceneStack = [
     mainSceneData
 ];
@@ -57,8 +55,8 @@ const composer =
 
 composer.addPass(
     new RenderPass(
-        galaxySceneData.scene,
-        galaxySceneData.camera
+        mainSceneData.scene,
+        mainSceneData.camera
     )
 );
 
@@ -378,11 +376,11 @@ function run() {
 
             data.update?.(deltaTime);
 
-            if (activeSceneStack == 1 && data === galaxySceneData) {
+            if (activeSceneStack == 1 && data === mainSceneData) {
                 composer.render();
             }
 
-            else if (data === galaxySceneData && timers[0]++ >= 10) {
+            else if (data === mainSceneData && timers[0]++ >= 10) {
                 timers[0] = 0;
                 composer.render();
 

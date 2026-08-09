@@ -52,14 +52,16 @@
         );
 
         await loadScript(
-            "scenes/starSystemScene.js"
+            "test-scenes-set-1/habScene.js"
         );
 
         await loadScript(
-            "scenes/galaxyScene.js"
+            "test-scenes-set-1/cubeScene.js"
         );
 
-        window.mainSceneData = galaxySceneData
+         await loadScript(
+            "test-scenes-set-1/mainScene.js"
+        );
 
         await loadScript(
             "engine/spaceEngine.js"
