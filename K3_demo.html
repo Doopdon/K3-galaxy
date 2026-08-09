@@ -656,31 +656,30 @@
         function makeHighDefStar(radius, coreColor, glowColor) {
             const group = new THREE.Group();
 
+            // Smaller, less obvious solid core
             const core = new THREE.Mesh(
-                new THREE.SphereGeometry(radius, 24, 24),
+                new THREE.SphereGeometry(radius * 0.75, 32, 32),
                 new THREE.MeshBasicMaterial({
                     color: coreColor
                 })
             );
 
-            const glow = new THREE.Mesh(
-                new THREE.SphereGeometry(radius * 1.8, 24, 24),
-                new THREE.MeshBasicMaterial({
-                    color: glowColor,
-                    transparent: true,
-                    opacity: 0.25,
-                    depthWrite: false
-                })
-            );
+            // Reuse your soft radial glow function
+            const glow1 = makeGlowingSphere(radius * 3.5, coreColor, glowColor);
+            const glow2 = makeGlowingSphere(radius * 7.0, coreColor, glowColor);
 
-            group.add(glow);
+            glow1.material.opacity = 0.9;
+            glow2.material.opacity = 0.35;
+
+            group.add(glow2);
+            group.add(glow1);
             group.add(core);
 
             group.userData.core = core;
 
             return group;
         }
-
+        
         function makeGlowingSphere(radius, coreColor, glowColor) {
 
             const canvas = document.createElement("canvas");
