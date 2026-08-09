@@ -332,18 +332,9 @@ function updateTimeScales() {
 
 const camera = scenesData[0].camera;
 
-camera.position.set(
-    0,
-    115,
-    890
-);
+camera.position.set(...cam_position);
 
-camera.lookAt(
-    0,
-    0,
-    0
-);
-
+camera.lookAt(...cam_lookAt);
 
 
 function run() {

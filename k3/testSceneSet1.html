@@ -59,9 +59,22 @@
             "test-scenes-set-1/cubeScene.js"
         );
 
-         await loadScript(
+        await loadScript(
             "test-scenes-set-1/mainScene.js"
         );
+
+
+        window.cam_position = [
+            0,
+            10,
+            25
+        ];
+
+        window.cam_lookAt = [
+            0,
+            0,
+            0
+        ];
 
         await loadScript(
             "engine/spaceEngine.js"
