@@ -84,6 +84,7 @@ function makeGlowingSphere(radius, glowColor) {
     return glow;
 }
 
+
 const solarSystemSceneData = new SceneData({
 
     scale: 0.001,
@@ -95,8 +96,6 @@ const solarSystemSceneData = new SceneData({
     childScenes: [],
 
     populateScene: function () {
-
-        console.log(window.galaxySkyBox);
 
         const skyTexture =
             window.galaxySkyBox;
@@ -141,42 +140,60 @@ const solarSystemSceneData = new SceneData({
 
         group.add(fillLight);
 
-        this.planetPivots = [];
+        this.makeOrbitingObjects(group)
 
-        this.planetPivots = [];
+        this.rootGroup.add(group);
+        this.orbitGroup = group;
+    },
 
-        const planetCount = 80;
+    animate: function (deltaTime) {
 
-        for (
-            let i = 0;
-            i < planetCount;
-            i++
-        ) {
+        if (!this.planetPivots) return;
 
-            const pivot =
-                new THREE.Group();
+        for (const orbit of this.planetPivots) {
+            orbit.pivot.rotateY(orbit.speed * deltaTime);
+        }
+    },
+});
 
+solarSystemSceneData.makeOrbitingObjects = function (group) {
 
-            const radius =
-                3 +
-                Math.random() * 20;
+    this.planetPivots = [];
 
+    const planetCount = 80;
 
-            const size =
-                0.08 +
-                Math.random() * 0.25;
+    // Controls overall animation speed.
+    // Increase this if everything feels too slow.
+    const orbitalSpeedScale = 3.0;
 
+    for (let i = 0; i < planetCount; i++) {
 
-            const color =
-                new THREE.Color()
-                    .setHSL(
-                        Math.random(), // tiny color variation
-                        0.025,         // almost gray
-                        0.7            // bright metal
-                    );
+        const pivot = new THREE.Group();
 
 
-            const ball = new THREE.Mesh(
+        // Orbital distance
+        const radius =
+            3 +
+            Math.random() * 20;
+
+
+        // Object size
+        const size =
+            0.08 +
+            Math.random() * 0.25;
+
+
+        const color =
+            new THREE.Color()
+                .setHSL(
+                    Math.random(),
+                    0.025,
+                    0.7
+                );
+
+
+        const ball =
+            new THREE.Mesh(
 
                 new THREE.SphereGeometry(
                     size,
@@ -203,65 +220,52 @@ const solarSystemSceneData = new SceneData({
             );
 
 
-            ball.position.x =
-                radius;
+        // Put planet at orbital radius
+        ball.position.set(
+            radius,
+            0,
+            0
+        );
 
 
-            // Give it some vertical spread
-            pivot.rotation.x =
-                THREE.MathUtils
-                    .randFloatSpread(
-                        0.5
-                    );
+        // Small orbital inclination
+        pivot.rotation.x =
+            THREE.MathUtils.randFloatSpread(
+                0.15
+            );
+
+        pivot.rotation.z =
+            THREE.MathUtils.randFloatSpread(
+                0.15
+            );
 
 
-            pivot.rotation.z =
-                THREE.MathUtils
-                    .randFloatSpread(
-                        0.5
-                    );
+        // Random starting position around orbit
+        pivot.rotation.y =
+            Math.random() *
+            Math.PI *
+            2;
 
 
-            pivot.rotation.y =
-                Math.random() *
-                Math.PI *
-                2;
+        pivot.add(ball);
+
+        group.add(pivot);
+
+        this.addCollider(ball);
 
 
-            pivot.add(ball);
+        // Keplerian angular velocity:
+        //
+        // omega ∝ 1 / r^(3/2)
+        //
+        const angularSpeed =
+            orbitalSpeedScale /
+            Math.pow(radius, 1.5);
 
-            group.add(pivot);
 
-
-            this.addCollider(ball);
-
-
-            this.planetPivots.push({
-
-                pivot,
-
-                speed:
-                    0.3 /
-                    Math.sqrt(radius) +
-                    Math.random() *
-                    0.03
-            });
-        }
-
-        this.rootGroup.add(group);
-        this.orbitGroup = group;
-    },
-
-    animate: function (deltaTime) {
-
-        if (!this.planetPivots) return;
-
-        for (const orbit of this.planetPivots) {
-            orbit.pivot.rotateY(orbit.speed * deltaTime);
-        }
+        this.planetPivots.push({
+            pivot,
+            speed: angularSpeed
+        });
     }
-});
-
-// solarSystemSceneData.scene.environment = skyTexture;
-
-// solarSystemSceneData.scene.environmentIntensity = 1;
+};
