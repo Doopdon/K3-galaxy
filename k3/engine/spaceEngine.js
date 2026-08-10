@@ -17,7 +17,7 @@ function addChildScenes(parentSceneData) {
 
 addChildScenes(mainSceneData);
 
-const renderer =
+window.renderer =
     new THREE.WebGLRenderer({
         antialias: false,
         powerPreference: "high-performance"

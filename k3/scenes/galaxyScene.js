@@ -1130,8 +1130,12 @@ const galaxySceneData = new GalaxySceneData({
 
         // Slow it way down
         this.orbitGroup.rotation.y += 0.0006 * deltaTime;
-    }
+    },
 });
+
+galaxySceneData.onColide = function () {
+    window.galaxySkyBox = captureSkybox(window.renderer, this.scene, this.camera.position)
+}
 
 galaxySceneData.scene.background = new THREE.Color(0x000003);
 galaxySceneData.scene.fog = new THREE.FogExp2(0x000003, 0.00024);
