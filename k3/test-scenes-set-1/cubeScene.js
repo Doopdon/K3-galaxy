@@ -51,7 +51,7 @@ const cubeSceneData = new SceneData({
 
         if (!this.orbitGroup) return;
 
-        this.orbitGroup.rotation.y +=
-            1.0 * deltaTime;
+        // this.orbitGroup.rotation.y +=
+        //     1.0 * deltaTime;
     }
 });
