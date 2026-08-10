@@ -84,11 +84,182 @@ function makeGlowingSphere(radius, glowColor) {
     return glow;
 }
 
-const textureLoader = new THREE.TextureLoader();
+function makeProceduralSpaceTexture() {
 
-const skyTexture = textureLoader.load("skybox.png");
+    const canvas = document.createElement("canvas");
 
-skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+    // 2:1 ratio for equirectangular texture
+    canvas.width = 1024;
+    canvas.height = 512;
+
+    const ctx = canvas.getContext("2d");
+
+
+    // -------------------------
+    // Dark space background
+    // -------------------------
+
+    const background =
+        ctx.createLinearGradient(
+            0, 0,
+            0, canvas.height
+        );
+
+    background.addColorStop(
+        0,
+        "#050814"
+    );
+
+    background.addColorStop(
+        0.5,
+        "#02040a"
+    );
+
+    background.addColorStop(
+        1,
+        "#080510"
+    );
+
+    ctx.fillStyle = background;
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    // -------------------------
+    // Soft galactic light blobs
+    // These are useful for metal reflections
+    // -------------------------
+
+    for (let i = 0; i < 12; i++) {
+
+        const x =
+            Math.random() *
+            canvas.width;
+
+        const y =
+            Math.random() *
+            canvas.height;
+
+        const radius =
+            100 +
+            Math.random() * 250;
+
+
+        const glow =
+            ctx.createRadialGradient(
+                x,
+                y,
+                0,
+
+                x,
+                y,
+                radius
+            );
+
+
+        // Random cool / warm patches
+        if (Math.random() < 0.7) {
+
+            glow.addColorStop(
+                0,
+                "rgba(80,110,180,0.18)"
+            );
+
+        } else {
+
+            glow.addColorStop(
+                0,
+                "rgba(180,100,70,0.12)"
+            );
+        }
+
+
+        glow.addColorStop(
+            1,
+            "rgba(0,0,0,0)"
+        );
+
+
+        ctx.fillStyle = glow;
+
+        ctx.fillRect(
+            x - radius,
+            y - radius,
+            radius * 2,
+            radius * 2
+        );
+    }
+
+
+    // -------------------------
+    // Stars
+    // -------------------------
+
+    for (let i = 0; i < 2500; i++) {
+
+        const x =
+            Math.random() *
+            canvas.width;
+
+        const y =
+            Math.random() *
+            canvas.height;
+
+
+        const brightness =
+            120 +
+            Math.random() * 135;
+
+
+        const size =
+            Math.random() < 0.97
+                ? Math.random() * 1.2
+                : 1.5 + Math.random() * 2;
+
+
+        ctx.fillStyle =
+            `rgb(${brightness},${brightness},${brightness})`;
+
+
+        ctx.beginPath();
+
+        ctx.arc(
+            x,
+            y,
+            size,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    }
+
+
+    // -------------------------
+    // Convert to Three texture
+    // -------------------------
+
+    const texture =
+        new THREE.CanvasTexture(canvas);
+
+    texture.mapping =
+        THREE.EquirectangularReflectionMapping;
+
+    texture.colorSpace =
+        THREE.SRGBColorSpace;
+
+    texture.needsUpdate = true;
+
+    return texture;
+}
+
+const skyTexture =
+    makeProceduralSpaceTexture();
 
 const solarSystemSceneData = new SceneData({
 
@@ -117,8 +288,8 @@ const solarSystemSceneData = new SceneData({
         group.add(sun);
 
         const sunLight = new THREE.PointLight(
-            0xffe0aa,
-            1500,
+            0xfff8ee,
+            8000,
             0,
             2
         );
@@ -162,9 +333,9 @@ const solarSystemSceneData = new SceneData({
             const color =
                 new THREE.Color()
                     .setHSL(
-                        Math.random(),
-                        0.12,
-                        0.55
+                        Math.random(), // tiny color variation
+                        0.025,         // almost gray
+                        0.7            // bright metal
                     );
 
 
@@ -172,25 +343,25 @@ const solarSystemSceneData = new SceneData({
 
                 new THREE.SphereGeometry(
                     size,
-                    24,
-                    24
+                    32,
+                    32
                 ),
 
                 new THREE.MeshPhysicalMaterial({
 
                     color,
 
-                    metalness:
-                        0.75 +
-                        Math.random() * 0.20,
+                    metalness: 1.0,
 
                     roughness:
-                        0.20 +
-                        Math.random() * 0.20,
+                        0.06 +
+                        Math.random() * 0.10,
 
-                    clearcoat: 0.8,
+                    clearcoat: 1.0,
 
-                    clearcoatRoughness: 0.08,
+                    clearcoatRoughness: 0.02,
+
+                    envMapIntensity: 1.5
                 })
             );
 
@@ -254,7 +425,6 @@ const solarSystemSceneData = new SceneData({
     }
 });
 
-solarSystemSceneData.scene.background = skyTexture;
 solarSystemSceneData.scene.environment = skyTexture;
 
-solarSystemSceneData.scene.environmentIntensity = 10;
+solarSystemSceneData.scene.environmentIntensity = 1;
