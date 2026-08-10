@@ -186,12 +186,21 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
         const color = new THREE.Color(0xffffff);
 
 
-        const cube = new THREE.Mesh(
+        const mirrorWidth =
+            0.2 + Math.random() * 0.5;
+
+        const mirrorHeight =
+            0.2 + Math.random() * 0.5;
+
+        const mirrorThickness =
+            0.01 + Math.random() * 0.02;
+
+        const mirror = new THREE.Mesh(
 
             new THREE.BoxGeometry(
-                size * 2,
-                size * 2,
-                size * 2
+                mirrorThickness, // X = thin, points toward sun
+                mirrorWidth,     // Y
+                mirrorHeight     // Z
             ),
 
             new THREE.MeshPhysicalMaterial({
@@ -199,7 +208,12 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
 
                 metalness: 1.0,
 
-                roughness: 0,
+                roughness:
+                    0.01 +
+                    Math.random() * 0.04,
+
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.01,
 
                 envMapIntensity: 1.5
             })
@@ -207,7 +221,7 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
 
 
         // Put planet at orbital radius
-        cube.position.set(
+        mirror.position.set(
             radius,
             0,
             0
@@ -229,11 +243,11 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
             2;
 
 
-        pivot.add(cube);
+        pivot.add(mirror);
 
         group.add(pivot);
 
-        this.addCollider(cube);
+        this.addCollider(mirror);
 
 
         // Keplerian angular velocity:
