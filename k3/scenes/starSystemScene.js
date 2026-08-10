@@ -186,26 +186,28 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
         const color = new THREE.Color(0xffffff);
 
 
-        const ball =
-            new THREE.Mesh(
+        const cube = new THREE.Mesh(
 
-                new THREE.SphereGeometry(
-                    size,
-                    32,
-                    32
-                ),
+            new THREE.BoxGeometry(
+                size * 2,
+                size * 2,
+                size * 2
+            ),
 
-                new THREE.MeshPhysicalMaterial({
-                    color: 0xffffff,
-                    metalness: 1.0,
-                    roughness: 0.05,
-                    envMapIntensity: 1.5
-                })
-            );
+            new THREE.MeshPhysicalMaterial({
+                color: 0xffffff,
+
+                metalness: 1.0,
+
+                roughness: 0,
+
+                envMapIntensity: 1.5
+            })
+        );
 
 
         // Put planet at orbital radius
-        ball.position.set(
+        cube.position.set(
             radius,
             0,
             0
@@ -227,11 +229,11 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
             2;
 
 
-        pivot.add(ball);
+        pivot.add(cube);
 
         group.add(pivot);
 
-        this.addCollider(ball);
+        this.addCollider(cube);
 
 
         // Keplerian angular velocity:
