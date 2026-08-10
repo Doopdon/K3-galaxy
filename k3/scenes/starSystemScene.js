@@ -2,41 +2,55 @@ function makeHighDefStar(radius, coreColor, glowColor) {
 
     const group = new THREE.Group();
 
-    // Actual luminous surface
     const core = new THREE.Mesh(
         new THREE.SphereGeometry(radius, 48, 48),
 
         new THREE.MeshStandardMaterial({
             color: coreColor,
-
             emissive: coreColor,
             emissiveIntensity: 8,
-
             metalness: 0,
             roughness: 0.8
         })
     );
 
-    // Tight corona
-    const glow1 = makeGlowingSphere(
-        radius * 1.6,
-        glowColor
-    );
 
-    // Very faint outer haze
-    const glow2 = makeGlowingSphere(
-        radius * 2.5,
-        glowColor
-    );
+    // Tight glow
+    const glow1 =
+        makeGlowingSphere(
+            radius * 1.6,
+            glowColor
+        );
 
-    glow1.material.opacity = 0.65;
-    glow2.material.opacity = 0.18;
+    glow1.material.opacity = 0.45;
 
+
+    // Medium corona
+    const glow2 =
+        makeGlowingSphere(
+            radius * 3.0,
+            glowColor
+        );
+
+    glow2.material.opacity = 0.15;
+
+
+    // Huge bright glare
+    const glare =
+        makeGlowingSphere(
+            radius * 35.0,
+            0xffffff
+        );
+
+    glare.material.opacity = 0.8;
+    glare.material.depthTest = false;
+    glare.material.depthWrite = false;
+
+
+    group.add(glare);
     group.add(glow2);
     group.add(glow1);
     group.add(core);
-
-    group.userData.core = core;
 
     return group;
 }
@@ -140,7 +154,8 @@ const solarSystemSceneData = new SceneData({
 
         group.add(fillLight);
 
-        this.makeOrbitingObjects(group)
+        this.makeOrbitingObjects(group);
+        this.makeDottedConnection(group);
 
         this.rootGroup.add(group);
         this.orbitGroup = group;
@@ -151,10 +166,185 @@ const solarSystemSceneData = new SceneData({
         if (!this.planetPivots) return;
 
         for (const orbit of this.planetPivots) {
-            orbit.pivot.rotateY(orbit.speed * deltaTime);
+
+            orbit.pivot.rotateY(
+                orbit.speed * deltaTime
+            );
         }
+
+        this.updateDottedConnection(
+            deltaTime
+        );
     },
 });
+
+solarSystemSceneData.makeDottedConnection = function (group) {
+
+    // Pick two different random mirrors
+    const aIndex =
+        Math.floor(
+            Math.random() *
+            this.planetPivots.length
+        );
+
+    let bIndex =
+        Math.floor(
+            Math.random() *
+            this.planetPivots.length
+        );
+
+    while (bIndex === aIndex) {
+        bIndex =
+            Math.floor(
+                Math.random() *
+                this.planetPivots.length
+            );
+    }
+
+
+    this.dotConnection = {
+        a: this.planetPivots[aIndex].mirror,
+        b: this.planetPivots[bIndex].mirror,
+        group: group,
+        phase: 0
+    };
+
+
+    const dotCount = 20;
+
+    const positions =
+        new Float32Array(
+            dotCount * 3
+        );
+
+
+    const geometry =
+        new THREE.BufferGeometry();
+
+    geometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(
+            positions,
+            3
+        )
+    );
+
+
+    const material =
+        new THREE.PointsMaterial({
+
+            color: 0xffffff,
+
+            // Pixels, because sizeAttenuation is false
+            size: 3,
+
+            sizeAttenuation: false,
+
+            transparent: true,
+
+            opacity: 0.9,
+
+            depthWrite: false
+        });
+
+
+    this.dottedLine =
+        new THREE.Points(
+            geometry,
+            material
+        );
+
+
+    group.add(
+        this.dottedLine
+    );
+};
+
+solarSystemSceneData.updateDottedConnection = function (deltaTime) {
+
+    if (!this.dotConnection) return;
+
+
+    const connection =
+        this.dotConnection;
+
+
+    // Move dots toward B
+    connection.phase +=
+        deltaTime * 0.2;
+
+    connection.phase %= 1;
+
+
+    const a =
+        new THREE.Vector3();
+
+    const b =
+        new THREE.Vector3();
+
+
+    connection.a.getWorldPosition(a);
+    connection.b.getWorldPosition(b);
+
+
+    // Points object lives inside group,
+    // so convert world positions back to group space.
+    connection.group.worldToLocal(a);
+    connection.group.worldToLocal(b);
+
+
+    const positions =
+        this.dottedLine
+            .geometry
+            .attributes
+            .position;
+
+
+    const dotCount =
+        positions.count;
+
+
+    for (
+        let i = 0;
+        i < dotCount;
+        i++
+    ) {
+
+        // Evenly spaced dots,
+        // shifted forward every frame
+        const t =
+            (
+                i / dotCount +
+                connection.phase
+            ) % 1;
+
+
+        positions.setXYZ(
+            i,
+
+            THREE.MathUtils.lerp(
+                a.x,
+                b.x,
+                t
+            ),
+
+            THREE.MathUtils.lerp(
+                a.y,
+                b.y,
+                t
+            ),
+
+            THREE.MathUtils.lerp(
+                a.z,
+                b.z,
+                t
+            )
+        );
+    }
+
+
+    positions.needsUpdate = true;
+};
 
 solarSystemSceneData.makeOrbitingObjects = function (group) {
 
@@ -261,6 +451,7 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
 
         this.planetPivots.push({
             pivot,
+            mirror,
             speed: angularSpeed
         });
     }
