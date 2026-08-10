@@ -155,7 +155,10 @@ const solarSystemSceneData = new SceneData({
         group.add(fillLight);
 
         this.makeOrbitingObjects(group);
-        this.makeDottedConnection(group);
+
+        for (let i = 0; i < 100; i++) {
+            this.makeDottedConnection(group);
+        }
 
         this.rootGroup.add(group);
         this.orbitGroup = group;
@@ -180,6 +183,9 @@ const solarSystemSceneData = new SceneData({
 
 solarSystemSceneData.makeDottedConnection = function (group) {
 
+    if (!this.dotConnections) {
+        this.dotConnections = [];
+    }
     // Pick two different random mirrors
     const aIndex =
         Math.floor(
@@ -202,15 +208,7 @@ solarSystemSceneData.makeDottedConnection = function (group) {
     }
 
 
-    this.dotConnection = {
-        a: this.planetPivots[aIndex].mirror,
-        b: this.planetPivots[bIndex].mirror,
-        group: group,
-        phase: 0
-    };
-
-
-    const dotCount = 20;
+    const dotCount = 4;
 
     const positions =
         new Float32Array(
@@ -236,7 +234,7 @@ solarSystemSceneData.makeDottedConnection = function (group) {
             color: 0xffffff,
 
             // Pixels, because sizeAttenuation is false
-            size: 3,
+            size: 1,
 
             sizeAttenuation: false,
 
@@ -248,103 +246,103 @@ solarSystemSceneData.makeDottedConnection = function (group) {
         });
 
 
-    this.dottedLine =
+    const dottedLine =
         new THREE.Points(
             geometry,
             material
         );
 
+    group.add(dottedLine);
 
-    group.add(
-        this.dottedLine
-    );
+
+    this.dotConnections.push({
+        a: this.planetPivots[aIndex].mirror,
+        b: this.planetPivots[bIndex].mirror,
+        group: group,
+        phase: Math.random(), // nice: don't synchronize them
+        dottedLine: dottedLine
+    });
 };
 
-solarSystemSceneData.updateDottedConnection = function (deltaTime) {
+solarSystemSceneData.updateDottedConnection =
+    function (deltaTime) {
 
-    if (!this.dotConnection) return;
-
-
-    const connection =
-        this.dotConnection;
+        if (!this.dotConnections) return;
 
 
-    // Move dots toward B
-    connection.phase +=
-        deltaTime * 0.2;
+        for (const connection of this.dotConnections) {
 
-    connection.phase %= 1;
+            connection.phase +=
+                deltaTime * 0.2;
 
-
-    const a =
-        new THREE.Vector3();
-
-    const b =
-        new THREE.Vector3();
+            connection.phase %= 1;
 
 
-    connection.a.getWorldPosition(a);
-    connection.b.getWorldPosition(b);
+            const a =
+                new THREE.Vector3();
+
+            const b =
+                new THREE.Vector3();
 
 
-    // Points object lives inside group,
-    // so convert world positions back to group space.
-    connection.group.worldToLocal(a);
-    connection.group.worldToLocal(b);
+            connection.a.getWorldPosition(a);
+            connection.b.getWorldPosition(b);
+
+            connection.group.worldToLocal(a);
+            connection.group.worldToLocal(b);
 
 
-    const positions =
-        this.dottedLine
-            .geometry
-            .attributes
-            .position;
+            const positions =
+                connection.dottedLine
+                    .geometry
+                    .attributes
+                    .position;
 
 
-    const dotCount =
-        positions.count;
+            const dotCount =
+                positions.count;
 
 
-    for (
-        let i = 0;
-        i < dotCount;
-        i++
-    ) {
+            for (
+                let i = 0;
+                i < dotCount;
+                i++
+            ) {
 
-        // Evenly spaced dots,
-        // shifted forward every frame
-        const t =
-            (
-                i / dotCount +
-                connection.phase
-            ) % 1;
+                const t =
+                    (
+                        i / dotCount +
+                        connection.phase
+                    ) % 1;
 
 
-        positions.setXYZ(
-            i,
+                positions.setXYZ(
+                    i,
 
-            THREE.MathUtils.lerp(
-                a.x,
-                b.x,
-                t
-            ),
+                    THREE.MathUtils.lerp(
+                        a.x,
+                        b.x,
+                        t
+                    ),
 
-            THREE.MathUtils.lerp(
-                a.y,
-                b.y,
-                t
-            ),
+                    THREE.MathUtils.lerp(
+                        a.y,
+                        b.y,
+                        t
+                    ),
 
-            THREE.MathUtils.lerp(
-                a.z,
-                b.z,
-                t
-            )
-        );
-    }
+                    THREE.MathUtils.lerp(
+                        a.z,
+                        b.z,
+                        t
+                    )
+                );
+            }
 
 
-    positions.needsUpdate = true;
-};
+            positions.needsUpdate = true;
+        }
+    };
 
 solarSystemSceneData.makeOrbitingObjects = function (group) {
 
