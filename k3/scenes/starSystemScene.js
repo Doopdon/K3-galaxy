@@ -107,7 +107,7 @@ const solarSystemSceneData = new SceneData({
 
     disapearDistance: 1.0,
 
-    childScenes: [],
+    childScenes: [nationSceneData],
 
     populateScene: function () {
 
