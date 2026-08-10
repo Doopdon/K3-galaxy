@@ -107,7 +107,7 @@ const solarSystemSceneData = new SceneData({
                 skyTexture;
 
             this.scene.environmentIntensity =
-                1.0;
+                .5;
         }
 
         const group = new THREE.Group();

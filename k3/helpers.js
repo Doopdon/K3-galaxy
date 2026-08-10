@@ -6,7 +6,15 @@ function captureSkybox(
 ) {
     const target =
         new THREE.WebGLCubeRenderTarget(
-            resolution
+            resolution,
+            {
+                type: THREE.HalfFloatType,
+
+                generateMipmaps: true,
+
+                minFilter:
+                    THREE.LinearMipmapLinearFilter
+            }
         );
 
     const cubeCamera =
