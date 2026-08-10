@@ -60,7 +60,6 @@ class SceneData {
         scale,
         timescale = 1,
         disapearDistance = 1,
-        localUp = new THREE.Vector3(0, 1, 0),
         childScenes = [],
         getSubSceneData,
         populateScene,
@@ -117,38 +116,6 @@ class SceneData {
 
         this.rootGroup = new THREE.Group();
         this.scene.add(this.rootGroup);
-
-        this.localUp = localUp.clone().normalize();
-    }
-
-    alignCameraUp() {
-
-        const camera = scenesData[0].camera;
-
-        const forward = new THREE.Vector3();
-        camera.getWorldDirection(forward);
-
-        const up = this.getWorldUp();
-
-        camera.up.copy(up);
-
-        camera.lookAt(
-            camera.position.clone().add(forward)
-        );
-    }
-
-    getWorldUp() {
-
-        const worldQuaternion = new THREE.Quaternion();
-
-        this.rootGroup.getWorldQuaternion(
-            worldQuaternion
-        );
-
-        return this.localUp
-            .clone()
-            .applyQuaternion(worldQuaternion)
-            .normalize();
     }
 
     addCollider(object) {
@@ -530,55 +497,6 @@ class HabSceneData extends SceneData {
         super(options);
     }
 
-    getWorldUp() {
-
-        if (!this.activeCollider) {
-            return SceneData.prototype.getWorldUp.call(this);
-        }
-
-        const habitat = this.activeCollider;
-
-        const center = new THREE.Vector3();
-
-        habitat.getWorldPosition(center);
-
-        const habitatQuaternion =
-            new THREE.Quaternion();
-
-        habitat.getWorldQuaternion(
-            habitatQuaternion
-        );
-
-        const axis =
-            new THREE.Vector3(0, 1, 0)
-                .applyQuaternion(habitatQuaternion)
-                .normalize();
-
-        const cameraPosition =
-            scenesData[0].camera.position
-                .clone()
-                .multiplyScalar(
-                    scenesData[0].scale / this.scale
-                );
-
-        const centerToCamera =
-            cameraPosition.clone().sub(center);
-
-        const distanceAlongAxis =
-            centerToCamera.dot(axis);
-
-        const nearestAxisPoint =
-            center.clone().add(
-                axis.clone().multiplyScalar(
-                    distanceAlongAxis
-                )
-            );
-
-        return nearestAxisPoint
-            .sub(cameraPosition)
-            .normalize()
-            .negate();
-    }
 }
 
 class GalaxySceneData extends SceneData {
