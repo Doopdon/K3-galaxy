@@ -230,14 +230,10 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
 
         // Small orbital inclination
         pivot.rotation.x =
-            THREE.MathUtils.randFloatSpread(
-                0.15
-            );
+            Math.random() * Math.PI * 2;
 
         pivot.rotation.z =
-            THREE.MathUtils.randFloatSpread(
-                0.15
-            );
+            Math.random() * Math.PI * 2;
 
 
         // Random starting position around orbit
