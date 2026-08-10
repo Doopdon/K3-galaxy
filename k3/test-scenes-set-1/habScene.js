@@ -1,3 +1,39 @@
+function createHabitatTexture() {
+
+            const canvas = document.createElement("canvas");
+
+            canvas.width = 256;
+            canvas.height = 128;
+
+            const ctx = canvas.getContext("2d");
+
+            // Dark hull
+            ctx.fillStyle = "#202830";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Bright vertical stripes
+            ctx.fillStyle = "#7fdfff";
+
+            for (let x = 0; x < canvas.width; x += 32) {
+                ctx.fillRect(x, 0, 6, canvas.height);
+            }
+
+            // Horizontal bands
+            ctx.fillStyle = "#555555";
+
+            for (let y = 0; y < canvas.height; y += 32) {
+                ctx.fillRect(0, y, canvas.width, 3);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+
+            return texture;
+        }
+
+
 const redSphereSceneData = new HabSceneData({
 
     scale: 0.01,
