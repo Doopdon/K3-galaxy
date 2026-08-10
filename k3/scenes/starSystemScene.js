@@ -183,13 +183,7 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
             Math.random() * 0.25;
 
 
-        const color =
-            new THREE.Color()
-                .setHSL(
-                    Math.random(),
-                    0.025,
-                    0.7
-                );
+        const color = new THREE.Color(0xffffff);
 
 
         const ball =
@@ -202,19 +196,9 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
                 ),
 
                 new THREE.MeshPhysicalMaterial({
-
-                    color,
-
+                    color: 0xffffff,
                     metalness: 1.0,
-
-                    roughness:
-                        0.06 +
-                        Math.random() * 0.10,
-
-                    clearcoat: 1.0,
-
-                    clearcoatRoughness: 0.02,
-
+                    roughness: 0.05,
                     envMapIntensity: 1.5
                 })
             );
