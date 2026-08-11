@@ -1090,7 +1090,7 @@ const galaxySceneData = new GalaxySceneData({
         geometry.computeBoundingSphere();
 
         const material = new THREE.PointsMaterial({
-            size: 0.75,
+            size: 1.5,
             sizeAttenuation: true,
             map: makeStarTexture(),
             transparent: true,
@@ -1138,4 +1138,4 @@ galaxySceneData.onColide = function () {
 }
 
 galaxySceneData.scene.background = new THREE.Color(0x000003);
-galaxySceneData.scene.fog = new THREE.FogExp2(0x000003, 0.00024);
+galaxySceneData.scene.fog = new THREE.FogExp2(0x000003, 0.00008);
