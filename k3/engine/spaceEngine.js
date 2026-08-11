@@ -202,7 +202,7 @@ camera.position.set(...cam_position);
 
 camera.lookAt(...cam_lookAt);
 
-
+let timers = [0];
 function run() {
     setTimeout(() => {
 
@@ -212,7 +212,6 @@ function run() {
 
         renderer.clear();
 
-        let timers = [0];
 
         activeSceneStack.forEach((data, i) => {
 
@@ -233,7 +232,8 @@ function run() {
 
             data.update?.(deltaTime);
 
-            if (activeSceneStack == 1 && data === mainSceneData) {
+            if (activeSceneStack.length === 1 &&
+                data === mainSceneData) {
                 composer.render();
             }
 
