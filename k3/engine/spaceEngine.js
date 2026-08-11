@@ -15,6 +15,58 @@ function addChildScenes(parentSceneData) {
     });
 }
 
+function updateActiveScenes(deltaTime) {
+
+    activeSceneStack.forEach((data, i) => {
+
+        if (i !== 0) {
+
+            data.camera.quaternion.copy(
+                activeSceneStack[0].camera.quaternion
+            );
+
+            data.camera.position
+                .copy(activeSceneStack[0].camera.position)
+                .multiplyScalar(1 / data.scale);
+        }
+
+
+        data.checkCollision?.();
+
+        data.update?.(deltaTime);
+    });
+}
+
+function renderActiveScenes() {
+
+    renderer.clear();
+
+    activeSceneStack.forEach((data, i) => {
+
+        if (i !== 0) {
+            renderer.clearDepth();
+        }
+
+
+        if (data === mainSceneData) {
+
+            renderMainScene();
+
+        } else {
+
+            renderer.render(
+                data.scene,
+                data.camera
+            );
+        }
+    });
+}
+
+function renderMainScene() {
+
+    composer.render();
+}
+
 addChildScenes(mainSceneData);
 
 window.renderer =
@@ -204,54 +256,21 @@ camera.lookAt(...cam_lookAt);
 
 let timers = [0];
 function run() {
+
     setTimeout(() => {
 
-        const deltaTime = clock.getDelta();
+        const deltaTime =
+            clock.getDelta();
 
         moveCamera();
 
-        renderer.clear();
+        updateActiveScenes(
+            deltaTime
+        );
 
-
-        activeSceneStack.forEach((data, i) => {
-
-            if (i !== 0) {
-
-                data.camera.quaternion.copy(
-                    activeSceneStack[0].camera.quaternion
-                );
-
-                data.camera.position
-                    .copy(activeSceneStack[0].camera.position)
-                    .multiplyScalar(1 / data.scale);
-
-                renderer.clearDepth();
-            }
-
-            data.checkCollision?.();
-
-            data.update?.(deltaTime);
-
-            if (activeSceneStack.length === 1 &&
-                data === mainSceneData) {
-                composer.render();
-            }
-
-            else if (data === mainSceneData && timers[0]++ >= 10) {
-                timers[0] = 0;
-                composer.render();
-
-            } else {
-
-                renderer.render(
-                    data.scene,
-                    data.camera
-                );
-            }
-        });
+        renderActiveScenes();
 
         run();
 
     }, 10);
 }
-
