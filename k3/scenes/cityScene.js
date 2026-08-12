@@ -154,31 +154,11 @@ const citySceneData = new SceneData({
                     )
                 );
 
+            const minBranchLength =
+                availableRadius * 0.45;
 
-            // Cylinders themselves become
-            // shorter toward the top.
-            const cylinderLength =
-                availableRadius * 0.72;
-
-
-            const cylinderRadius =
-                Math.max(
-                    baseRadius * 0.025,
-                    cylinderLength * 0.065
-                );
-
-
-            const geometry =
-                new THREE.CylinderGeometry(
-
-                    cylinderRadius,
-                    cylinderRadius,
-
-                    cylinderLength,
-
-                    12
-
-                );
+            const maxBranchLength =
+                availableRadius * 0.95;
 
 
             for (
@@ -186,6 +166,31 @@ const citySceneData = new SceneData({
                 i < spokeCount;
                 i++
             ) {
+
+                const cylinderLength =
+                    THREE.MathUtils.lerp(
+                        minBranchLength,
+                        maxBranchLength,
+                        Math.random()
+                    );
+
+                const cylinderRadius =
+                    Math.max(
+                        baseRadius * 0.025,
+                        availableRadius * 0.06
+                    );
+
+                const geometry =
+                    new THREE.CylinderGeometry(
+
+                        cylinderRadius,
+                        cylinderRadius,
+
+                        cylinderLength,
+
+                        12
+
+                    );
 
                 // Offset alternating tiers
                 // so they don't make straight columns.
