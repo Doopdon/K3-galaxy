@@ -48,8 +48,7 @@ const mirrorSceneData = new SceneData({
             this.scene.environment =
                 environmentTexture;
 
-            this.scene.environmentIntensity =
-                0.5;
+            this.scene.environmentIntensity = 0.1;
         }
 
 
@@ -762,23 +761,23 @@ mirrorSceneData.makeDottedConnection =
         const material =
             new THREE.PointsMaterial({
 
-                size: 2,
+                size: 10,
 
-                sizeAttenuation:
-                    false,
+                sizeAttenuation: false,
 
-                vertexColors:
-                    true,
+                map: this.getCornerGlowTexture(),
 
-                transparent:
-                    true,
+                transparent: true,
 
-                opacity:
-                    0.9,
+                opacity: 0.9,
 
-                depthWrite:
-                    false
+                depthWrite: false,
 
+                blending: THREE.AdditiveBlending,
+
+                vertexColors: true,
+
+                alphaTest: 0.01
             });
 
 
