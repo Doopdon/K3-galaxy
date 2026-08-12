@@ -320,7 +320,7 @@ class SceneData {
             collider.geometry.type ===
             "CylinderGeometry"
         ) {
-
+            console.log('CylinderGeometry')
             const params =
                 collider.geometry.parameters;
 
@@ -463,33 +463,101 @@ class SceneData {
         );
     }
 
-    checkCollision() {
+    isCameraInsideCollider(collider) {
 
-        this.scene.updateMatrixWorld(true);
+        if (!collider.geometry) {
+            return false;
+        }
 
 
-        const currentPosition =
+        // Camera position in world space
+        const cameraWorld =
             new THREE.Vector3();
 
         this.camera.getWorldPosition(
-            currentPosition
+            cameraWorld
         );
 
 
-        // First frame has nothing to compare against.
-        if (
-            !this.hasPreviousCollisionPosition
-        ) {
-
-            this.previousCollisionPosition.copy(
-                currentPosition
+        // Convert camera position into the
+        // collider's own local coordinate system.
+        const local =
+            collider.worldToLocal(
+                cameraWorld.clone()
             );
 
-            this.hasPreviousCollisionPosition =
-                true;
 
-            return;
+        // --------------------------------
+        // CYLINDER
+        // --------------------------------
+
+        if (
+            collider.geometry.type ===
+            "CylinderGeometry"
+        ) {
+
+            const params =
+                collider.geometry.parameters;
+
+
+            const radius =
+                Math.max(
+                    params.radiusTop,
+                    params.radiusBottom
+                );
+
+
+            const halfHeight =
+                params.height * 0.5;
+
+
+            // CylinderGeometry's long axis is Y
+            // in its own local coordinate system.
+            const radialDistanceSquared =
+                local.x * local.x +
+                local.z * local.z;
+
+
+            const insideRadius =
+                radialDistanceSquared <=
+                radius * radius;
+
+
+            const insideLength =
+                Math.abs(local.y) <=
+                halfHeight;
+
+
+            return (
+                insideRadius &&
+                insideLength
+            );
         }
+
+
+        // --------------------------------
+        // GENERIC GEOMETRY
+        // --------------------------------
+
+        if (
+            !collider.geometry.boundingBox
+        ) {
+
+            collider.geometry
+                .computeBoundingBox();
+        }
+
+
+        return collider.geometry
+            .boundingBox
+            .containsPoint(
+                local
+            );
+    }
+
+    checkCollision() {
+
+        this.scene.updateMatrixWorld(true);
 
 
         // --------------------------------
@@ -498,17 +566,18 @@ class SceneData {
 
         if (this.activeCollider) {
 
-            const position =
-                new THREE.Vector3();
-
-            this.activeCollider.getWorldPosition(
-                position
-            );
-
-
+            // Distance FROM THE COLLIDER,
+            // not distance from its center.
+            //
+            // For geometry:
+            // 0 while inside
+            // then grows as we move away.
+            //
+            // For point colliders:
+            // normal center distance.
             const distance =
-                currentPosition.distanceTo(
-                    position
+                this.getColliderDistance(
+                    this.activeCollider
                 );
 
 
@@ -517,26 +586,37 @@ class SceneData {
                 this.disapearDistance
             ) {
 
+                console.log(
+                    "LEAVE COLLIDER",
+                    "scene:",
+                    this.scale,
+                    "distance:",
+                    distance
+                );
+
                 this.leaveCollider();
             }
-
-
-            this.previousCollisionPosition.copy(
-                currentPosition
-            );
 
             return;
         }
 
 
         // --------------------------------
-        // CHECK CAMERA MOVEMENT PATH
+        // LOOK FOR COLLIDERS
         // --------------------------------
+
+        const cameraWorld =
+            new THREE.Vector3();
+
+        this.camera.getWorldPosition(
+            cameraWorld
+        );
+
 
         let bestCollider =
             null;
 
-        let bestHitDistance =
+        let bestCenterDistance =
             Infinity;
 
 
@@ -550,69 +630,81 @@ class SceneData {
                     ?.collisionType === "point";
 
 
-            // Stars/mirrors/etc keep using
-            // cheap point collision.
+            let collided =
+                false;
+
+
+            // ----------------------------
+            // POINT COLLIDER
+            // ----------------------------
+
             if (isPoint) {
 
-                const position =
-                    new THREE.Vector3();
-
-                collider.getWorldPosition(
-                    position
-                );
-
-
                 const distance =
-                    currentPosition.distanceTo(
-                        position
+                    this.getColliderDistance(
+                        collider
                     );
 
 
-                if (
+                collided =
                     distance <
-                    this.disapearDistance &&
-                    distance <
-                    bestHitDistance
-                ) {
-
-                    bestCollider =
-                        collider;
-
-                    bestHitDistance =
-                        distance;
-                }
+                    this.disapearDistance;
+            }
 
 
+            // ----------------------------
+            // GEOMETRY COLLIDER
+            // ----------------------------
+
+            else {
+
+                collided =
+                    this.isCameraInsideCollider(
+                        collider
+                    );
+            }
+
+
+            if (!collided) {
                 continue;
             }
 
 
-            // Actual swept geometry collision.
-            const hit =
-                this.cameraPathIntersectsCollider(
-                    collider,
-                    this.previousCollisionPosition,
-                    currentPosition
+            // --------------------------------
+            // IF MULTIPLE BOXES OVERLAP,
+            // PICK NEAREST CENTER
+            // --------------------------------
+
+            const center =
+                new THREE.Vector3();
+
+            collider.getWorldPosition(
+                center
+            );
+
+
+            const centerDistance =
+                cameraWorld.distanceTo(
+                    center
                 );
 
 
             if (
-                hit &&
-                hit.distance <
-                bestHitDistance
+                centerDistance <
+                bestCenterDistance
             ) {
 
                 bestCollider =
                     collider;
 
-                bestHitDistance =
-                    hit.distance;
+                bestCenterDistance =
+                    centerDistance;
             }
         }
 
 
         // --------------------------------
-        // ENTER WHATEVER WE ACTUALLY HIT
+        // ENTER ONLY ONE
         // --------------------------------
 
         if (bestCollider) {
@@ -625,16 +717,71 @@ class SceneData {
             );
 
 
+            console.log(
+                "ENTER COLLIDER",
+                "scene:",
+                this.scale,
+                "index:",
+                this.colliders.indexOf(
+                    bestCollider
+                ),
+                "geometry:",
+                bestCollider.geometry?.type
+            );
+
+
             this.enterCollider(
                 bestCollider,
                 position
             );
         }
+    }
+
+    drawCollisionPath(
+        previousPosition,
+        currentPosition
+    ) {
+
+        if (this.debugCollisionLine) {
+
+            this.scene.remove(
+                this.debugCollisionLine
+            );
+
+            this.debugCollisionLine
+                .geometry
+                .dispose();
+        }
 
 
-        // Save for next frame.
-        this.previousCollisionPosition.copy(
-            currentPosition
+        const geometry =
+            new THREE.BufferGeometry()
+                .setFromPoints([
+                    previousPosition,
+                    currentPosition
+                ]);
+
+
+        const material =
+            new THREE.LineBasicMaterial({
+                color: 0xff0000,
+                depthTest: false
+            });
+
+
+        this.debugCollisionLine =
+            new THREE.Line(
+                geometry,
+                material
+            );
+
+
+        this.debugCollisionLine.renderOrder =
+            10000;
+
+
+        this.scene.add(
+            this.debugCollisionLine
         );
     }
 

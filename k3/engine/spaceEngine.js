@@ -15,26 +15,76 @@ function addChildScenes(parentSceneData) {
     });
 }
 
-function updateActiveScenes(deltaTime) {
+function updateActiveScenes(
+    deltaTime
+) {
 
-    activeSceneStack.forEach((data, i) => {
+    activeSceneStack.forEach(
+        (data, i) => {
 
-        if (i !== 0) {
+            // -------------------------
+            // SYNC CAMERA
+            // -------------------------
 
-            data.camera.quaternion.copy(
-                activeSceneStack[0].camera.quaternion
+            if (i !== 0) {
+
+                data.camera.quaternion.copy(
+                    activeSceneStack[0]
+                        .camera
+                        .quaternion
+                );
+
+                data.camera.position
+                    .copy(
+                        activeSceneStack[0]
+                            .camera
+                            .position
+                    )
+                    .multiplyScalar(
+                        1 / data.scale
+                    );
+            }
+
+
+            // -------------------------
+            // UPDATE SCENE FIRST
+            // -------------------------
+
+            data.update?.(
+                deltaTime
             );
 
-            data.camera.position
-                .copy(activeSceneStack[0].camera.position)
-                .multiplyScalar(1 / data.scale);
+
+            // updateCameraLock() may have
+            // moved the main camera, so sync
+            // the child camera once more.
+            if (i !== 0) {
+
+                data.camera.quaternion.copy(
+                    activeSceneStack[0]
+                        .camera
+                        .quaternion
+                );
+
+                data.camera.position
+                    .copy(
+                        activeSceneStack[0]
+                            .camera
+                            .position
+                    )
+                    .multiplyScalar(
+                        1 / data.scale
+                    );
+            }
+
+
+            // -------------------------
+            // NOW CHECK COLLISION
+            // -------------------------
+
+            data.checkCollision?.();
         }
-
-
-        data.checkCollision?.();
-
-        data.update?.(deltaTime);
-    });
+    );
 }
 
 function renderActiveScenes() {
