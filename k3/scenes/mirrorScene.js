@@ -10,26 +10,26 @@ const mirrorSceneData = new SceneData({
 
     populateScene: function () {
 
-        const parentMirror = this.parentCollider;
+        const parentMirror =
+            this.parentCollider;
 
         const scaleRatio =
             this.parentSceneData.scale /
             this.scale;
 
 
+        // --------------------------------
+        // MIRROR
+        // --------------------------------
+
         const mirror =
             parentMirror.clone();
 
-
-        // Clone parent's material
         mirror.material =
             parentMirror.material.clone();
 
-
         mirror.position.set(0, 0, 0);
-
         mirror.quaternion.identity();
-
 
         mirror.scale.copy(
             parentMirror.scale
@@ -40,7 +40,6 @@ const mirrorSceneData = new SceneData({
         );
 
 
-        // Give THIS scene the same environment
         const environmentTexture =
             this.parentSceneData.environmentTexture;
 
@@ -58,45 +57,809 @@ const mirrorSceneData = new SceneData({
 
         this.rootGroup.add(mirror);
 
-        const geometry =
-            new THREE.BoxGeometry(
-                0.4,
-                0.4,
-                0.4
-            );
 
-        const material =
-            new THREE.MeshBasicMaterial({
-                color: 0x00ff00
+        // --------------------------------
+        // GET MIRROR SIZE
+        // --------------------------------
+
+        mirror.geometry.computeBoundingBox();
+
+        const box =
+            mirror.geometry.boundingBox;
+
+        const mirrorHalfX =
+            (
+                box.max.x -
+                box.min.x
+            ) *
+            mirror.scale.x *
+            0.5;
+
+        const mirrorHalfY =
+            (
+                box.max.y -
+                box.min.y
+            ) *
+            mirror.scale.y *
+            0.5;
+
+        const mirrorHalfZ =
+            (
+                box.max.z -
+                box.min.z
+            ) *
+            mirror.scale.z *
+            0.5;
+
+
+        // --------------------------------
+        // PYRAMID CITIES
+        // --------------------------------
+
+        this.cityPyramids = [];
+        this.cityGlowData = [];
+        this.dotConnections = [];
+
+
+        // Move them slightly inward from
+        // the literal edge of the mirror.
+        const inset = 0.25;
+
+
+        const cityPositions = [
+
+            new THREE.Vector3(
+                mirrorHalfX,
+                -mirrorHalfY + inset,
+                -mirrorHalfZ + inset
+            ),
+
+            new THREE.Vector3(
+                mirrorHalfX,
+                -mirrorHalfY + inset,
+                mirrorHalfZ - inset
+            ),
+
+            new THREE.Vector3(
+                mirrorHalfX,
+                mirrorHalfY - inset,
+                -mirrorHalfZ + inset
+            ),
+
+            new THREE.Vector3(
+                mirrorHalfX,
+                mirrorHalfY - inset,
+                mirrorHalfZ - inset
+            )
+        ];
+
+
+        // Pyramid metal is shared by ALL cities.
+        // Much cheaper than making a new material
+        // for every pyramid.
+        const pyramidMaterial =
+            new THREE.MeshStandardMaterial({
+
+                color: 0x777788,
+
+                metalness: 0.95,
+
+                roughness: 0.22
             });
 
 
-        for (let x = 0; x < 2; x++) {
+        const cornerColors = [
 
-            for (let z = 0; z < 2; z++) {
+            0x33ddff, // cyan
+            0xff44bb, // pink
+            0xffbb33, // orange
+            0x66ff88  // green
 
-                const cube =
-                    new THREE.Mesh(
-                        geometry,
-                        material
-                    );
+        ];
 
-                cube.position.set(
-                    0.5,
-                    (x - 1) * 0.6,
-                    (z - 1) * 0.6
+
+        for (
+            let i = 0;
+            i < cityPositions.length;
+            i++
+        ) {
+
+            const pyramid =
+                this.makeCityPyramid(
+                    cityPositions[i],
+                    pyramidMaterial,
+                    cornerColors[i]
                 );
 
-                this.rootGroup.add(cube);
-                this.addCollider(cube);
-            }
+            this.rootGroup.add(
+                pyramid
+            );
+
+            this.addCollider(
+                pyramid
+            );
+
+            this.cityPyramids.push(
+                pyramid
+            );
         }
+
+
+        // --------------------------------
+        // TRAFFIC CONNECTIONS
+        // --------------------------------
+
+        // Around the perimeter...
+        this.makeDottedConnection(
+            this.cityPyramids[0],
+            this.cityPyramids[1]
+        );
+
+        this.makeDottedConnection(
+            this.cityPyramids[0],
+            this.cityPyramids[2]
+        );
+
+        this.makeDottedConnection(
+            this.cityPyramids[1],
+            this.cityPyramids[3]
+        );
+
+        this.makeDottedConnection(
+            this.cityPyramids[2],
+            this.cityPyramids[3]
+        );
+
+
+        // ...plus diagonals
+        this.makeDottedConnection(
+            this.cityPyramids[0],
+            this.cityPyramids[3]
+        );
+
+        this.makeDottedConnection(
+            this.cityPyramids[1],
+            this.cityPyramids[2]
+        );
     },
+
 
     animate: function (deltaTime) {
 
-        // nothing yet
+        this.updateDottedConnections(
+            deltaTime
+        );
 
+        this.animateCityGlows(
+            deltaTime
+        );
     }
 
 });
+
+mirrorSceneData.makeCityPyramid =
+    function (
+        position,
+        pyramidMaterial,
+        glowColor
+    ) {
+
+        const height = 0.65;
+        const radius = 0.24;
+
+
+        const pyramid =
+            new THREE.Mesh(
+
+                new THREE.ConeGeometry(
+                    radius,
+                    height,
+                    4
+                ),
+
+                pyramidMaterial
+            );
+
+
+        // ConeGeometry normally points upward
+        // on Y.
+        //
+        // Rotate it so it sticks OUT from
+        // the mirror along +X.
+        pyramid.rotation.z =
+            -Math.PI / 2;
+
+
+        // Because position represents the
+        // mirror surface, move the pyramid
+        // half its height outward.
+        pyramid.position.copy(
+            position
+        );
+
+        pyramid.position.x +=
+            height * 0.5;
+
+
+        // --------------------------------
+        // GLOWING CORNERS
+        // --------------------------------
+
+        const cornerMaterial =
+            new THREE.MeshBasicMaterial({
+                color: glowColor
+            });
+
+
+        const glowMaterial =
+            new THREE.SpriteMaterial({
+
+                map:
+                    this.getCornerGlowTexture(),
+
+                color:
+                    glowColor,
+
+                transparent:
+                    true,
+
+                depthWrite:
+                    false,
+
+                blending:
+                    THREE.AdditiveBlending
+            });
+
+
+        // Tip
+        const corners = [
+
+            new THREE.Vector3(
+                0,
+                height / 2,
+                0
+            )
+
+        ];
+
+
+        // Four base corners
+        for (let i = 0; i < 4; i++) {
+
+            const angle =
+                i / 4 *
+                Math.PI *
+                2;
+
+            corners.push(
+
+                new THREE.Vector3(
+
+                    Math.cos(angle) *
+                    radius,
+
+                    -height / 2,
+
+                    Math.sin(angle) *
+                    radius
+                )
+
+            );
+        }
+
+
+        for (const position of corners) {
+
+            // Bright solid center
+            const orb =
+                new THREE.Mesh(
+
+                    new THREE.SphereGeometry(
+                        0.035,
+                        8,
+                        8
+                    ),
+
+                    cornerMaterial
+                );
+
+            orb.position.copy(
+                position
+            );
+
+            pyramid.add(
+                orb
+            );
+
+
+            // Cheap fake glow around it
+            const glow =
+                new THREE.Sprite(
+                    glowMaterial
+                );
+
+            glow.position.copy(
+                position
+            );
+
+            glow.scale.set(
+                0.16,
+                0.16,
+                1
+            );
+
+            pyramid.add(
+                glow
+            );
+
+
+            this.cityGlowData.push({
+
+                orb: orb,
+
+                glow: glow,
+
+                phase:
+                    Math.random() *
+                    Math.PI *
+                    2
+
+            });
+        }
+
+
+        return pyramid;
+    };
+
+mirrorSceneData.getCornerGlowTexture =
+    function () {
+
+        if (this.cornerGlowTexture) {
+
+            return this.cornerGlowTexture;
+        }
+
+
+        const canvas =
+            document.createElement(
+                "canvas"
+            );
+
+        canvas.width = 64;
+        canvas.height = 64;
+
+
+        const ctx =
+            canvas.getContext("2d");
+
+
+        const gradient =
+            ctx.createRadialGradient(
+                32,
+                32,
+                0,
+
+                32,
+                32,
+                32
+            );
+
+
+        gradient.addColorStop(
+            0.0,
+            "rgba(255,255,255,1)"
+        );
+
+        gradient.addColorStop(
+            0.25,
+            "rgba(255,255,255,0.8)"
+        );
+
+        gradient.addColorStop(
+            0.6,
+            "rgba(255,255,255,0.2)"
+        );
+
+        gradient.addColorStop(
+            1.0,
+            "rgba(255,255,255,0)"
+        );
+
+
+        ctx.fillStyle =
+            gradient;
+
+        ctx.fillRect(
+            0,
+            0,
+            64,
+            64
+        );
+
+
+        this.cornerGlowTexture =
+            new THREE.CanvasTexture(
+                canvas
+            );
+
+
+        return this.cornerGlowTexture;
+    };
+
+mirrorSceneData.makeDottedConnection =
+    function (a, b) {
+
+        const dotsPerDirection = 5;
+
+        const totalDots =
+            dotsPerDirection * 2;
+
+
+        const positions =
+            new Float32Array(
+                totalDots * 3
+            );
+
+
+        const colors =
+            new Float32Array(
+                totalDots * 3
+            );
+
+
+        const colorForward =
+            new THREE.Color(
+                0x44ddff
+            );
+
+        const colorBackward =
+            new THREE.Color(
+                0xff55cc
+            );
+
+
+        for (
+            let i = 0;
+            i < dotsPerDirection;
+            i++
+        ) {
+
+            colors.set(
+                [
+                    colorForward.r,
+                    colorForward.g,
+                    colorForward.b
+                ],
+                i * 3
+            );
+        }
+
+
+        for (
+            let i = dotsPerDirection;
+            i < totalDots;
+            i++
+        ) {
+
+            colors.set(
+                [
+                    colorBackward.r,
+                    colorBackward.g,
+                    colorBackward.b
+                ],
+                i * 3
+            );
+        }
+
+
+        const geometry =
+            new THREE.BufferGeometry();
+
+
+        geometry.setAttribute(
+
+            "position",
+
+            new THREE.BufferAttribute(
+                positions,
+                3
+            )
+        );
+
+
+        geometry.setAttribute(
+
+            "color",
+
+            new THREE.BufferAttribute(
+                colors,
+                3
+            )
+        );
+
+
+        const material =
+            new THREE.PointsMaterial({
+
+                size: 2,
+
+                sizeAttenuation:
+                    false,
+
+                vertexColors:
+                    true,
+
+                transparent:
+                    true,
+
+                opacity:
+                    0.9,
+
+                depthWrite:
+                    false
+
+            });
+
+
+        const dots =
+            new THREE.Points(
+                geometry,
+                material
+            );
+
+
+        this.rootGroup.add(
+            dots
+        );
+
+
+        this.dotConnections.push({
+
+            a: a,
+
+            b: b,
+
+            phase:
+                Math.random(),
+
+            speed:
+                0.2 +
+                Math.random() *
+                0.15,
+
+            dots:
+                dots,
+
+            dotsPerDirection:
+                dotsPerDirection
+
+        });
+    };
+
+mirrorSceneData.updateDottedConnections =
+    function (deltaTime) {
+
+        if (!this.dotConnections) {
+            return;
+        }
+
+
+        const a =
+            new THREE.Vector3();
+
+        const b =
+            new THREE.Vector3();
+
+        const direction =
+            new THREE.Vector3();
+
+        const perpendicular =
+            new THREE.Vector3();
+
+
+        for (
+            const connection
+            of this.dotConnections
+        ) {
+
+            connection.phase +=
+                deltaTime *
+                connection.speed;
+
+            connection.phase %= 1;
+
+
+            connection.a.getWorldPosition(
+                a
+            );
+
+            connection.b.getWorldPosition(
+                b
+            );
+
+
+            this.rootGroup.worldToLocal(
+                a
+            );
+
+            this.rootGroup.worldToLocal(
+                b
+            );
+
+
+            direction
+                .subVectors(
+                    b,
+                    a
+                );
+
+
+            // Create a sideways direction
+            // in the mirror's Y/Z plane.
+            perpendicular.set(
+
+                0,
+
+                -direction.z,
+
+                direction.y
+            );
+
+
+            if (
+                perpendicular.lengthSq() >
+                0.00001
+            ) {
+
+                perpendicular
+                    .normalize()
+                    .multiplyScalar(
+                        0.035
+                    );
+            }
+
+
+            const positions =
+                connection.dots
+                    .geometry
+                    .attributes
+                    .position;
+
+
+            const count =
+                connection
+                    .dotsPerDirection;
+
+
+            // -----------------------------
+            // FORWARD TRAFFIC
+            // -----------------------------
+
+            for (
+                let i = 0;
+                i < count;
+                i++
+            ) {
+
+                const t =
+                    (
+                        i / count +
+                        connection.phase
+                    ) % 1;
+
+
+                positions.setXYZ(
+
+                    i,
+
+                    THREE.MathUtils.lerp(
+                        a.x,
+                        b.x,
+                        t
+                    ) +
+                    perpendicular.x,
+
+                    THREE.MathUtils.lerp(
+                        a.y,
+                        b.y,
+                        t
+                    ) +
+                    perpendicular.y,
+
+                    THREE.MathUtils.lerp(
+                        a.z,
+                        b.z,
+                        t
+                    ) +
+                    perpendicular.z
+                );
+            }
+
+
+            // -----------------------------
+            // RETURN TRAFFIC
+            // -----------------------------
+
+            for (
+                let i = 0;
+                i < count;
+                i++
+            ) {
+
+                let t =
+                    (
+                        i / count -
+                        connection.phase
+                    ) % 1;
+
+                if (t < 0) {
+                    t += 1;
+                }
+
+
+                positions.setXYZ(
+
+                    count + i,
+
+                    THREE.MathUtils.lerp(
+                        a.x,
+                        b.x,
+                        t
+                    ) -
+                    perpendicular.x,
+
+                    THREE.MathUtils.lerp(
+                        a.y,
+                        b.y,
+                        t
+                    ) -
+                    perpendicular.y,
+
+                    THREE.MathUtils.lerp(
+                        a.z,
+                        b.z,
+                        t
+                    ) -
+                    perpendicular.z
+                );
+            }
+
+
+            positions.needsUpdate =
+                true;
+        }
+    };
+
+mirrorSceneData.animateCityGlows =
+    function (deltaTime) {
+
+        if (!this.cityGlowData) {
+            return;
+        }
+
+
+        for (
+            const glow
+            of this.cityGlowData
+        ) {
+
+            glow.phase +=
+                deltaTime *
+                1.5;
+
+
+            const pulse =
+                1 +
+                Math.sin(
+                    glow.phase
+                ) *
+                0.08;
+
+
+            glow.glow.scale.set(
+                0.16 * pulse,
+                0.16 * pulse,
+                1
+            );
+        }
+    };
