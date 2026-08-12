@@ -108,35 +108,60 @@ const mirrorSceneData = new SceneData({
 
         // Move them slightly inward from
         // the literal edge of the mirror.
+        const cityPositions =
+            this.getMirrorCorners(
+                mirror
+            );
+
+
         const inset = 0.25;
 
 
-        const cityPositions = [
+        // Find polygon center
+        const center =
+            new THREE.Vector3();
 
-            new THREE.Vector3(
-                mirrorHalfX,
-                -mirrorHalfY + inset,
-                -mirrorHalfZ + inset
-            ),
+        for (const position of cityPositions) {
 
-            new THREE.Vector3(
-                mirrorHalfX,
-                -mirrorHalfY + inset,
-                mirrorHalfZ - inset
-            ),
+            center.add(
+                position
+            );
+        }
 
-            new THREE.Vector3(
-                mirrorHalfX,
-                mirrorHalfY - inset,
-                -mirrorHalfZ + inset
-            ),
+        center.divideScalar(
+            cityPositions.length
+        );
 
-            new THREE.Vector3(
-                mirrorHalfX,
-                mirrorHalfY - inset,
-                mirrorHalfZ - inset
-            )
-        ];
+
+        // Move every city slightly toward
+        // the center of the polygon.
+        for (const position of cityPositions) {
+
+            const inward =
+                new THREE.Vector3(
+                    0,
+                    center.y - position.y,
+                    center.z - position.z
+                );
+
+            if (
+                inward.lengthSq() >
+                0
+            ) {
+
+                inward
+                    .normalize()
+                    .multiplyScalar(
+                        inset
+                    );
+
+                position.add(
+                    inward
+                );
+            }
+        }
+
+
 
 
         // Pyramid metal is shared by ALL cities.
@@ -173,7 +198,11 @@ const mirrorSceneData = new SceneData({
                 this.makeCityPyramid(
                     cityPositions[i],
                     pyramidMaterial,
-                    cornerColors[i]
+
+                    cornerColors[
+                    i %
+                    cornerColors.length
+                    ]
                 );
 
             this.rootGroup.add(
@@ -245,6 +274,137 @@ const mirrorSceneData = new SceneData({
     }
 
 });
+
+mirrorSceneData.getMirrorCorners =
+    function (mirror) {
+
+        const geometry =
+            mirror.geometry;
+
+        const positions =
+            geometry.attributes.position;
+
+
+        geometry.computeBoundingBox();
+
+        // The inhabited/front surface of the
+        // mirror is the +X face.
+        const frontX =
+            geometry.boundingBox.max.x;
+
+
+        const tolerance = 0.0001;
+
+        const corners = [];
+
+
+        for (
+            let i = 0;
+            i < positions.count;
+            i++
+        ) {
+
+            const x =
+                positions.getX(i);
+
+            // Only look at vertices on
+            // the front face.
+            if (
+                Math.abs(
+                    x - frontX
+                ) > tolerance
+            ) {
+                continue;
+            }
+
+
+            const y =
+                positions.getY(i);
+
+            const z =
+                positions.getZ(i);
+
+
+            // ExtrudeGeometry duplicates
+            // vertices internally, so remove
+            // duplicates.
+            const alreadyExists =
+                corners.some(
+                    corner =>
+                        Math.abs(corner.y - y) <
+                        tolerance &&
+                        Math.abs(corner.z - z) <
+                        tolerance
+                );
+
+
+            if (!alreadyExists) {
+
+                corners.push(
+                    new THREE.Vector3(
+                        x,
+                        y,
+                        z
+                    )
+                );
+            }
+        }
+
+
+        // Put them in perimeter order.
+        // Important later for connecting
+        // neighboring cities.
+        let centerY = 0;
+        let centerZ = 0;
+
+        for (const corner of corners) {
+
+            centerY += corner.y;
+            centerZ += corner.z;
+        }
+
+        centerY /= corners.length;
+        centerZ /= corners.length;
+
+
+        corners.sort(
+            (a, b) => {
+
+                const angleA =
+                    Math.atan2(
+                        a.z - centerZ,
+                        a.y - centerY
+                    );
+
+                const angleB =
+                    Math.atan2(
+                        b.z - centerZ,
+                        b.y - centerY
+                    );
+
+                return angleA - angleB;
+            }
+        );
+
+
+        // Geometry coordinates need to be
+        // converted into this child scene's
+        // scaled mirror coordinates.
+        for (const corner of corners) {
+
+            corner.x *=
+                mirror.scale.x;
+
+            corner.y *=
+                mirror.scale.y;
+
+            corner.z *=
+                mirror.scale.z;
+        }
+
+
+        return corners;
+    };
 
 mirrorSceneData.makeMirrorFieldDots =
     function (

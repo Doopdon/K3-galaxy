@@ -382,12 +382,20 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
         const mirrorThickness =
             0.01 + Math.random() * 0.02;
 
+        const sideCount =
+            5 +
+            Math.floor(
+                Math.random() * 6
+            );
+
+        // 5 through 10 sides
         const mirror = new THREE.Mesh(
 
-            new THREE.BoxGeometry(
-                mirrorThickness, // X = thin, points toward sun
-                mirrorWidth,     // Y
-                mirrorHeight     // Z
+            makeIrregularNgonGeometry(
+                mirrorWidth,
+                mirrorHeight,
+                mirrorThickness,
+                sideCount
             ),
 
             new THREE.MeshPhysicalMaterial({
@@ -453,3 +461,81 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
         });
     }
 };
+
+function makeIrregularNgonGeometry(
+    width,
+    height,
+    thickness,
+    sides
+) {
+
+    const points = [];
+
+    for (let i = 0; i < sides; i++) {
+
+        // Base angle around the polygon
+        const angle =
+            (i / sides) *
+            Math.PI *
+            2;
+
+        // Random distance from center.
+        // This is what gives us unequal side lengths.
+        const radius =
+            0.65 +
+            Math.random() * 0.35;
+
+        const x =
+            Math.cos(angle) *
+            width *
+            0.5 *
+            radius;
+
+        const y =
+            Math.sin(angle) *
+            height *
+            0.5 *
+            radius;
+
+        points.push(
+            new THREE.Vector2(
+                x,
+                y
+            )
+        );
+    }
+
+
+    const shape =
+        new THREE.Shape(points);
+
+
+    const geometry =
+        new THREE.ExtrudeGeometry(
+            shape,
+            {
+                depth: thickness,
+                bevelEnabled: false
+            }
+        );
+
+
+    // ExtrudeGeometry is thin along Z by default.
+    //
+    // Rotate it so the thin direction becomes X,
+    // matching your old BoxGeometry:
+    //
+    // X = thickness / points toward sun
+    // Y = polygon height
+    // Z = polygon width
+    geometry.rotateY(
+        Math.PI / 2
+    );
+
+
+    // Put the polygon's center at its local origin.
+    geometry.center();
+
+
+    return geometry;
+}
