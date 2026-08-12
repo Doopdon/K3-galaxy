@@ -237,7 +237,6 @@ class SceneData {
 
     enterCollider(collider, worldPosition) {
         // any extra functionality to call when enetering an object.
-        console.log('enterCollider')
         this.onColide?.(collider, worldPosition)
 
         const subScene = this.getSubSceneData(collider);

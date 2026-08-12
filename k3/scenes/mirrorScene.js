@@ -6,7 +6,7 @@ const mirrorSceneData = new SceneData({
 
     disapearDistance: 1.0,
 
-    childScenes: [],
+    childScenes: [citySceneData],
 
     populateScene: function () {
 
@@ -88,6 +88,7 @@ const mirrorSceneData = new SceneData({
                 );
 
                 this.rootGroup.add(cube);
+                this.addCollider(cube);
             }
         }
     },
