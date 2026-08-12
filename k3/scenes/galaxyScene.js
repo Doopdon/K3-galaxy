@@ -941,7 +941,7 @@ const galaxySceneData = new GalaxySceneData({
 
     populateScene: function () {
 
-        const STAR_COUNT = 10000;
+        const STAR_COUNT = 50000;
         const GALAXY_RADIUS = 650;
         const GALAXY_THICKNESS = 48;
         const ARM_COUNT = 2;
