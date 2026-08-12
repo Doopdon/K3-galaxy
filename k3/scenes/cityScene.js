@@ -237,9 +237,9 @@ const citySceneData = new SceneData({
 
                 const colliderGeometry =
                     new THREE.BoxGeometry(
-                        cylinderRadius * 2,
-                        cylinderLength,
-                        cylinderRadius * 2
+                        cylinderRadius * 5,
+                        cylinderLength * 2,
+                        cylinderRadius * 5
                     );
 
 
@@ -274,9 +274,9 @@ const citySceneData = new SceneData({
 
                 // Draw the debug wireframe around
                 // the actual box collider.
-                showCollider(
-                    collider
-                );
+                // showCollider(
+                //     collider
+                // );
 
 
                 // Position it halfway outward
