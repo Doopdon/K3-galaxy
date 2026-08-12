@@ -4,7 +4,7 @@ const cylinderSceneData = new SceneData({
 
     timescale: 10,
 
-    disapearDistance: 0.1,
+    disapearDistance: 0.05,
 
     childScenes: [],
 

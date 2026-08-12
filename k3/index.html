@@ -21,6 +21,56 @@
         window.RenderPass = RenderPass;
         window.UnrealBloomPass = UnrealBloomPass;
 
+        window.colliderDebugMaterial =
+            new THREE.MeshBasicMaterial({
+
+                color: 0x00ff00,
+
+                wireframe: true,
+
+                transparent: true,
+
+                opacity: 0.8,
+
+                depthTest: false,
+
+                depthWrite: false
+            });
+
+
+        window.showCollider = function(collider) {
+
+            if (!collider.geometry) {
+                return;
+            }
+
+
+            const debugMesh =
+                new THREE.Mesh(
+                    collider.geometry,
+                    colliderDebugMaterial
+                );
+
+
+            // Slightly enlarge it so the wireframe
+            // doesn't fight with the visible surface.
+            debugMesh.scale.setScalar(
+                1.01
+            );
+
+
+            debugMesh.renderOrder =
+                999;
+
+
+            // Since it is a child of the collider,
+            // it automatically gets the exact same
+            // position + rotation + scale.
+            collider.add(
+                debugMesh
+            );
+        }
+
 
         function loadScript(path) {
 

@@ -226,6 +226,8 @@ const citySceneData = new SceneData({
 
                     );
 
+                showCollider(cylinder)    
+
                 this.addCollider(cylinder)
 
 
