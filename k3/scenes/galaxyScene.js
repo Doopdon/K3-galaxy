@@ -854,7 +854,9 @@ function buildGalaxyConnectionNetwork(
                     depthWrite: false,
 
                     blending:
-                        THREE.AdditiveBlending
+                        THREE.AdditiveBlending,
+
+                    fog: true
                 });
 
 
@@ -939,7 +941,7 @@ const galaxySceneData = new GalaxySceneData({
 
     populateScene: function () {
 
-        const STAR_COUNT = 130000;
+        const STAR_COUNT = 50000;
         const GALAXY_RADIUS = 650;
         const GALAXY_THICKNESS = 48;
         const ARM_COUNT = 2;
@@ -1090,7 +1092,7 @@ const galaxySceneData = new GalaxySceneData({
         geometry.computeBoundingSphere();
 
         const material = new THREE.PointsMaterial({
-            size: 1.5,
+            size: .75,
             sizeAttenuation: true,
             map: makeStarTexture(),
             transparent: true,
@@ -1098,7 +1100,9 @@ const galaxySceneData = new GalaxySceneData({
             alphaTest: 0.01,
             depthWrite: false,
             blending: THREE.AdditiveBlending,
-            vertexColors: true
+            vertexColors: true,
+
+            fog: false
         });
 
         const stars = new THREE.Points(geometry, material);
@@ -1137,5 +1141,11 @@ galaxySceneData.onColide = function () {
     window.galaxySkyBox = captureSkybox(window.renderer, this.scene, this.camera.position)
 }
 
-galaxySceneData.scene.background = new THREE.Color(0x000003);
-galaxySceneData.scene.fog = new THREE.FogExp2(0x000003, 0.00008);
+galaxySceneData.scene.background =
+    new THREE.Color(0x000003);
+
+galaxySceneData.scene.fog =
+    new THREE.FogExp2(
+        0x000003,
+        0.00024
+    );
