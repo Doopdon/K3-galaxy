@@ -1036,6 +1036,9 @@ const galaxySceneData = new GalaxySceneData({
                     i
                 );
 
+            collider.userData.collisionType =
+                "point";
+
             this.addCollider(collider);
 
             positions[i3] = x;

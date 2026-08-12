@@ -442,6 +442,8 @@ solarSystemSceneData.makeOrbitingObjects = function (group) {
 
         group.add(pivot);
 
+        mirror.userData.collisionType = "point";
+
         this.addCollider(mirror);
 
 

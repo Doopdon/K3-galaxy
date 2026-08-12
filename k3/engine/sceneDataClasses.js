@@ -61,6 +61,7 @@ class SceneData {
         timescale = 1,
         disapearDistance = 1,
         childScenes = [],
+        collisionEnterDistance = 0.05,
         getSubSceneData,
         populateScene,
         animate
@@ -85,7 +86,7 @@ class SceneData {
         this.speedMultiplier = 1;
 
         this.disapearDistance = disapearDistance;
-
+        this.collisionEnterDistance = collisionEnterDistance;
         this.childScenes = childScenes;
 
 
@@ -188,23 +189,132 @@ class SceneData {
         return this.colliders;
     }
 
+    getColliderDistance(collider) {
+
+        const cameraWorld =
+            new THREE.Vector3();
+
+        this.camera.getWorldPosition(
+            cameraWorld
+        );
+
+
+        // --------------------------------
+        // CHEAP POINT COLLIDER
+        // --------------------------------
+
+        const isPoint =
+            collider.userData
+                ?.collisionType === "point";
+
+
+        if (isPoint) {
+
+            const colliderWorld =
+                new THREE.Vector3();
+
+            collider.getWorldPosition(
+                colliderWorld
+            );
+
+
+            return cameraWorld.distanceTo(
+                colliderWorld
+            );
+        }
+
+
+        // --------------------------------
+        // FALLBACK IF NO GEOMETRY
+        // --------------------------------
+
+        if (!collider.geometry) {
+
+            const colliderWorld =
+                new THREE.Vector3();
+
+            collider.getWorldPosition(
+                colliderWorld
+            );
+
+
+            return cameraWorld.distanceTo(
+                colliderWorld
+            );
+        }
+
+
+        // --------------------------------
+        // GEOMETRY COLLIDER
+        // --------------------------------
+
+        if (
+            !collider.geometry.boundingBox
+        ) {
+
+            collider.geometry
+                .computeBoundingBox();
+        }
+
+
+        const box =
+            collider.geometry.boundingBox;
+
+
+        // Convert camera into collider-local
+        // coordinates.
+        const cameraLocal =
+            collider.worldToLocal(
+                cameraWorld.clone()
+            );
+
+
+        // Find closest point on/in the
+        // collider's local bounding box.
+        const closestLocal =
+            cameraLocal.clone();
+
+        closestLocal.clamp(
+            box.min,
+            box.max
+        );
+
+
+        // Convert closest point back into
+        // world space.
+        const closestWorld =
+            collider.localToWorld(
+                closestLocal
+            );
+
+
+        return cameraWorld.distanceTo(
+            closestWorld
+        );
+    }
+
     checkCollision() {
 
         this.scene.updateMatrixWorld(true);
 
 
-        // Already inside something
+        // --------------------------------
+        // ALREADY INSIDE SOMETHING
+        // --------------------------------
+
         if (this.activeCollider) {
 
-            const position = new THREE.Vector3();
-
-            this.activeCollider.getWorldPosition(position);
-
             const distance =
-                this.camera.position.distanceTo(position);
+                this.getColliderDistance(
+                    this.activeCollider
+                );
 
 
-            if (distance > this.disapearDistance) {
+            if (
+                distance >
+                this.disapearDistance
+            ) {
+
                 this.leaveCollider();
             }
 
@@ -212,26 +322,69 @@ class SceneData {
         }
 
 
-        // Look for something to enter
-        for (const collider of this.getColliders()) {
+        // --------------------------------
+        // LOOK FOR SOMETHING TO ENTER
+        // --------------------------------
 
-            const position = new THREE.Vector3();
+        let closestCollider = null;
+        let closestDistance = Infinity;
+        let closestThreshold = 0;
 
-            collider.getWorldPosition(position);
+
+        for (
+            const collider
+            of this.getColliders()
+        ) {
 
             const distance =
-                this.camera.position.distanceTo(position);
-
-
-            if (distance < this.disapearDistance) {
-
-                this.enterCollider(
-                    collider,
-                    position
+                this.getColliderDistance(
+                    collider
                 );
 
-                return;
+
+            const isPoint =
+                collider.userData
+                    ?.collisionType ===
+                "point";
+
+
+            const threshold =
+                isPoint
+                    ? this.disapearDistance
+                    : this.collisionEnterDistance;
+
+
+            if (
+                distance < threshold &&
+                distance < closestDistance
+            ) {
+
+                closestCollider =
+                    collider;
+
+                closestDistance =
+                    distance;
+
+                closestThreshold =
+                    threshold;
             }
+        }
+
+
+        if (closestCollider) {
+
+            const position =
+                new THREE.Vector3();
+
+            closestCollider.getWorldPosition(
+                position
+            );
+
+
+            this.enterCollider(
+                closestCollider,
+                position
+            );
         }
     }
 

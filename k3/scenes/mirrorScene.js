@@ -209,6 +209,8 @@ const mirrorSceneData = new SceneData({
                 pyramid
             );
 
+            pyramid.userData.collisionType = "point";
+
             this.addCollider(
                 pyramid
             );
