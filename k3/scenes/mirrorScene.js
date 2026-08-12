@@ -56,24 +56,6 @@ const mirrorSceneData = new SceneData({
 
         this.rootGroup.add(mirror);
 
-        /// light scene up
-
-        // const worldLight =
-        //     new THREE.DirectionalLight(
-        //         0xffffff,
-        //         0.6
-        //     );
-
-        // worldLight.position.set(
-        //     5,
-        //     8,
-        //     4
-        // );
-
-        // this.rootGroup.add(
-        //     worldLight
-        // );
-
 
         // --------------------------------
         // GET MIRROR SIZE
