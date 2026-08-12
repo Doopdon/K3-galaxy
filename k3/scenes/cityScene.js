@@ -47,12 +47,6 @@ const citySceneData = new SceneData({
         );
 
 
-        console.log(
-            "CITY PYRAMID SIZE:",
-            size
-        );
-
-
         const height =
             size.y;
 

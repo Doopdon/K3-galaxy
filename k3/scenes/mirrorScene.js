@@ -101,9 +101,8 @@ const mirrorSceneData = new SceneData({
         this.backFieldDots = [];
 
         this.makeMirrorFieldDots(
-            mirrorHalfX,
-            mirrorHalfY,
-            mirrorHalfZ
+            mirror,
+            mirrorHalfX
         );
 
         // Move them slightly inward from
@@ -396,119 +395,239 @@ mirrorSceneData.getMirrorCorners =
 
 mirrorSceneData.makeMirrorFieldDots =
     function (
-        mirrorHalfX,
-        mirrorHalfY,
-        mirrorHalfZ
+        mirror,
+        mirrorHalfX
     ) {
 
-        const rows = 8;
-        const cols = 12;
+        const dotCount = 96;
 
-        const yMin =
-            -mirrorHalfY + 0.15;
-
-        const yMax =
-            mirrorHalfY - 0.15;
-
-        const zMin =
-            -mirrorHalfZ + 0.15;
-
-        const zMax =
-            mirrorHalfZ - 0.15;
+        // Get actual n-gon corners.
+        const corners =
+            this.getMirrorCorners(
+                mirror
+            );
 
 
-        // one plane on each side
+        // --------------------------------
+        // FIND Y/Z BOUNDING AREA
+        // --------------------------------
+
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        let minZ = Infinity;
+        let maxZ = -Infinity;
+
+
+        for (const corner of corners) {
+
+            minY =
+                Math.min(
+                    minY,
+                    corner.y
+                );
+
+            maxY =
+                Math.max(
+                    maxY,
+                    corner.y
+                );
+
+            minZ =
+                Math.min(
+                    minZ,
+                    corner.z
+                );
+
+            maxZ =
+                Math.max(
+                    maxZ,
+                    corner.z
+                );
+        }
+
+
+        // One field on each side
         const xPositions = [
-            -mirrorHalfX - 0.03, // back
-            mirrorHalfX + 0.03  // front
+
+            -mirrorHalfX - 0.03,
+
+            mirrorHalfX + 0.03
+
         ];
 
 
         for (const x of xPositions) {
 
-            for (let row = 0; row < rows; row++) {
-
-                for (let col = 0; col < cols; col++) {
-
-                    const y =
-                        THREE.MathUtils.lerp(
-                            yMin,
-                            yMax,
-                            row / (rows - 1)
-                        );
-
-                    const z =
-                        THREE.MathUtils.lerp(
-                            zMin,
-                            zMax,
-                            col / (cols - 1)
-                        );
+            let created = 0;
 
 
-                    const material =
-                        new THREE.SpriteMaterial({
+            while (
+                created <
+                dotCount
+            ) {
 
-                            map:
-                                this.getCornerGlowTexture(),
-
-                            color:
-                                0xff3344,
-
-                            transparent:
-                                true,
-
-                            opacity:
-                                0.5,
-
-                            depthWrite:
-                                false,
-
-                            blending:
-                                THREE.AdditiveBlending
-                        });
-
-
-                    const dot =
-                        new THREE.Sprite(
-                            material
-                        );
-
-                    dot.position.set(
-                        x,
-                        y + (Math.random() - 0.5) * 0.03,
-                        z + (Math.random() - 0.5) * 0.03
-                    );
-
-                    dot.scale.set(
-                        0.08,
-                        0.08,
-                        1
-                    );
-
-                    this.rootGroup.add(
-                        dot
+                // Pick random point in
+                // the bounding rectangle.
+                const y =
+                    THREE.MathUtils.lerp(
+                        minY,
+                        maxY,
+                        Math.random()
                     );
 
 
-                    this.backFieldDots.push({
+                const z =
+                    THREE.MathUtils.lerp(
+                        minZ,
+                        maxZ,
+                        Math.random()
+                    );
 
-                        dot: dot,
 
-                        baseScale:
-                            0.08,
-
-                        phase:
-                            Math.random() *
-                            Math.PI * 2,
-
-                        speed:
-                            1.0 +
-                            Math.random() * 2.0
-
-                    });
+                // Reject it if it landed
+                // outside the actual n-gon.
+                if (
+                    !this.pointInsideMirror(
+                        y,
+                        z,
+                        corners
+                    )
+                ) {
+                    continue;
                 }
+
+
+                const material =
+                    new THREE.SpriteMaterial({
+
+                        map:
+                            this.getCornerGlowTexture(),
+
+                        color:
+                            0xff3344,
+
+                        transparent:
+                            true,
+
+                        opacity:
+                            0.5,
+
+                        depthWrite:
+                            false,
+
+                        blending:
+                            THREE.AdditiveBlending
+                    });
+
+
+                const dot =
+                    new THREE.Sprite(
+                        material
+                    );
+
+
+                dot.position.set(
+                    x,
+                    y,
+                    z
+                );
+
+
+                dot.scale.set(
+                    0.08,
+                    0.08,
+                    1
+                );
+
+
+                this.rootGroup.add(
+                    dot
+                );
+
+
+                this.backFieldDots.push({
+
+                    dot: dot,
+
+                    baseScale:
+                        0.08,
+
+                    phase:
+                        Math.random() *
+                        Math.PI *
+                        2,
+
+                    speed:
+                        1.0 +
+                        Math.random() *
+                        2.0
+
+                });
+
+
+                created++;
             }
         }
+    };
+
+mirrorSceneData.pointInsideMirror =
+    function (
+        y,
+        z,
+        corners
+    ) {
+
+        let inside = false;
+
+
+        for (
+            let i = 0,
+                j = corners.length - 1;
+            i < corners.length;
+            j = i++
+        ) {
+
+            const yi =
+                corners[i].y;
+
+            const zi =
+                corners[i].z;
+
+            const yj =
+                corners[j].y;
+
+            const zj =
+                corners[j].z;
+
+
+            const intersects =
+                (
+                    (zi > z) !==
+                    (zj > z)
+                )
+                &&
+                (
+                    y <
+                    (
+                        (yj - yi) *
+                        (z - zi) /
+                        (zj - zi)
+                        +
+                        yi
+                    )
+                );
+
+
+            if (intersects) {
+
+                inside =
+                    !inside;
+            }
+        }
+
+
+        return inside;
     };
 
 mirrorSceneData.animateBackFieldDots =
@@ -553,8 +672,8 @@ mirrorSceneData.makeCityPyramid =
         pyramidMaterial,
     ) {
 
-        const height = 0.65/5;
-        const radius = 0.24/5;
+        const height = 0.65 / 5;
+        const radius = 0.24 / 5;
 
 
         const pyramid =
