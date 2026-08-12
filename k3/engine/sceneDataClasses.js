@@ -86,11 +86,7 @@ class SceneData {
         this.speedMultiplier = 1;
 
         this.disapearDistance = disapearDistance;
-        this.collisionEnterDistance = collisionEnterDistance;
         this.childScenes = childScenes;
-
-        this.previousCollisionPosition = new THREE.Vector3();
-        this.hasPreviousCollisionPosition = false;
 
 
         // Only these objects can be entered
@@ -120,67 +116,6 @@ class SceneData {
 
         this.rootGroup = new THREE.Group();
         this.scene.add(this.rootGroup);
-    }
-
-    cameraPathIntersectsCollider(
-        collider,
-        previousPosition,
-        currentPosition
-    ) {
-
-        if (!collider.geometry) {
-            return null;
-        }
-
-
-        const direction =
-            new THREE.Vector3()
-                .subVectors(
-                    currentPosition,
-                    previousPosition
-                );
-
-
-        const distance =
-            direction.length();
-
-
-        if (distance === 0) {
-            return null;
-        }
-
-
-        direction.normalize();
-
-
-        const raycaster =
-            new THREE.Raycaster(
-                previousPosition,
-                direction,
-
-                // start
-                0,
-
-                // STOP at current camera position
-                distance
-            );
-
-
-        const hits =
-            raycaster.intersectObject(
-                collider,
-                false
-            );
-
-
-        if (
-            hits.length === 0
-        ) {
-            return null;
-        }
-
-
-        return hits[0];
     }
 
     addCollider(object) {
@@ -264,15 +199,13 @@ class SceneData {
 
 
         // --------------------------------
-        // CHEAP POINT COLLIDER
+        // POINT COLLIDER
         // --------------------------------
 
-        const isPoint =
+        if (
             collider.userData
-                ?.collisionType === "point";
-
-
-        if (isPoint) {
+                ?.collisionType === "point"
+        ) {
 
             const colliderWorld =
                 new THREE.Vector3();
@@ -309,118 +242,7 @@ class SceneData {
 
 
         // --------------------------------
-        // REAL CYLINDER COLLISION
-        // --------------------------------
-
-        // --------------------------------
-        // REAL CYLINDER SKIN COLLISION
-        // --------------------------------
-
-        if (
-            collider.geometry.type ===
-            "CylinderGeometry"
-        ) {
-            console.log('CylinderGeometry')
-            const params =
-                collider.geometry.parameters;
-
-
-            const radius =
-                Math.max(
-                    params.radiusTop,
-                    params.radiusBottom
-                );
-
-
-            const halfHeight =
-                params.height * 0.5;
-
-
-            // Put camera into cylinder-local space.
-            const local =
-                collider.worldToLocal(
-                    cameraWorld.clone()
-                );
-
-
-            const radialDistance =
-                Math.sqrt(
-                    local.x * local.x +
-                    local.z * local.z
-                );
-
-
-            const absY =
-                Math.abs(
-                    local.y
-                );
-
-
-            // --------------------------------
-            // CAMERA IS INSIDE CYLINDER
-            // --------------------------------
-
-            if (
-                radialDistance <= radius &&
-                absY <= halfHeight
-            ) {
-
-                // Distance to curved side.
-                const sideDistance =
-                    radius -
-                    radialDistance;
-
-
-                // Distance to either end cap.
-                const capDistance =
-                    halfHeight -
-                    absY;
-
-
-                // We care about the NEAREST skin.
-                return Math.min(
-                    sideDistance,
-                    capDistance
-                );
-            }
-
-
-            // --------------------------------
-            // CAMERA IS OUTSIDE CYLINDER
-            // --------------------------------
-
-            const radialOutside =
-                Math.max(
-                    radialDistance - radius,
-                    0
-                );
-
-
-            const axialOutside =
-                Math.max(
-                    absY - halfHeight,
-                    0
-                );
-
-
-            // Outside near the side or cap,
-            // this gives the true distance.
-            //
-            // Outside beyond both at once,
-            // this gives distance to the rim.
-            return Math.sqrt(
-                radialOutside *
-                radialOutside
-                +
-                axialOutside *
-                axialOutside
-            );
-        }
-
-
-        // --------------------------------
-        // GENERIC GEOMETRY COLLISION
-        // Bounding box fallback
+        // GEOMETRY COLLIDER
         // --------------------------------
 
         if (
@@ -432,26 +254,26 @@ class SceneData {
         }
 
 
-        const box =
-            collider.geometry.boundingBox;
-
-
+        // Camera in collider-local space.
         const cameraLocal =
             collider.worldToLocal(
                 cameraWorld.clone()
             );
 
 
+        // Closest point on the box.
         const closestLocal =
-            cameraLocal.clone();
+            cameraLocal.clone()
+                .clamp(
+                    collider.geometry
+                        .boundingBox.min,
+
+                    collider.geometry
+                        .boundingBox.max
+                );
 
 
-        closestLocal.clamp(
-            box.min,
-            box.max
-        );
-
-
+        // Convert closest point back to world.
         const closestWorld =
             collider.localToWorld(
                 closestLocal
@@ -470,75 +292,6 @@ class SceneData {
         }
 
 
-        // Camera position in world space
-        const cameraWorld =
-            new THREE.Vector3();
-
-        this.camera.getWorldPosition(
-            cameraWorld
-        );
-
-
-        // Convert camera position into the
-        // collider's own local coordinate system.
-        const local =
-            collider.worldToLocal(
-                cameraWorld.clone()
-            );
-
-
-        // --------------------------------
-        // CYLINDER
-        // --------------------------------
-
-        if (
-            collider.geometry.type ===
-            "CylinderGeometry"
-        ) {
-
-            const params =
-                collider.geometry.parameters;
-
-
-            const radius =
-                Math.max(
-                    params.radiusTop,
-                    params.radiusBottom
-                );
-
-
-            const halfHeight =
-                params.height * 0.5;
-
-
-            // CylinderGeometry's long axis is Y
-            // in its own local coordinate system.
-            const radialDistanceSquared =
-                local.x * local.x +
-                local.z * local.z;
-
-
-            const insideRadius =
-                radialDistanceSquared <=
-                radius * radius;
-
-
-            const insideLength =
-                Math.abs(local.y) <=
-                halfHeight;
-
-
-            return (
-                insideRadius &&
-                insideLength
-            );
-        }
-
-
-        // --------------------------------
-        // GENERIC GEOMETRY
-        // --------------------------------
-
         if (
             !collider.geometry.boundingBox
         ) {
@@ -548,10 +301,26 @@ class SceneData {
         }
 
 
+        const cameraWorld =
+            new THREE.Vector3();
+
+        this.camera.getWorldPosition(
+            cameraWorld
+        );
+
+
+        // Transform the camera into the
+        // collider's local coordinate system.
+        const cameraLocal =
+            collider.worldToLocal(
+                cameraWorld.clone()
+            );
+
+
         return collider.geometry
             .boundingBox
             .containsPoint(
-                local
+                cameraLocal
             );
     }
 
@@ -566,15 +335,6 @@ class SceneData {
 
         if (this.activeCollider) {
 
-            // Distance FROM THE COLLIDER,
-            // not distance from its center.
-            //
-            // For geometry:
-            // 0 while inside
-            // then grows as we move away.
-            //
-            // For point colliders:
-            // normal center distance.
             const distance =
                 this.getColliderDistance(
                     this.activeCollider
@@ -585,14 +345,6 @@ class SceneData {
                 distance >
                 this.disapearDistance
             ) {
-
-                console.log(
-                    "LEAVE COLLIDER",
-                    "scene:",
-                    this.scale,
-                    "distance:",
-                    distance
-                );
 
                 this.leaveCollider();
             }
@@ -630,32 +382,23 @@ class SceneData {
                     ?.collisionType === "point";
 
 
-            let collided =
-                false;
+            let collided;
 
 
-            // ----------------------------
-            // POINT COLLIDER
-            // ----------------------------
-
+            // Point objects:
+            // stars, mirrors, pyramids, etc.
             if (isPoint) {
 
-                const distance =
+                collided =
                     this.getColliderDistance(
                         collider
-                    );
-
-
-                collided =
-                    distance <
+                    ) <
                     this.disapearDistance;
             }
 
 
-            // ----------------------------
-            // GEOMETRY COLLIDER
-            // ----------------------------
-
+            // Physical objects:
+            // box colliders.
             else {
 
                 collided =
@@ -670,11 +413,8 @@ class SceneData {
             }
 
 
-            // --------------------------------
-            // IF MULTIPLE BOXES OVERLAP,
-            // PICK NEAREST CENTER
-            // --------------------------------
-
+            // Multiple colliders may overlap.
+            // Pick the nearest one.
             const center =
                 new THREE.Vector3();
 
@@ -704,7 +444,7 @@ class SceneData {
 
 
         // --------------------------------
-        // ENTER ONLY ONE
+        // ENTER WINNER
         // --------------------------------
 
         if (bestCollider) {
@@ -717,72 +457,11 @@ class SceneData {
             );
 
 
-            console.log(
-                "ENTER COLLIDER",
-                "scene:",
-                this.scale,
-                "index:",
-                this.colliders.indexOf(
-                    bestCollider
-                ),
-                "geometry:",
-                bestCollider.geometry?.type
-            );
-
-
             this.enterCollider(
                 bestCollider,
                 position
             );
         }
-    }
-
-    drawCollisionPath(
-        previousPosition,
-        currentPosition
-    ) {
-
-        if (this.debugCollisionLine) {
-
-            this.scene.remove(
-                this.debugCollisionLine
-            );
-
-            this.debugCollisionLine
-                .geometry
-                .dispose();
-        }
-
-
-        const geometry =
-            new THREE.BufferGeometry()
-                .setFromPoints([
-                    previousPosition,
-                    currentPosition
-                ]);
-
-
-        const material =
-            new THREE.LineBasicMaterial({
-                color: 0xff0000,
-                depthTest: false
-            });
-
-
-        this.debugCollisionLine =
-            new THREE.Line(
-                geometry,
-                material
-            );
-
-
-        this.debugCollisionLine.renderOrder =
-            10000;
-
-
-        this.scene.add(
-            this.debugCollisionLine
-        );
     }
 
     enterCollider(collider, worldPosition) {
