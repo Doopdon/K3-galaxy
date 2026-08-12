@@ -6,7 +6,7 @@ const citySceneData = new SceneData({
 
     disapearDistance: 1.0,
 
-    childScenes: [],
+    childScenes: [cylinderSceneData],
 
 
     populateScene: function () {
