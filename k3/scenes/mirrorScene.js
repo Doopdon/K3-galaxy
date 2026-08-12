@@ -178,15 +178,6 @@ const mirrorSceneData = new SceneData({
             });
 
 
-        const cornerColors = [
-
-            0x33ddff, // cyan
-            0xff44bb, // pink
-            0xffbb33, // orange
-            0x66ff88  // green
-
-        ];
-
 
         for (
             let i = 0;
@@ -198,11 +189,6 @@ const mirrorSceneData = new SceneData({
                 this.makeCityPyramid(
                     cityPositions[i],
                     pyramidMaterial,
-
-                    cornerColors[
-                    i %
-                    cornerColors.length
-                    ]
                 );
 
             this.rootGroup.add(
@@ -565,11 +551,10 @@ mirrorSceneData.makeCityPyramid =
     function (
         position,
         pyramidMaterial,
-        glowColor
     ) {
 
-        const height = 0.65;
-        const radius = 0.24;
+        const height = 0.65/5;
+        const radius = 0.24/5;
 
 
         const pyramid =
@@ -603,134 +588,6 @@ mirrorSceneData.makeCityPyramid =
 
         pyramid.position.x +=
             height * 0.5;
-
-
-        // --------------------------------
-        // GLOWING CORNERS
-        // --------------------------------
-
-        const cornerMaterial =
-            new THREE.MeshBasicMaterial({
-                color: glowColor
-            });
-
-
-        const glowMaterial =
-            new THREE.SpriteMaterial({
-
-                map:
-                    this.getCornerGlowTexture(),
-
-                color:
-                    glowColor,
-
-                transparent:
-                    true,
-
-                depthWrite:
-                    false,
-
-                blending:
-                    THREE.AdditiveBlending
-            });
-
-
-        // Tip
-        const corners = [
-
-            new THREE.Vector3(
-                0,
-                height / 2,
-                0
-            )
-
-        ];
-
-
-        // Four base corners
-        for (let i = 0; i < 4; i++) {
-
-            const angle =
-                i / 4 *
-                Math.PI *
-                2;
-
-            corners.push(
-
-                new THREE.Vector3(
-
-                    Math.cos(angle) *
-                    radius,
-
-                    -height / 2,
-
-                    Math.sin(angle) *
-                    radius
-                )
-
-            );
-        }
-
-
-        for (const position of corners) {
-
-            // Bright solid center
-            const orb =
-                new THREE.Mesh(
-
-                    new THREE.SphereGeometry(
-                        0.035,
-                        8,
-                        8
-                    ),
-
-                    cornerMaterial
-                );
-
-            orb.position.copy(
-                position
-            );
-
-            pyramid.add(
-                orb
-            );
-
-
-            // Cheap fake glow around it
-            const glow =
-                new THREE.Sprite(
-                    glowMaterial
-                );
-
-            glow.position.copy(
-                position
-            );
-
-            glow.scale.set(
-                0.16,
-                0.16,
-                1
-            );
-
-            pyramid.add(
-                glow
-            );
-
-
-            this.cityGlowData.push({
-
-                orb: orb,
-
-                glow: glow,
-
-                phase:
-                    Math.random() *
-                    Math.PI *
-                    2
-
-            });
-        }
-
 
         return pyramid;
     };
