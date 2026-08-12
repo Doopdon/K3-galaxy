@@ -57,6 +57,24 @@ const mirrorSceneData = new SceneData({
 
         this.rootGroup.add(mirror);
 
+        /// light scene up
+
+        // const worldLight =
+        //     new THREE.DirectionalLight(
+        //         0xffffff,
+        //         0.6
+        //     );
+
+        // worldLight.position.set(
+        //     5,
+        //     8,
+        //     4
+        // );
+
+        // this.rootGroup.add(
+        //     worldLight
+        // );
+
 
         // --------------------------------
         // GET MIRROR SIZE
@@ -99,7 +117,13 @@ const mirrorSceneData = new SceneData({
         this.cityPyramids = [];
         this.cityGlowData = [];
         this.dotConnections = [];
+        this.backFieldDots = [];
 
+        this.makeMirrorFieldDots(
+            mirrorHalfX,
+            mirrorHalfY,
+            mirrorHalfZ
+        );
 
         // Move them slightly inward from
         // the literal edge of the mirror.
@@ -233,9 +257,166 @@ const mirrorSceneData = new SceneData({
         this.animateCityGlows(
             deltaTime
         );
+
+        this.animateBackFieldDots(
+            deltaTime
+        );
     }
 
 });
+
+mirrorSceneData.makeMirrorFieldDots =
+    function (
+        mirrorHalfX,
+        mirrorHalfY,
+        mirrorHalfZ
+    ) {
+
+        const rows = 8;
+        const cols = 12;
+
+        const yMin =
+            -mirrorHalfY + 0.15;
+
+        const yMax =
+            mirrorHalfY - 0.15;
+
+        const zMin =
+            -mirrorHalfZ + 0.15;
+
+        const zMax =
+            mirrorHalfZ - 0.15;
+
+
+        // one plane on each side
+        const xPositions = [
+            -mirrorHalfX - 0.03, // back
+            mirrorHalfX + 0.03  // front
+        ];
+
+
+        for (const x of xPositions) {
+
+            for (let row = 0; row < rows; row++) {
+
+                for (let col = 0; col < cols; col++) {
+
+                    const y =
+                        THREE.MathUtils.lerp(
+                            yMin,
+                            yMax,
+                            row / (rows - 1)
+                        );
+
+                    const z =
+                        THREE.MathUtils.lerp(
+                            zMin,
+                            zMax,
+                            col / (cols - 1)
+                        );
+
+
+                    const material =
+                        new THREE.SpriteMaterial({
+
+                            map:
+                                this.getCornerGlowTexture(),
+
+                            color:
+                                0xff3344,
+
+                            transparent:
+                                true,
+
+                            opacity:
+                                0.5,
+
+                            depthWrite:
+                                false,
+
+                            blending:
+                                THREE.AdditiveBlending
+                        });
+
+
+                    const dot =
+                        new THREE.Sprite(
+                            material
+                        );
+
+                    dot.position.set(
+                        x,
+                        y + (Math.random() - 0.5) * 0.03,
+                        z + (Math.random() - 0.5) * 0.03
+                    );
+
+                    dot.scale.set(
+                        0.08,
+                        0.08,
+                        1
+                    );
+
+                    this.rootGroup.add(
+                        dot
+                    );
+
+
+                    this.backFieldDots.push({
+
+                        dot: dot,
+
+                        baseScale:
+                            0.08,
+
+                        phase:
+                            Math.random() *
+                            Math.PI * 2,
+
+                        speed:
+                            1.0 +
+                            Math.random() * 2.0
+
+                    });
+                }
+            }
+        }
+    };
+
+mirrorSceneData.animateBackFieldDots =
+    function (deltaTime) {
+
+        if (!this.backFieldDots) {
+            return;
+        }
+
+        for (const fieldDot of this.backFieldDots) {
+
+            fieldDot.phase +=
+                deltaTime *
+                fieldDot.speed;
+
+
+            const pulse =
+                0.5 +
+                0.5 *
+                Math.sin(fieldDot.phase);
+
+
+            fieldDot.dot.material.opacity =
+                0.15 + pulse * 0.65;
+
+
+            const scale =
+                fieldDot.baseScale *
+                (0.85 + pulse * 0.35);
+
+            fieldDot.dot.scale.set(
+                scale,
+                scale,
+                1
+            );
+        }
+    };
 
 mirrorSceneData.makeCityPyramid =
     function (
@@ -606,6 +787,8 @@ mirrorSceneData.makeDottedConnection =
                 geometry,
                 material
             );
+
+        dots.frustumCulled = false;
 
 
         this.rootGroup.add(
