@@ -1,4 +1,4 @@
-const nationSceneData = new SceneData({
+const mirrorSceneData = new SceneData({
 
     scale: 0.0001,
 
@@ -17,27 +17,20 @@ const nationSceneData = new SceneData({
             this.scale;
 
 
-        // Clone the actual parent mirror
         const mirror =
             parentMirror.clone();
 
 
-        // We don't want to share the material,
-        // because we'll modify this version.
+        // Clone parent's material
         mirror.material =
-            new THREE.MeshBasicMaterial({
-                color: 0x0088ff
-            });
+            parentMirror.material.clone();
 
 
-        // rootGroup already inherits the parent's
-        // position + rotation, so reset these.
         mirror.position.set(0, 0, 0);
 
         mirror.quaternion.identity();
 
 
-        // Convert parent-scene size into child-scene size.
         mirror.scale.copy(
             parentMirror.scale
         );
@@ -47,24 +40,23 @@ const nationSceneData = new SceneData({
         );
 
 
-        // Give the close-up version a better material.
-        mirror.material =
-            parentMirror.material.clone();
+        // Give THIS scene the same environment
+        const environmentTexture =
+            this.parentSceneData.environmentTexture;
 
+        if (environmentTexture) {
 
-        mirror.material =
-            new THREE.MeshBasicMaterial({
-                color: 0x0088ff
-            });
+            this.scene.environment =
+                environmentTexture;
+
+            this.scene.environmentIntensity =
+                0.5;
+        }
+
 
         mirror.visible = true;
 
         this.rootGroup.add(mirror);
-
-
-        // -------------------------
-        // TEST CUBES / NATIONS
-        // -------------------------
 
         const geometry =
             new THREE.BoxGeometry(
@@ -77,6 +69,7 @@ const nationSceneData = new SceneData({
             new THREE.MeshBasicMaterial({
                 color: 0x00ff00
             });
+
 
         for (let x = 0; x < 2; x++) {
 

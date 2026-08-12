@@ -107,20 +107,19 @@ const solarSystemSceneData = new SceneData({
 
     disapearDistance: 1.0,
 
-    childScenes: [nationSceneData],
+    childScenes: [mirrorSceneData],
 
     populateScene: function () {
 
-        const skyTexture =
-            window.galaxySkyBox;
+        const skyTexture = window.galaxySkyBox;
 
         if (skyTexture) {
 
-            this.scene.environment =
-                skyTexture;
+            this.scene.environment = skyTexture;
+            this.scene.environmentIntensity = 0.5;
 
-            this.scene.environmentIntensity =
-                .5;
+            // Save it so children can access it
+            this.environmentTexture = skyTexture;
         }
 
         const group = new THREE.Group();

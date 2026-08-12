@@ -941,7 +941,7 @@ const galaxySceneData = new GalaxySceneData({
 
     populateScene: function () {
 
-        const STAR_COUNT = 130000;
+        const STAR_COUNT = 10000;
         const GALAXY_RADIUS = 650;
         const GALAXY_THICKNESS = 48;
         const ARM_COUNT = 2;
@@ -1092,7 +1092,7 @@ const galaxySceneData = new GalaxySceneData({
         geometry.computeBoundingSphere();
 
         const material = new THREE.PointsMaterial({
-            size: 1.5,
+            size: .75,
             sizeAttenuation: true,
             map: makeStarTexture(),
             transparent: true,
