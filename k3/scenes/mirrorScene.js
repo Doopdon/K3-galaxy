@@ -210,38 +210,13 @@ const mirrorSceneData = new SceneData({
         // TRAFFIC CONNECTIONS
         // --------------------------------
 
-        // Around the perimeter...
-        this.makeDottedConnection(
-            this.cityPyramids[0],
-            this.cityPyramids[1]
-        );
-
-        this.makeDottedConnection(
-            this.cityPyramids[0],
-            this.cityPyramids[2]
-        );
-
-        this.makeDottedConnection(
-            this.cityPyramids[1],
-            this.cityPyramids[3]
-        );
-
-        this.makeDottedConnection(
-            this.cityPyramids[2],
-            this.cityPyramids[3]
-        );
-
-
-        // ...plus diagonals
-        this.makeDottedConnection(
-            this.cityPyramids[0],
-            this.cityPyramids[3]
-        );
-
-        this.makeDottedConnection(
-            this.cityPyramids[1],
-            this.cityPyramids[2]
-        );
+        for (var i = 0; i < this.cityPyramids.length; i++) {
+            for (var j = i + 1; j < this.cityPyramids.length; j++) {
+                this.makeDottedConnection(
+                    this.cityPyramids[i],
+                    this.cityPyramids[j])
+            }
+        }
     },
 
 
@@ -583,7 +558,7 @@ mirrorSceneData.pointInsideMirror =
 
         for (
             let i = 0,
-                j = corners.length - 1;
+            j = corners.length - 1;
             i < corners.length;
             j = i++
         ) {
@@ -809,12 +784,12 @@ mirrorSceneData.makeDottedConnection =
 
         const colorForward =
             new THREE.Color(
-                0x44ddff
+                0xff9944
             );
 
         const colorBackward =
             new THREE.Color(
-                0xff55cc
+                0xff9944
             );
 
 
