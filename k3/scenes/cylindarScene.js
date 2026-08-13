@@ -6,7 +6,7 @@ const cylinderSceneData = new SceneData({
 
     disapearDistance: 0.05,
 
-    childScenes: [],
+    childScenes: [roomSceneData],
 
 
     populateScene: function () {
@@ -50,12 +50,12 @@ const cylinderSceneData = new SceneData({
         // CylinderGeometry uses Y
         // as its long axis.
         const cylinderLength =
-            size.y/2;
+            size.y / 2;
 
         const cylinderRadius =
             Math.min(
-                size.x/2,
-                size.z/2
+                size.x / 2,
+                size.z / 2
             ) * 0.5;
 
 
@@ -172,6 +172,9 @@ const cylinderSceneData = new SceneData({
 
                 );
 
+            this.addCollider(
+                structure
+            );
 
 
             // -----------------------------------
