@@ -160,8 +160,53 @@ const mirrorSceneData = new SceneData({
             }
         }
 
+        // --------------------------------
+        // RANDOM CENTRAL CITY
+        // --------------------------------
+
+        // Pick a random corner to give us
+        // a direction away from the center.
+        const randomCorner =
+            cityPositions[
+            Math.floor(
+                Math.random() *
+                cityPositions.length
+            )
+            ];
 
 
+        // Keep it somewhere in the inner
+        // part of the mirror.
+        //
+        // 0 = exact center
+        // 1 = all the way at the corner
+        const centralDistance =
+            0.1 +
+            Math.random() * 0.3;
+
+
+        const centralCityPosition =
+            new THREE.Vector3(
+
+                center.x,
+
+                THREE.MathUtils.lerp(
+                    center.y,
+                    randomCorner.y,
+                    centralDistance
+                ),
+
+                THREE.MathUtils.lerp(
+                    center.z,
+                    randomCorner.z,
+                    centralDistance
+                )
+            );
+
+
+        cityPositions.push(
+            centralCityPosition
+        );
 
         // Pyramid metal is shared by ALL cities.
         // Much cheaper than making a new material
@@ -205,17 +250,16 @@ const mirrorSceneData = new SceneData({
             );
         }
 
-
         // --------------------------------
         // TRAFFIC CONNECTIONS
         // --------------------------------
 
-        for (var i = 0; i < this.cityPyramids.length; i++) {
-            for (var j = i + 1; j < this.cityPyramids.length; j++) {
-                this.makeDottedConnection(
-                    this.cityPyramids[i],
-                    this.cityPyramids[j])
-            }
+        for (var i = 0; i < this.cityPyramids.length - 1; i++) {
+            this.makeDottedConnection(this.cityPyramids[i], this.cityPyramids[i + 1])
+        }
+
+        for (var i = 0; i < this.cityPyramids.length - 1; i++) {
+            this.makeDottedConnection(this.cityPyramids[i], this.cityPyramids[this.cityPyramids.length - 1])
         }
     },
 

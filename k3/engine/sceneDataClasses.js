@@ -72,7 +72,7 @@ class SceneData {
         this.camera = new THREE.PerspectiveCamera(
             70,
             window.innerWidth / window.innerHeight,
-            0.05,
+            0.005,
             7000
         );
 
