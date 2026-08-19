@@ -24,6 +24,54 @@ const roomSceneData =
 
 
             // --------------------------------
+            // FIND WHERE THE PLAYER ACTUALLY IS
+            // IN THIS SCENE
+            // --------------------------------
+
+            this.scene.updateMatrixWorld(true);
+
+
+            const mainCamera =
+                scenesData[0].camera;
+
+
+            // Same conversion your engine uses
+            // when syncing child-scene cameras.
+            const cameraInScene =
+                mainCamera.position
+                    .clone()
+                    .multiplyScalar(
+                        1 / this.scale
+                    );
+
+
+            // Convert into rootGroup-local space.
+            const roomCenter =
+                this.rootGroup.worldToLocal(
+                    cameraInScene
+                );
+
+
+            // --------------------------------
+            // PUT THE PLAYER NEAR THE FLOOR
+            // --------------------------------
+            //
+            // +Z = floor / radial outward
+            // -Z = ceiling / radial inward
+            //
+            // Put the floor about 1.6 units
+            // below the camera.
+
+            const standingHeight = 1.6;
+
+
+            roomCenter.z -=
+                height / 2 -
+                standingHeight;
+
+
+
+            // --------------------------------
             // MATERIALS
             // --------------------------------
 
@@ -36,10 +84,8 @@ const roomSceneData =
 
                     metalness: 0,
 
-                    // IMPORTANT:
-                    // we're looking at these
-                    // walls from the inside.
-                    side: THREE.DoubleSide
+                    side:
+                        THREE.DoubleSide
                 });
 
 
@@ -50,22 +96,28 @@ const roomSceneData =
 
                     roughness: 0.9,
 
-                    side: THREE.DoubleSide
+                    side:
+                        THREE.DoubleSide
                 });
 
 
             // --------------------------------
             // HELPER
             // --------------------------------
+            //
+            // All coordinates are relative
+            // to roomCenter now.
 
             const makeWall =
                 (
                     sizeX,
                     sizeY,
                     sizeZ,
+
                     x,
                     y,
                     z,
+
                     material = wallMaterial
                 ) => {
 
@@ -83,9 +135,13 @@ const roomSceneData =
 
 
                     wall.position.set(
-                        x,
-                        y,
-                        z
+
+                        roomCenter.x + x,
+
+                        roomCenter.y + y,
+
+                        roomCenter.z + z
+
                     );
 
 
@@ -100,17 +156,18 @@ const roomSceneData =
 
             // =================================
             // FLOOR
+            // RADIAL OUTWARD (+Z)
             // =================================
 
             makeWall(
 
                 width,
-                wallThickness,
                 depth,
+                wallThickness,
 
                 0,
-                -height / 2,
                 0,
+                height / 2,
 
                 floorMaterial
             );
@@ -118,30 +175,30 @@ const roomSceneData =
 
             // =================================
             // CEILING
+            // RADIAL INWARD (-Z)
             // =================================
 
             makeWall(
 
                 width,
-                wallThickness,
                 depth,
+                wallThickness,
 
                 0,
-                height / 2,
-                0
+                0,
+                -height / 2
             );
 
 
             // =================================
             // LEFT WALL
-            // SOLID
             // =================================
 
             makeWall(
 
                 wallThickness,
-                height,
                 depth,
+                height,
 
                 -width / 2,
                 0,
@@ -151,35 +208,33 @@ const roomSceneData =
 
             // =================================
             // FRONT WALL
-            // SOLID
             // =================================
 
             makeWall(
 
                 width,
-                height,
                 wallThickness,
+                height,
 
                 0,
-                0,
-                -depth / 2
+                -depth / 2,
+                0
             );
 
 
             // =================================
             // BACK WALL
-            // SOLID
             // =================================
 
             makeWall(
 
                 width,
-                height,
                 wallThickness,
+                height,
 
                 0,
-                0,
-                depth / 2
+                depth / 2,
+                0
             );
 
 
@@ -188,15 +243,15 @@ const roomSceneData =
             // =================================
 
             const windowWidth = 6;
+
             const windowHeight = 3.5;
 
-            const windowCenterY = 0.4;
+            const windowCenterZ = 0;
 
 
-            // ---------------------------------
-            // Pieces beside the window
-            // Window width runs along Z now.
-            // ---------------------------------
+            // --------------------------------
+            // SIDES OF WINDOW
+            // --------------------------------
 
             const sideDepth =
                 (
@@ -205,97 +260,103 @@ const roomSceneData =
                 ) / 2;
 
 
-            // ---- one side of window
-
             makeWall(
 
                 wallThickness,
-                height,
                 sideDepth,
+                height,
 
                 width / 2,
-                0,
 
                 -(
                     windowWidth / 2 +
                     sideDepth / 2
-                )
+                ),
+
+                0
             );
 
-
-            // ---- other side of window
 
             makeWall(
 
                 wallThickness,
-                height,
                 sideDepth,
+                height,
 
                 width / 2,
-                0,
 
                 (
                     windowWidth / 2 +
                     sideDepth / 2
-                )
-            );
-
-
-            // ---------------------------------
-            // BELOW WINDOW
-            // ---------------------------------
-
-            const windowBottom =
-                windowCenterY -
-                windowHeight / 2;
-
-
-            const bottomHeight =
-                windowBottom +
-                height / 2;
-
-
-            makeWall(
-
-                wallThickness,
-                bottomHeight,
-                windowWidth,
-
-                width / 2,
-
-                -height / 2 +
-                bottomHeight / 2,
+                ),
 
                 0
             );
 
 
-            // ---------------------------------
+            // =================================
             // ABOVE WINDOW
-            // ---------------------------------
+            // toward ceiling (-Z)
+            // =================================
+
+            const ceilingEdge =
+                -height / 2;
+
 
             const windowTop =
-                windowCenterY +
+                windowCenterZ -
                 windowHeight / 2;
 
 
             const topHeight =
-                height / 2 -
-                windowTop;
+                windowTop -
+                ceilingEdge;
 
 
             makeWall(
 
                 wallThickness,
-                topHeight,
                 windowWidth,
+                topHeight,
 
                 width / 2,
+                0,
 
-                windowTop +
-                topHeight / 2,
+                ceilingEdge +
+                topHeight / 2
+            );
 
-                0
+
+            // =================================
+            // BELOW WINDOW
+            // toward floor (+Z)
+            // =================================
+
+            const floorEdge =
+                height / 2;
+
+
+            const windowBottom =
+                windowCenterZ +
+                windowHeight / 2;
+
+
+            const bottomHeight =
+                floorEdge -
+                windowBottom;
+
+
+            makeWall(
+
+                wallThickness,
+                windowWidth,
+                bottomHeight,
+
+                width / 2,
+                0,
+
+                windowBottom +
+                bottomHeight / 2
             );
 
 
@@ -315,95 +376,92 @@ const roomSceneData =
 
 
             const frameThickness = 0.12;
+
             const frameDepth = 0.25;
 
 
-            // ---------------------------------
-            // TOP FRAME
-            // ---------------------------------
-
+            // top
             makeWall(
 
                 frameDepth,
-                frameThickness,
+
                 windowWidth +
                 frameThickness * 2,
 
+                frameThickness,
+
                 width / 2,
 
-                windowCenterY +
-                windowHeight / 2,
-
                 0,
+
+                windowCenterZ -
+                windowHeight / 2,
 
                 frameMaterial
             );
 
 
-            // ---------------------------------
-            // BOTTOM FRAME
-            // ---------------------------------
-
+            // bottom
             makeWall(
 
                 frameDepth,
-                frameThickness,
+
                 windowWidth +
                 frameThickness * 2,
 
+                frameThickness,
+
                 width / 2,
 
-                windowCenterY -
-                windowHeight / 2,
-
                 0,
+
+                windowCenterZ +
+                windowHeight / 2,
 
                 frameMaterial
             );
 
 
-            // ---------------------------------
-            // LEFT SIDE OF FRAME
-            // ---------------------------------
-
+            // left
             makeWall(
 
                 frameDepth,
+
+                frameThickness,
+
                 windowHeight,
-                frameThickness,
 
                 width / 2,
-
-                windowCenterY,
 
                 -windowWidth / 2,
 
+                windowCenterZ,
+
                 frameMaterial
             );
 
 
-            // ---------------------------------
-            // RIGHT SIDE OF FRAME
-            // ---------------------------------
-
+            // right
             makeWall(
 
                 frameDepth,
-                windowHeight,
+
                 frameThickness,
+
+                windowHeight,
 
                 width / 2,
 
-                windowCenterY,
-
                 windowWidth / 2,
+
+                windowCenterZ,
 
                 frameMaterial
             );
 
 
             // =================================
-            // SIMPLE ROOM LIGHT
+            // CEILING LIGHT
             // =================================
 
             const roomLight =
@@ -414,14 +472,22 @@ const roomSceneData =
                     25,
 
                     30
-
                 );
 
 
+            // Ceiling is -Z.
+            // Move slightly toward the room (+Z)
+            // so the light isn't buried in it.
             roomLight.position.set(
-                0,
-                height / 2 - 0.7,
-                1
+
+                roomCenter.x,
+
+                roomCenter.y,
+
+                roomCenter.z -
+                height / 2 +
+                0.4
+
             );
 
 
@@ -430,7 +496,10 @@ const roomSceneData =
             );
 
 
-            // Tiny visible ceiling light
+            // --------------------------------
+            // VISIBLE CEILING FIXTURE
+            // --------------------------------
+
             const lightFixture =
                 new THREE.Mesh(
 
@@ -446,8 +515,16 @@ const roomSceneData =
                 );
 
 
-            lightFixture.position.copy(
-                roomLight.position
+            lightFixture.position.set(
+
+                roomCenter.x,
+
+                roomCenter.y,
+
+                roomCenter.z -
+                height / 2 +
+                0.18
+
             );
 
 

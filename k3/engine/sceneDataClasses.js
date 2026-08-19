@@ -722,11 +722,178 @@ class SceneData {
 class HabSceneData extends SceneData {
 
     constructor(options) {
+
         super(options);
+
+        // In the room:
+        //
+        // +Z = radially outward / floor
+        // -Z = radially inward / ceiling
+        //
+        // Therefore camera UP is -Z.
+        this.upAxisLocal =
+            new THREE.Vector3(0, 0, -1);
     }
 
-}
 
+    // --------------------------------
+    // HAB UPDATE
+    // --------------------------------
+
+    update(deltaTime) {
+
+        super.update(deltaTime);
+
+        this.alignCameraToHabUp();
+    }
+
+
+    // --------------------------------
+    // GET ROOM "UP" IN WORLD SPACE
+    // --------------------------------
+
+    getHabUpWorld() {
+
+        const quaternion =
+            new THREE.Quaternion();
+
+        this.rootGroup.getWorldQuaternion(
+            quaternion
+        );
+
+
+        return this.upAxisLocal
+            .clone()
+            .applyQuaternion(quaternion)
+            .normalize();
+    }
+
+
+    // --------------------------------
+    // KEEP CAMERA UPRIGHT IN HAB
+    // --------------------------------
+
+    alignCameraToHabUp() {
+
+        const camera =
+            scenesData[0].camera;
+
+        const up =
+            this.getHabUpWorld();
+
+
+        // Current look direction.
+        const forward =
+            new THREE.Vector3(0, 0, -1)
+                .applyQuaternion(
+                    camera.quaternion
+                )
+                .normalize();
+
+
+        // --------------------------------
+        // CURRENT PITCH
+        // --------------------------------
+
+        let pitch =
+            Math.asin(
+                THREE.MathUtils.clamp(
+                    forward.dot(up),
+                    -1,
+                    1
+                )
+            );
+
+
+        const maxPitch =
+            THREE.MathUtils.degToRad(89);
+
+
+        pitch =
+            THREE.MathUtils.clamp(
+                pitch,
+                -maxPitch,
+                maxPitch
+            );
+
+
+        // --------------------------------
+        // REMOVE VERTICAL COMPONENT
+        // TO FIND HEADING
+        // --------------------------------
+
+        const horizontalForward =
+            forward
+                .clone()
+                .addScaledVector(
+                    up,
+                    -forward.dot(up)
+                );
+
+
+        // If we're nearly looking straight
+        // up/down, recover heading from
+        // camera-right instead.
+        if (
+            horizontalForward.lengthSq() <
+            0.000001
+        ) {
+
+            const right =
+                new THREE.Vector3(1, 0, 0)
+                    .applyQuaternion(
+                        camera.quaternion
+                    )
+                    .normalize();
+
+
+            horizontalForward
+                .copy(up)
+                .cross(right);
+        }
+
+
+        if (
+            horizontalForward.lengthSq() <
+            0.000001
+        ) {
+            return;
+        }
+
+
+        horizontalForward.normalize();
+
+
+        // --------------------------------
+        // REBUILD LOOK DIRECTION
+        // --------------------------------
+
+        const correctedForward =
+            horizontalForward
+                .multiplyScalar(
+                    Math.cos(pitch)
+                )
+                .addScaledVector(
+                    up,
+                    Math.sin(pitch)
+                )
+                .normalize();
+
+
+        // --------------------------------
+        // FORCE CAMERA TOP TOWARD CEILING
+        // --------------------------------
+
+        camera.up.copy(up);
+
+
+        camera.lookAt(
+            camera.position
+                .clone()
+                .add(correctedForward)
+        );
+    }
+}
 class GalaxySceneData extends SceneData {
     constructor(options) {
         super(options);

@@ -187,7 +187,72 @@ function yawCamera(camera, amount) {
 }
 
 function pitchCamera(camera, amount) {
-    camera.rotateX(amount);
+
+    const activeScene =
+        activeSceneStack[
+        activeSceneStack.length - 1
+        ];
+
+
+    // --------------------------------
+    // NORMAL SPACE CAMERA
+    // --------------------------------
+
+    if (
+        !(activeScene instanceof HabSceneData)
+    ) {
+
+        camera.rotateX(amount);
+
+        return;
+    }
+
+
+    // --------------------------------
+    // HAB CAMERA
+    // --------------------------------
+
+    const up =
+        activeScene.getHabUpWorld();
+
+
+    const forward =
+        new THREE.Vector3(0, 0, -1)
+            .applyQuaternion(
+                camera.quaternion
+            )
+            .normalize();
+
+
+    const currentPitch =
+        Math.asin(
+            THREE.MathUtils.clamp(
+                forward.dot(up),
+                -1,
+                1
+            )
+        );
+
+
+    const maxPitch =
+        THREE.MathUtils.degToRad(89);
+
+
+    const desiredPitch =
+        THREE.MathUtils.clamp(
+            currentPitch + amount,
+            -maxPitch,
+            maxPitch
+        );
+
+
+    const allowedAmount =
+        desiredPitch - currentPitch;
+
+
+    camera.rotateX(
+        allowedAmount
+    );
 }
 
 function rollCamera(camera, amount) {
@@ -231,6 +296,7 @@ function addEventHandlers() {
         );
     });
 }
+
 
 let speed = 1;
 
