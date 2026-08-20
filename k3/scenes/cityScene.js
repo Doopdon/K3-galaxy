@@ -4,7 +4,7 @@ const citySceneData = new SceneData({
 
     timescale: 10,
 
-    disapearDistance: 1.0,
+    disapearDistance: 0.10,
 
     childScenes: [cylinderSceneData],
 
@@ -44,12 +44,6 @@ const citySceneData = new SceneData({
 
         size.multiplyScalar(
             scaleRatio
-        );
-
-
-        console.log(
-            "CITY PYRAMID SIZE:",
-            size
         );
 
 
@@ -219,14 +213,64 @@ const citySceneData = new SceneData({
 
                 const cylinder =
                     new THREE.Mesh(
-
                         geometry,
-
                         cylinderMaterial
-
                     );
 
-                this.addCollider(cylinder)
+
+                // -----------------------------------
+                // BOX COLLIDER
+                // -----------------------------------
+                //
+                // CylinderGeometry:
+                // X/Z = diameter
+                // Y   = length
+                //
+                // So this box exactly surrounds
+                // the cylinder.
+
+                const colliderGeometry =
+                    new THREE.BoxGeometry(
+                        cylinderRadius * 5,
+                        cylinderLength * 2,
+                        cylinderRadius * 5
+                    );
+
+
+                const colliderMaterial =
+                    new THREE.MeshBasicMaterial({
+                        visible: false
+                    });
+
+
+                const collider =
+                    new THREE.Mesh(
+                        colliderGeometry,
+                        colliderMaterial
+                    );
+
+
+                // Make the collider follow the cylinder.
+                //
+                // Since it is a child, it automatically
+                // inherits the cylinder's position,
+                // rotation, and spinning.
+                cylinder.add(
+                    collider
+                );
+
+
+                // THIS is now the thing we collide with.
+                this.addCollider(
+                    collider
+                );
+
+
+                // Draw the debug wireframe around
+                // the actual box collider.
+                // showCollider(
+                //     collider
+                // );
 
 
                 // Position it halfway outward

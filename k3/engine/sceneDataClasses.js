@@ -61,7 +61,7 @@ class SceneData {
         timescale = 1,
         disapearDistance = 1,
         childScenes = [],
-        collisionEnterDistance = 0.05,
+        collisionEnterDistance = 0.01,
         getSubSceneData,
         populateScene,
         animate
@@ -72,7 +72,7 @@ class SceneData {
         this.camera = new THREE.PerspectiveCamera(
             70,
             window.innerWidth / window.innerHeight,
-            0.05,
+            0.005,
             7000
         );
 
@@ -86,7 +86,6 @@ class SceneData {
         this.speedMultiplier = 1;
 
         this.disapearDistance = disapearDistance;
-        this.collisionEnterDistance = collisionEnterDistance;
         this.childScenes = childScenes;
 
 
@@ -200,15 +199,13 @@ class SceneData {
 
 
         // --------------------------------
-        // CHEAP POINT COLLIDER
+        // POINT COLLIDER
         // --------------------------------
 
-        const isPoint =
+        if (
             collider.userData
-                ?.collisionType === "point";
-
-
-        if (isPoint) {
+                ?.collisionType === "point"
+        ) {
 
             const colliderWorld =
                 new THREE.Vector3();
@@ -225,7 +222,7 @@ class SceneData {
 
 
         // --------------------------------
-        // FALLBACK IF NO GEOMETRY
+        // NO GEOMETRY FALLBACK
         // --------------------------------
 
         if (!collider.geometry) {
@@ -257,31 +254,26 @@ class SceneData {
         }
 
 
-        const box =
-            collider.geometry.boundingBox;
-
-
-        // Convert camera into collider-local
-        // coordinates.
+        // Camera in collider-local space.
         const cameraLocal =
             collider.worldToLocal(
                 cameraWorld.clone()
             );
 
 
-        // Find closest point on/in the
-        // collider's local bounding box.
+        // Closest point on the box.
         const closestLocal =
-            cameraLocal.clone();
+            cameraLocal.clone()
+                .clamp(
+                    collider.geometry
+                        .boundingBox.min,
 
-        closestLocal.clamp(
-            box.min,
-            box.max
-        );
+                    collider.geometry
+                        .boundingBox.max
+                );
 
 
-        // Convert closest point back into
-        // world space.
+        // Convert closest point back to world.
         const closestWorld =
             collider.localToWorld(
                 closestLocal
@@ -291,6 +283,45 @@ class SceneData {
         return cameraWorld.distanceTo(
             closestWorld
         );
+    }
+
+    isCameraInsideCollider(collider) {
+
+        if (!collider.geometry) {
+            return false;
+        }
+
+
+        if (
+            !collider.geometry.boundingBox
+        ) {
+
+            collider.geometry
+                .computeBoundingBox();
+        }
+
+
+        const cameraWorld =
+            new THREE.Vector3();
+
+        this.camera.getWorldPosition(
+            cameraWorld
+        );
+
+
+        // Transform the camera into the
+        // collider's local coordinate system.
+        const cameraLocal =
+            collider.worldToLocal(
+                cameraWorld.clone()
+            );
+
+
+        return collider.geometry
+            .boundingBox
+            .containsPoint(
+                cameraLocal
+            );
     }
 
     checkCollision() {
@@ -323,12 +354,22 @@ class SceneData {
 
 
         // --------------------------------
-        // LOOK FOR SOMETHING TO ENTER
+        // LOOK FOR COLLIDERS
         // --------------------------------
 
-        let closestCollider = null;
-        let closestDistance = Infinity;
-        let closestThreshold = 0;
+        const cameraWorld =
+            new THREE.Vector3();
+
+        this.camera.getWorldPosition(
+            cameraWorld
+        );
+
+
+        let bestCollider =
+            null;
+
+        let bestCenterDistance =
+            Infinity;
 
 
         for (
@@ -336,53 +377,88 @@ class SceneData {
             of this.getColliders()
         ) {
 
-            const distance =
-                this.getColliderDistance(
-                    collider
+            const isPoint =
+                collider.userData
+                    ?.collisionType === "point";
+
+
+            let collided;
+
+
+            // Point objects:
+            // stars, mirrors, pyramids, etc.
+            if (isPoint) {
+
+                collided =
+                    this.getColliderDistance(
+                        collider
+                    ) <
+                    this.disapearDistance;
+            }
+
+
+            // Physical objects:
+            // box colliders.
+            else {
+
+                collided =
+                    this.isCameraInsideCollider(
+                        collider
+                    );
+            }
+
+
+            if (!collided) {
+                continue;
+            }
+
+
+            // Multiple colliders may overlap.
+            // Pick the nearest one.
+            const center =
+                new THREE.Vector3();
+
+            collider.getWorldPosition(
+                center
+            );
+
+
+            const centerDistance =
+                cameraWorld.distanceTo(
+                    center
                 );
 
 
-            const isPoint =
-                collider.userData
-                    ?.collisionType ===
-                "point";
-
-
-            const threshold =
-                isPoint
-                    ? this.disapearDistance
-                    : this.collisionEnterDistance;
-
-
             if (
-                distance < threshold &&
-                distance < closestDistance
+                centerDistance <
+                bestCenterDistance
             ) {
 
-                closestCollider =
+                bestCollider =
                     collider;
 
-                closestDistance =
-                    distance;
-
-                closestThreshold =
-                    threshold;
+                bestCenterDistance =
+                    centerDistance;
             }
         }
 
 
-        if (closestCollider) {
+        // --------------------------------
+        // ENTER WINNER
+        // --------------------------------
+
+        if (bestCollider) {
 
             const position =
                 new THREE.Vector3();
 
-            closestCollider.getWorldPosition(
+            bestCollider.getWorldPosition(
                 position
             );
 
 
             this.enterCollider(
-                closestCollider,
+                bestCollider,
                 position
             );
         }
@@ -646,11 +722,178 @@ class SceneData {
 class HabSceneData extends SceneData {
 
     constructor(options) {
+
         super(options);
+
+        // In the room:
+        //
+        // +Z = radially outward / floor
+        // -Z = radially inward / ceiling
+        //
+        // Therefore camera UP is -Z.
+        this.upAxisLocal =
+            new THREE.Vector3(0, 0, -1);
     }
 
-}
 
+    // --------------------------------
+    // HAB UPDATE
+    // --------------------------------
+
+    update(deltaTime) {
+
+        super.update(deltaTime);
+
+        this.alignCameraToHabUp();
+    }
+
+
+    // --------------------------------
+    // GET ROOM "UP" IN WORLD SPACE
+    // --------------------------------
+
+    getHabUpWorld() {
+
+        const quaternion =
+            new THREE.Quaternion();
+
+        this.rootGroup.getWorldQuaternion(
+            quaternion
+        );
+
+
+        return this.upAxisLocal
+            .clone()
+            .applyQuaternion(quaternion)
+            .normalize();
+    }
+
+
+    // --------------------------------
+    // KEEP CAMERA UPRIGHT IN HAB
+    // --------------------------------
+
+    alignCameraToHabUp() {
+
+        const camera =
+            scenesData[0].camera;
+
+        const up =
+            this.getHabUpWorld();
+
+
+        // Current look direction.
+        const forward =
+            new THREE.Vector3(0, 0, -1)
+                .applyQuaternion(
+                    camera.quaternion
+                )
+                .normalize();
+
+
+        // --------------------------------
+        // CURRENT PITCH
+        // --------------------------------
+
+        let pitch =
+            Math.asin(
+                THREE.MathUtils.clamp(
+                    forward.dot(up),
+                    -1,
+                    1
+                )
+            );
+
+
+        const maxPitch =
+            THREE.MathUtils.degToRad(89);
+
+
+        pitch =
+            THREE.MathUtils.clamp(
+                pitch,
+                -maxPitch,
+                maxPitch
+            );
+
+
+        // --------------------------------
+        // REMOVE VERTICAL COMPONENT
+        // TO FIND HEADING
+        // --------------------------------
+
+        const horizontalForward =
+            forward
+                .clone()
+                .addScaledVector(
+                    up,
+                    -forward.dot(up)
+                );
+
+
+        // If we're nearly looking straight
+        // up/down, recover heading from
+        // camera-right instead.
+        if (
+            horizontalForward.lengthSq() <
+            0.000001
+        ) {
+
+            const right =
+                new THREE.Vector3(1, 0, 0)
+                    .applyQuaternion(
+                        camera.quaternion
+                    )
+                    .normalize();
+
+
+            horizontalForward
+                .copy(up)
+                .cross(right);
+        }
+
+
+        if (
+            horizontalForward.lengthSq() <
+            0.000001
+        ) {
+            return;
+        }
+
+
+        horizontalForward.normalize();
+
+
+        // --------------------------------
+        // REBUILD LOOK DIRECTION
+        // --------------------------------
+
+        const correctedForward =
+            horizontalForward
+                .multiplyScalar(
+                    Math.cos(pitch)
+                )
+                .addScaledVector(
+                    up,
+                    Math.sin(pitch)
+                )
+                .normalize();
+
+
+        // --------------------------------
+        // FORCE CAMERA TOP TOWARD CEILING
+        // --------------------------------
+
+        camera.up.copy(up);
+
+
+        camera.lookAt(
+            camera.position
+                .clone()
+                .add(correctedForward)
+        );
+    }
+}
 class GalaxySceneData extends SceneData {
     constructor(options) {
         super(options);

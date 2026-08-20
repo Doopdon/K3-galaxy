@@ -101,9 +101,8 @@ const mirrorSceneData = new SceneData({
         this.backFieldDots = [];
 
         this.makeMirrorFieldDots(
-            mirrorHalfX,
-            mirrorHalfY,
-            mirrorHalfZ
+            mirror,
+            mirrorHalfX
         );
 
         // Move them slightly inward from
@@ -161,8 +160,53 @@ const mirrorSceneData = new SceneData({
             }
         }
 
+        // --------------------------------
+        // RANDOM CENTRAL CITY
+        // --------------------------------
+
+        // Pick a random corner to give us
+        // a direction away from the center.
+        const randomCorner =
+            cityPositions[
+            Math.floor(
+                Math.random() *
+                cityPositions.length
+            )
+            ];
 
 
+        // Keep it somewhere in the inner
+        // part of the mirror.
+        //
+        // 0 = exact center
+        // 1 = all the way at the corner
+        const centralDistance =
+            0.1 +
+            Math.random() * 0.3;
+
+
+        const centralCityPosition =
+            new THREE.Vector3(
+
+                center.x,
+
+                THREE.MathUtils.lerp(
+                    center.y,
+                    randomCorner.y,
+                    centralDistance
+                ),
+
+                THREE.MathUtils.lerp(
+                    center.z,
+                    randomCorner.z,
+                    centralDistance
+                )
+            );
+
+
+        cityPositions.push(
+            centralCityPosition
+        );
 
         // Pyramid metal is shared by ALL cities.
         // Much cheaper than making a new material
@@ -178,15 +222,6 @@ const mirrorSceneData = new SceneData({
             });
 
 
-        const cornerColors = [
-
-            0x33ddff, // cyan
-            0xff44bb, // pink
-            0xffbb33, // orange
-            0x66ff88  // green
-
-        ];
-
 
         for (
             let i = 0;
@@ -198,11 +233,6 @@ const mirrorSceneData = new SceneData({
                 this.makeCityPyramid(
                     cityPositions[i],
                     pyramidMaterial,
-
-                    cornerColors[
-                    i %
-                    cornerColors.length
-                    ]
                 );
 
             this.rootGroup.add(
@@ -220,43 +250,17 @@ const mirrorSceneData = new SceneData({
             );
         }
 
-
         // --------------------------------
         // TRAFFIC CONNECTIONS
         // --------------------------------
 
-        // Around the perimeter...
-        this.makeDottedConnection(
-            this.cityPyramids[0],
-            this.cityPyramids[1]
-        );
+        for (var i = 0; i < this.cityPyramids.length - 1; i++) {
+            this.makeDottedConnection(this.cityPyramids[i], this.cityPyramids[i + 1])
+        }
 
-        this.makeDottedConnection(
-            this.cityPyramids[0],
-            this.cityPyramids[2]
-        );
-
-        this.makeDottedConnection(
-            this.cityPyramids[1],
-            this.cityPyramids[3]
-        );
-
-        this.makeDottedConnection(
-            this.cityPyramids[2],
-            this.cityPyramids[3]
-        );
-
-
-        // ...plus diagonals
-        this.makeDottedConnection(
-            this.cityPyramids[0],
-            this.cityPyramids[3]
-        );
-
-        this.makeDottedConnection(
-            this.cityPyramids[1],
-            this.cityPyramids[2]
-        );
+        for (var i = 0; i < this.cityPyramids.length - 1; i++) {
+            this.makeDottedConnection(this.cityPyramids[i], this.cityPyramids[this.cityPyramids.length - 1])
+        }
     },
 
 
@@ -410,119 +414,239 @@ mirrorSceneData.getMirrorCorners =
 
 mirrorSceneData.makeMirrorFieldDots =
     function (
-        mirrorHalfX,
-        mirrorHalfY,
-        mirrorHalfZ
+        mirror,
+        mirrorHalfX
     ) {
 
-        const rows = 8;
-        const cols = 12;
+        const dotCount = 96;
 
-        const yMin =
-            -mirrorHalfY + 0.15;
-
-        const yMax =
-            mirrorHalfY - 0.15;
-
-        const zMin =
-            -mirrorHalfZ + 0.15;
-
-        const zMax =
-            mirrorHalfZ - 0.15;
+        // Get actual n-gon corners.
+        const corners =
+            this.getMirrorCorners(
+                mirror
+            );
 
 
-        // one plane on each side
+        // --------------------------------
+        // FIND Y/Z BOUNDING AREA
+        // --------------------------------
+
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        let minZ = Infinity;
+        let maxZ = -Infinity;
+
+
+        for (const corner of corners) {
+
+            minY =
+                Math.min(
+                    minY,
+                    corner.y
+                );
+
+            maxY =
+                Math.max(
+                    maxY,
+                    corner.y
+                );
+
+            minZ =
+                Math.min(
+                    minZ,
+                    corner.z
+                );
+
+            maxZ =
+                Math.max(
+                    maxZ,
+                    corner.z
+                );
+        }
+
+
+        // One field on each side
         const xPositions = [
-            -mirrorHalfX - 0.03, // back
-            mirrorHalfX + 0.03  // front
+
+            -mirrorHalfX - 0.03,
+
+            mirrorHalfX + 0.03
+
         ];
 
 
         for (const x of xPositions) {
 
-            for (let row = 0; row < rows; row++) {
-
-                for (let col = 0; col < cols; col++) {
-
-                    const y =
-                        THREE.MathUtils.lerp(
-                            yMin,
-                            yMax,
-                            row / (rows - 1)
-                        );
-
-                    const z =
-                        THREE.MathUtils.lerp(
-                            zMin,
-                            zMax,
-                            col / (cols - 1)
-                        );
+            let created = 0;
 
 
-                    const material =
-                        new THREE.SpriteMaterial({
+            while (
+                created <
+                dotCount
+            ) {
 
-                            map:
-                                this.getCornerGlowTexture(),
-
-                            color:
-                                0xff3344,
-
-                            transparent:
-                                true,
-
-                            opacity:
-                                0.5,
-
-                            depthWrite:
-                                false,
-
-                            blending:
-                                THREE.AdditiveBlending
-                        });
-
-
-                    const dot =
-                        new THREE.Sprite(
-                            material
-                        );
-
-                    dot.position.set(
-                        x,
-                        y + (Math.random() - 0.5) * 0.03,
-                        z + (Math.random() - 0.5) * 0.03
-                    );
-
-                    dot.scale.set(
-                        0.08,
-                        0.08,
-                        1
-                    );
-
-                    this.rootGroup.add(
-                        dot
+                // Pick random point in
+                // the bounding rectangle.
+                const y =
+                    THREE.MathUtils.lerp(
+                        minY,
+                        maxY,
+                        Math.random()
                     );
 
 
-                    this.backFieldDots.push({
+                const z =
+                    THREE.MathUtils.lerp(
+                        minZ,
+                        maxZ,
+                        Math.random()
+                    );
 
-                        dot: dot,
 
-                        baseScale:
-                            0.08,
-
-                        phase:
-                            Math.random() *
-                            Math.PI * 2,
-
-                        speed:
-                            1.0 +
-                            Math.random() * 2.0
-
-                    });
+                // Reject it if it landed
+                // outside the actual n-gon.
+                if (
+                    !this.pointInsideMirror(
+                        y,
+                        z,
+                        corners
+                    )
+                ) {
+                    continue;
                 }
+
+
+                const material =
+                    new THREE.SpriteMaterial({
+
+                        map:
+                            this.getCornerGlowTexture(),
+
+                        color:
+                            0xff3344,
+
+                        transparent:
+                            true,
+
+                        opacity:
+                            0.5,
+
+                        depthWrite:
+                            false,
+
+                        blending:
+                            THREE.AdditiveBlending
+                    });
+
+
+                const dot =
+                    new THREE.Sprite(
+                        material
+                    );
+
+
+                dot.position.set(
+                    x,
+                    y,
+                    z
+                );
+
+
+                dot.scale.set(
+                    0.08,
+                    0.08,
+                    1
+                );
+
+
+                this.rootGroup.add(
+                    dot
+                );
+
+
+                this.backFieldDots.push({
+
+                    dot: dot,
+
+                    baseScale:
+                        0.08,
+
+                    phase:
+                        Math.random() *
+                        Math.PI *
+                        2,
+
+                    speed:
+                        1.0 +
+                        Math.random() *
+                        2.0
+
+                });
+
+
+                created++;
             }
         }
+    };
+
+mirrorSceneData.pointInsideMirror =
+    function (
+        y,
+        z,
+        corners
+    ) {
+
+        let inside = false;
+
+
+        for (
+            let i = 0,
+            j = corners.length - 1;
+            i < corners.length;
+            j = i++
+        ) {
+
+            const yi =
+                corners[i].y;
+
+            const zi =
+                corners[i].z;
+
+            const yj =
+                corners[j].y;
+
+            const zj =
+                corners[j].z;
+
+
+            const intersects =
+                (
+                    (zi > z) !==
+                    (zj > z)
+                )
+                &&
+                (
+                    y <
+                    (
+                        (yj - yi) *
+                        (z - zi) /
+                        (zj - zi)
+                        +
+                        yi
+                    )
+                );
+
+
+            if (intersects) {
+
+                inside =
+                    !inside;
+            }
+        }
+
+
+        return inside;
     };
 
 mirrorSceneData.animateBackFieldDots =
@@ -565,11 +689,10 @@ mirrorSceneData.makeCityPyramid =
     function (
         position,
         pyramidMaterial,
-        glowColor
     ) {
 
-        const height = 0.65;
-        const radius = 0.24;
+        const height = 0.65 / 5;
+        const radius = 0.24 / 5;
 
 
         const pyramid =
@@ -603,134 +726,6 @@ mirrorSceneData.makeCityPyramid =
 
         pyramid.position.x +=
             height * 0.5;
-
-
-        // --------------------------------
-        // GLOWING CORNERS
-        // --------------------------------
-
-        const cornerMaterial =
-            new THREE.MeshBasicMaterial({
-                color: glowColor
-            });
-
-
-        const glowMaterial =
-            new THREE.SpriteMaterial({
-
-                map:
-                    this.getCornerGlowTexture(),
-
-                color:
-                    glowColor,
-
-                transparent:
-                    true,
-
-                depthWrite:
-                    false,
-
-                blending:
-                    THREE.AdditiveBlending
-            });
-
-
-        // Tip
-        const corners = [
-
-            new THREE.Vector3(
-                0,
-                height / 2,
-                0
-            )
-
-        ];
-
-
-        // Four base corners
-        for (let i = 0; i < 4; i++) {
-
-            const angle =
-                i / 4 *
-                Math.PI *
-                2;
-
-            corners.push(
-
-                new THREE.Vector3(
-
-                    Math.cos(angle) *
-                    radius,
-
-                    -height / 2,
-
-                    Math.sin(angle) *
-                    radius
-                )
-
-            );
-        }
-
-
-        for (const position of corners) {
-
-            // Bright solid center
-            const orb =
-                new THREE.Mesh(
-
-                    new THREE.SphereGeometry(
-                        0.035,
-                        8,
-                        8
-                    ),
-
-                    cornerMaterial
-                );
-
-            orb.position.copy(
-                position
-            );
-
-            pyramid.add(
-                orb
-            );
-
-
-            // Cheap fake glow around it
-            const glow =
-                new THREE.Sprite(
-                    glowMaterial
-                );
-
-            glow.position.copy(
-                position
-            );
-
-            glow.scale.set(
-                0.16,
-                0.16,
-                1
-            );
-
-            pyramid.add(
-                glow
-            );
-
-
-            this.cityGlowData.push({
-
-                orb: orb,
-
-                glow: glow,
-
-                phase:
-                    Math.random() *
-                    Math.PI *
-                    2
-
-            });
-        }
-
 
         return pyramid;
     };
@@ -833,12 +828,12 @@ mirrorSceneData.makeDottedConnection =
 
         const colorForward =
             new THREE.Color(
-                0x44ddff
+                0xff9944
             );
 
         const colorBackward =
             new THREE.Color(
-                0xff55cc
+                0xff9944
             );
 
 

@@ -15,26 +15,76 @@ function addChildScenes(parentSceneData) {
     });
 }
 
-function updateActiveScenes(deltaTime) {
+function updateActiveScenes(
+    deltaTime
+) {
 
-    activeSceneStack.forEach((data, i) => {
+    activeSceneStack.forEach(
+        (data, i) => {
 
-        if (i !== 0) {
+            // -------------------------
+            // SYNC CAMERA
+            // -------------------------
 
-            data.camera.quaternion.copy(
-                activeSceneStack[0].camera.quaternion
+            if (i !== 0) {
+
+                data.camera.quaternion.copy(
+                    activeSceneStack[0]
+                        .camera
+                        .quaternion
+                );
+
+                data.camera.position
+                    .copy(
+                        activeSceneStack[0]
+                            .camera
+                            .position
+                    )
+                    .multiplyScalar(
+                        1 / data.scale
+                    );
+            }
+
+
+            // -------------------------
+            // UPDATE SCENE FIRST
+            // -------------------------
+
+            data.update?.(
+                deltaTime
             );
 
-            data.camera.position
-                .copy(activeSceneStack[0].camera.position)
-                .multiplyScalar(1 / data.scale);
+
+            // updateCameraLock() may have
+            // moved the main camera, so sync
+            // the child camera once more.
+            if (i !== 0) {
+
+                data.camera.quaternion.copy(
+                    activeSceneStack[0]
+                        .camera
+                        .quaternion
+                );
+
+                data.camera.position
+                    .copy(
+                        activeSceneStack[0]
+                            .camera
+                            .position
+                    )
+                    .multiplyScalar(
+                        1 / data.scale
+                    );
+            }
+
+
+            // -------------------------
+            // NOW CHECK COLLISION
+            // -------------------------
+
+            data.checkCollision?.();
         }
-
-
-        data.checkCollision?.();
-
-        data.update?.(deltaTime);
-    });
+    );
 }
 
 function renderActiveScenes() {
@@ -137,7 +187,72 @@ function yawCamera(camera, amount) {
 }
 
 function pitchCamera(camera, amount) {
-    camera.rotateX(amount);
+
+    const activeScene =
+        activeSceneStack[
+        activeSceneStack.length - 1
+        ];
+
+
+    // --------------------------------
+    // NORMAL SPACE CAMERA
+    // --------------------------------
+
+    if (
+        !(activeScene instanceof HabSceneData)
+    ) {
+
+        camera.rotateX(amount);
+
+        return;
+    }
+
+
+    // --------------------------------
+    // HAB CAMERA
+    // --------------------------------
+
+    const up =
+        activeScene.getHabUpWorld();
+
+
+    const forward =
+        new THREE.Vector3(0, 0, -1)
+            .applyQuaternion(
+                camera.quaternion
+            )
+            .normalize();
+
+
+    const currentPitch =
+        Math.asin(
+            THREE.MathUtils.clamp(
+                forward.dot(up),
+                -1,
+                1
+            )
+        );
+
+
+    const maxPitch =
+        THREE.MathUtils.degToRad(89);
+
+
+    const desiredPitch =
+        THREE.MathUtils.clamp(
+            currentPitch + amount,
+            -maxPitch,
+            maxPitch
+        );
+
+
+    const allowedAmount =
+        desiredPitch - currentPitch;
+
+
+    camera.rotateX(
+        allowedAmount
+    );
 }
 
 function rollCamera(camera, amount) {
@@ -181,6 +296,7 @@ function addEventHandlers() {
         );
     });
 }
+
 
 let speed = 1;
 
