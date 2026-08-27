@@ -132,6 +132,11 @@
                 PARTICLE_COUNT * 3
             );
 
+        const flashWeights =
+            new Float32Array(
+                PARTICLE_COUNT
+            );
+
         const particles = [];
 
 
@@ -323,6 +328,19 @@
                         3.5
                     )
                 );
+
+            const flashWeight =
+                Math.pow(
+                    THREE.MathUtils.clamp(
+                        (brightness - 0.045) / (1.0 - 0.045),
+                        0,
+                        1
+                    ),
+                    0.35
+                );
+
+            flashWeights[i] =
+                flashWeight;
 
             // Only the very inner region gets enough
             // green/blue to look red-white.
@@ -527,18 +545,16 @@
 
         function updateFlash(deltaTime) {
 
-            if (flashAmount <= 0)
-                return;
+            if (flashAmount > 0) {
 
-            // How quickly the flash disappears.
-            flashAmount -=
-                deltaTime * 5.0;
+                flashAmount *=
+                    Math.exp(
+                        -deltaTime * 8.0
+                    );
 
-            flashAmount =
-                Math.max(
-                    0,
-                    flashAmount
-                );
+                if (flashAmount < 0.001)
+                    flashAmount = 0;
+            }
 
 
             for (
@@ -550,37 +566,37 @@
                 const index =
                     i * 3;
 
-                // Blend normal particle color toward pure white.
+                const localFlash =
+                    flashAmount *
+                    flashWeights[i];
 
                 colors[index] =
                     THREE.MathUtils.lerp(
                         baseColors[index],
                         1.0,
-                        flashAmount
+                        localFlash
                     );
 
                 colors[index + 1] =
                     THREE.MathUtils.lerp(
                         baseColors[index + 1],
                         1.0,
-                        flashAmount
+                        localFlash
                     );
 
                 colors[index + 2] =
                     THREE.MathUtils.lerp(
                         baseColors[index + 2],
                         1.0,
-                        flashAmount
+                        localFlash
                     );
             }
-
 
             particleGeometry
                 .attributes
                 .color
                 .needsUpdate = true;
         }
-
 
         // ============================================================
         // MOUSE CAMERA
