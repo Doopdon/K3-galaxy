@@ -176,6 +176,69 @@
             right: 0;
             top: 49px;
         }
+
+        .mobileSpeedButton {
+
+            display: none;
+
+            position: fixed;
+
+            width: 56px;
+            height: 56px;
+
+            border-radius: 50%;
+
+            border:
+                1px solid rgba(255, 255, 255, 0.45);
+
+            background:
+                rgba(0, 0, 0, 0.5);
+
+            color: white;
+
+            font-size: 30px;
+
+            font-family: monospace;
+
+            align-items: center;
+            justify-content: center;
+
+            padding: 0;
+
+            z-index: 15000;
+
+            user-select: none;
+
+            touch-action: none;
+
+            -webkit-tap-highlight-color:
+                transparent;
+        }
+
+
+        .mobileSpeedButton:active {
+
+            background:
+                rgba(255, 255, 255, 0.25);
+        }
+
+
+        /* Immediately outside MOVE controller */
+
+        #mobileSlowButton {
+
+            left: 180px;
+            bottom: 67px;
+        }
+
+
+        /* Immediately outside LOOK controller */
+
+        #mobileFastButton {
+
+            right: 180px;
+            bottom: 67px;
+        }
     </style>
 
 </head>
@@ -183,6 +246,14 @@
 
 <body>
     <div id="mobileMoveControls">
+
+        <button id="mobileSlowButton" class="mobileSpeedButton">
+            −
+        </button>
+
+        <button id="mobileFastButton" class="mobileSpeedButton">
+            +
+        </button>
 
         <button class="moveButton moveUp" data-key="w">
             ▲
@@ -3056,8 +3127,7 @@ function makeCylinderMaterial() {
     // MATERIAL
     // -----------------------------------
 
-    return cylinderMaterial =
-        new THREE.MeshStandardMaterial({
+    return new THREE.MeshStandardMaterial({
 
             map:
                 cylinderTexture,
@@ -4329,18 +4399,19 @@ function makeHighDefStar(radius, coreColor, glowColor) {
 
 
     // Huge bright glare
-    const glare =
-        makeGlowingSphere(
-            radius * 35.0,
-            0xffffff
-        );
+    // const glare =
+    //     makeGlowingSphere(
+    //         radius * 35.0,
+    //         0xffffff
+    //     );
 
-    glare.material.opacity = 0.8;
-    glare.material.depthTest = false;
-    glare.material.depthWrite = false;
+    // glare.material.opacity = 0.8;
+    // glare.material.depthTest = false;
+    // glare.material.depthWrite = false;
 
 
-    group.add(glare);
+    // group.add(glare);
+    
     group.add(glow2);
     group.add(glow1);
     group.add(core);
@@ -6043,6 +6114,16 @@ const hideHint =
         "hideHint"
     );
 
+const mobileSlowButton =
+    document.getElementById(
+        "mobileSlowButton"
+    );
+
+const mobileFastButton =
+    document.getElementById(
+        "mobileFastButton"
+    );
+
 const activeSceneStack = [
     mainSceneData
 ];
@@ -6243,9 +6324,12 @@ const mobileMoveControls =
 
 function updateMobileControls() {
 
-    const mobile =
-        isProbablyPhone();
+    const mobile = isProbablyPhone();
 
+    document.documentElement.classList.toggle(
+        "mobileMode",
+        mobile
+    );
 
     if (mobile) {
 
@@ -6254,6 +6338,12 @@ function updateMobileControls() {
 
         mobileMoveControls.style.display =
             "block";
+
+        mobileSlowButton.style.display =
+            "flex";
+
+        mobileFastButton.style.display =
+            "flex";
 
 
         desktopControls.style.display =
@@ -6264,7 +6354,6 @@ function updateMobileControls() {
 
 
         if (document.pointerLockElement) {
-
             document.exitPointerLock();
         }
 
@@ -6274,6 +6363,12 @@ function updateMobileControls() {
             "none";
 
         mobileMoveControls.style.display =
+            "none";
+
+        mobileSlowButton.style.display =
+            "none";
+
+        mobileFastButton.style.display =
             "none";
 
 
@@ -6399,6 +6494,33 @@ document
             release
         );
     });
+
+// ========================================
+// MOBILE SPEED CONTROLS
+// One tap = one speed step
+// ========================================
+
+mobileFastButton.addEventListener(
+    "pointerdown",
+    event => {
+
+        event.preventDefault();
+
+        speed *= 1.3;
+
+    }
+);
+
+
+mobileSlowButton.addEventListener(
+    "pointerdown",
+    event => {
+
+        event.preventDefault();
+
+        speed /= 1.3;
+    }
+);
 
 function yawCamera(camera, amount) {
     camera.rotateY(amount);
@@ -6632,6 +6754,50 @@ function run() {
 
 </body>
 <style>
+    /* ========================================
+   MOBILE GAME-LIKE BEHAVIOR
+   ======================================== */
+
+    html.mobileMode,
+    html.mobileMode body,
+    html.mobileMode canvas,
+    html.mobileMode button,
+    html.mobileMode div {
+
+        user-select: none;
+        -webkit-user-select: none;
+
+        -webkit-touch-callout: none;
+
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    #mobileLookControls,
+    #mobileMoveControls {
+
+        user-select: none;
+        -webkit-user-select: none;
+
+        -webkit-touch-callout: none;
+
+        touch-action: none;
+    }
+
+    .mobileLookButton,
+    .moveButton,
+    .lookButton,
+    .mobileSpeedButton {
+
+        user-select: none;
+        -webkit-user-select: none;
+
+        -webkit-touch-callout: none;
+
+        touch-action: none;
+
+        -webkit-tap-highlight-color: transparent;
+    }
+
     #landscapeNotice {
 
         display: none;

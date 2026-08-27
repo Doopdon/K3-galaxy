@@ -568,8 +568,7 @@ function makeCylinderMaterial() {
     // MATERIAL
     // -----------------------------------
 
-    return cylinderMaterial =
-        new THREE.MeshStandardMaterial({
+    return new THREE.MeshStandardMaterial({
 
             map:
                 cylinderTexture,

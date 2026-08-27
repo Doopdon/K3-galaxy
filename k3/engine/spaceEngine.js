@@ -8,6 +8,16 @@ const hideHint =
         "hideHint"
     );
 
+const mobileSlowButton =
+    document.getElementById(
+        "mobileSlowButton"
+    );
+
+const mobileFastButton =
+    document.getElementById(
+        "mobileFastButton"
+    );
+
 const activeSceneStack = [
     mainSceneData
 ];
@@ -208,9 +218,12 @@ const mobileMoveControls =
 
 function updateMobileControls() {
 
-    const mobile =
-        isProbablyPhone();
+    const mobile = isProbablyPhone();
 
+    document.documentElement.classList.toggle(
+        "mobileMode",
+        mobile
+    );
 
     if (mobile) {
 
@@ -219,6 +232,12 @@ function updateMobileControls() {
 
         mobileMoveControls.style.display =
             "block";
+
+        mobileSlowButton.style.display =
+            "flex";
+
+        mobileFastButton.style.display =
+            "flex";
 
 
         desktopControls.style.display =
@@ -229,7 +248,6 @@ function updateMobileControls() {
 
 
         if (document.pointerLockElement) {
-
             document.exitPointerLock();
         }
 
@@ -239,6 +257,12 @@ function updateMobileControls() {
             "none";
 
         mobileMoveControls.style.display =
+            "none";
+
+        mobileSlowButton.style.display =
+            "none";
+
+        mobileFastButton.style.display =
             "none";
 
 
@@ -364,6 +388,33 @@ document
             release
         );
     });
+
+// ========================================
+// MOBILE SPEED CONTROLS
+// One tap = one speed step
+// ========================================
+
+mobileFastButton.addEventListener(
+    "pointerdown",
+    event => {
+
+        event.preventDefault();
+
+        speed *= 1.3;
+
+    }
+);
+
+
+mobileSlowButton.addEventListener(
+    "pointerdown",
+    event => {
+
+        event.preventDefault();
+
+        speed /= 1.3;
+    }
+);
 
 function yawCamera(camera, amount) {
     camera.rotateY(amount);

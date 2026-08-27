@@ -36,18 +36,19 @@ function makeHighDefStar(radius, coreColor, glowColor) {
 
 
     // Huge bright glare
-    const glare =
-        makeGlowingSphere(
-            radius * 35.0,
-            0xffffff
-        );
+    // const glare =
+    //     makeGlowingSphere(
+    //         radius * 35.0,
+    //         0xffffff
+    //     );
 
-    glare.material.opacity = 0.8;
-    glare.material.depthTest = false;
-    glare.material.depthWrite = false;
+    // glare.material.opacity = 0.8;
+    // glare.material.depthTest = false;
+    // glare.material.depthWrite = false;
 
 
-    group.add(glare);
+    // group.add(glare);
+    
     group.add(glow2);
     group.add(glow1);
     group.add(core);
