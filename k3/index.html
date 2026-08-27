@@ -96,6 +96,26 @@
 
 <body>
 
+    <div id="mobileLookControls">
+
+        <button class="lookButton lookUp" data-key="arrowup">
+            ▲
+        </button>
+
+        <button class="lookButton lookLeft" data-key="arrowleft">
+            ◀
+        </button>
+
+        <button class="lookButton lookRight" data-key="arrowright">
+            ▶
+        </button>
+
+        <button class="lookButton lookDown" data-key="arrowdown">
+            ▼
+        </button>
+
+    </div>
+
     <div id="landscapeNotice">
         <div class="phoneIcon">
             ↻
@@ -480,6 +500,95 @@
         font-size: 14px;
 
         color: rgba(255, 255, 255, 0.7);
+    }
+
+    #mobileLookControls {
+
+        display: none;
+
+        position: fixed;
+
+        right: 20px;
+        bottom: 20px;
+
+        width: 150px;
+        height: 150px;
+
+        z-index: 15000;
+
+        user-select: none;
+
+        touch-action: none;
+    }
+
+
+    .lookButton {
+
+        position: absolute;
+
+        width: 52px;
+        height: 52px;
+
+        border-radius: 50%;
+
+        border:
+            1px solid rgba(255, 255, 255, 0.45);
+
+        background:
+            rgba(0, 0, 0, 0.5);
+
+        color: white;
+
+        font-size: 24px;
+
+        font-family: monospace;
+
+        display: flex;
+
+        align-items: center;
+        justify-content: center;
+
+        padding: 0;
+
+        touch-action: none;
+
+        -webkit-tap-highlight-color:
+            transparent;
+    }
+
+
+    .lookButton:active {
+
+        background:
+            rgba(255, 255, 255, 0.25);
+    }
+
+
+    .lookUp {
+
+        top: 0;
+        left: 49px;
+    }
+
+
+    .lookDown {
+
+        bottom: 0;
+        left: 49px;
+    }
+
+
+    .lookLeft {
+
+        left: 0;
+        top: 49px;
+    }
+
+
+    .lookRight {
+
+        right: 0;
+        top: 49px;
     }
 </style>
 

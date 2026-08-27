@@ -181,6 +181,95 @@ composer.addPass(
 
 let keys = {};
 
+// ========================================
+// MOBILE LOOK CONTROLS
+// ========================================
+
+const mobileLookControls =
+    document.getElementById(
+        "mobileLookControls"
+    );
+
+
+function updateMobileControls() {
+
+    if (
+        typeof isProbablyPhone === "function"
+        &&
+        isProbablyPhone()
+    ) {
+
+        mobileLookControls.style.display =
+            "block";
+
+    } else {
+
+        mobileLookControls.style.display =
+            "none";
+    }
+}
+
+
+updateMobileControls();
+
+
+window.addEventListener(
+    "resize",
+    updateMobileControls
+);
+
+
+document
+    .querySelectorAll(
+        ".lookButton"
+    )
+    .forEach(button => {
+
+        const key =
+            button.dataset.key;
+
+
+        const press = event => {
+
+            event.preventDefault();
+
+            keys[key] =
+                true;
+        };
+
+
+        const release = event => {
+
+            event.preventDefault();
+
+            keys[key] =
+                false;
+        };
+
+
+        button.addEventListener(
+            "pointerdown",
+            press
+        );
+
+
+        button.addEventListener(
+            "pointerup",
+            release
+        );
+
+
+        button.addEventListener(
+            "pointercancel",
+            release
+        );
+
+
+        button.addEventListener(
+            "pointerleave",
+            release
+        );
+    });
 
 function yawCamera(camera, amount) {
     camera.rotateY(amount);
@@ -275,7 +364,15 @@ function addEventHandlers() {
 
     renderer.domElement.addEventListener(
         "click",
-        () => renderer.domElement.requestPointerLock()
+        () => {
+
+            // No mouse capture on phones/mobile mode
+            if (isProbablyPhone()) {
+                return;
+            }
+
+            renderer.domElement.requestPointerLock();
+        }
     );
 
     addEventListener("mousemove", e => {
