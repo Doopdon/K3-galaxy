@@ -5,9 +5,13 @@
     <title>K3</title>
 </head>
 
+
+
 <body style="margin: 0; overflow: hidden;">
 
     <script type="module">
+        import { STLLoader }
+            from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/STLLoader.js/+esm";
 
         import * as THREE
             from "https://cdn.jsdelivr.net/npm/three@0.180.0/+esm";
@@ -28,6 +32,7 @@
         window.RenderPass = RenderPass;
         window.UnrealBloomPass = UnrealBloomPass;
 
+        window.STLLoader = STLLoader;
 
         function loadScript(path) {
 
