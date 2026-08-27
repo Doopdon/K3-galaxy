@@ -3,9 +3,154 @@
 
 <head>
     <title>K3</title>
+
+    <style>
+
+        html,
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+
+
+        #controls {
+
+            position: fixed;
+
+            top: 20px;
+            left: 20px;
+
+            z-index: 10000;
+
+            padding: 14px 18px;
+
+            color: white;
+
+            background: rgba(0, 0, 0, 0.55);
+
+            border: 1px solid rgba(255, 255, 255, 0.25);
+
+            border-radius: 8px;
+
+            font-family:
+                monospace;
+
+            font-size: 14px;
+
+            line-height: 1.6;
+
+            user-select: none;
+
+            pointer-events: none;
+
+            backdrop-filter:
+                blur(4px);
+        }
+
+
+        #controls .title {
+
+            font-size: 16px;
+
+            font-weight: bold;
+
+            margin-bottom: 6px;
+        }
+
+
+        #controls .key {
+
+            display: inline-block;
+
+            min-width: 58px;
+
+            color: #ffffff;
+
+            font-weight: bold;
+        }
+
+
+        #hideHint {
+
+            position: fixed;
+
+            bottom: 15px;
+            left: 15px;
+
+            z-index: 10000;
+
+            color: rgba(255, 255, 255, 0.55);
+
+            font-family: monospace;
+
+            font-size: 12px;
+
+            user-select: none;
+
+            pointer-events: none;
+        }
+
+    </style>
+
 </head>
 
-<body style="margin: 0; overflow: hidden;">
+
+<body>
+
+
+    <!-- ========================================
+         MOVEMENT INSTRUCTIONS
+         ======================================== -->
+
+    <div id="controls">
+
+        <div class="title">
+            K3 Navigation
+        </div>
+
+        <div>
+            <span class="key">WASD</span>
+            Move
+        </div>
+
+        <div>
+            <span class="key">Mouse</span>
+            Look
+        </div>
+
+        <div>
+            <span class="key">Click</span>
+            Capture mouse
+        </div>
+
+        <div>
+            <span class="key">F / R</span>
+            Faster / Slower
+        </div>
+
+        <div>
+            <span class="key">Q / E</span>
+            Roll
+        </div>
+
+        <div>
+            <span class="key">Arrows</span>
+            Look
+        </div>
+
+        <div>
+            <span class="key">H</span>
+            Hide controls
+        </div>
+
+    </div>
+
+
+    <div id="hideHint">
+        H — Show / Hide Controls
+    </div>
+
 
     <script type="module">
 
@@ -20,6 +165,44 @@
         window.EffectComposer = EffectComposer;
         window.RenderPass = RenderPass;
         window.UnrealBloomPass = UnrealBloomPass;
+
+
+        // ========================================
+        // CONTROLS HUD
+        // ========================================
+
+        const controls =
+            document.getElementById(
+                "controls"
+            );
+
+
+        let controlsVisible =
+            true;
+
+
+        window.addEventListener(
+            "keydown",
+            event => {
+
+                if (
+                    event.key.toLowerCase() === "h"
+                    &&
+                    !event.repeat
+                ) {
+
+                    controlsVisible =
+                        !controlsVisible;
+
+
+                    controls.style.display =
+                        controlsVisible
+                            ? "block"
+                            : "none";
+                }
+            }
+        );
+
 
         window.colliderDebugMaterial =
             new THREE.MeshBasicMaterial({
@@ -98,12 +281,13 @@
             "engine/sceneDataClasses.js"
         );
 
+
         /// =======Scenes========
 
         await loadScript(
             "scenes/roomScene.js"
         );
-        
+
         await loadScript(
             "scenes/cylindarScene.js"
         );
@@ -124,7 +308,10 @@
             "scenes/galaxyScene.js"
         );
 
-        window.mainSceneData = galaxySceneData
+
+        window.mainSceneData =
+            galaxySceneData;
+
 
         window.cam_position = [
             0,
@@ -132,11 +319,13 @@
             890
         ];
 
+
         window.cam_lookAt = [
             0,
             0,
             0
         ];
+
 
         await loadScript(
             "engine/spaceEngine.js"
@@ -147,6 +336,7 @@
         window.run();
 
     </script>
+
 </body>
 
 </html>
