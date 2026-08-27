@@ -127,6 +127,11 @@
                 PARTICLE_COUNT * 3
             );
 
+        const baseColors =
+            new Float32Array(
+                PARTICLE_COUNT * 3
+            );
+
         const particles = [];
 
 
@@ -319,12 +324,6 @@
                     )
                 );
 
-            const redness =
-                Math.pow(
-                    normalizedDistance,
-                    0.9
-                );
-
             // Only the very inner region gets enough
             // green/blue to look red-white.
             const hotCore =
@@ -333,8 +332,7 @@
                     3.0
                 );
 
-            const red =
-                brightness;
+            const red = brightness;
 
             const green =
                 brightness *
@@ -350,17 +348,13 @@
                     0.55 * hotCore
                 );
 
-            colors[
-                i * 3
-            ] = red;
+            baseColors[i * 3] = red;
+            baseColors[i * 3 + 1] = green;
+            baseColors[i * 3 + 2] = blue;
 
-            colors[
-                i * 3 + 1
-            ] = green;
-
-            colors[
-                i * 3 + 2
-            ] = blue;
+            colors[i * 3] = red;
+            colors[i * 3 + 1] = green;
+            colors[i * 3 + 2] = blue;
         }
 
 
@@ -521,6 +515,70 @@
 
             positionAttribute.needsUpdate =
                 true;
+        }
+
+        let flashAmount = 0;
+        let flashVelocity = 0;
+
+        function flash() {
+
+            flashAmount = 1.0;
+        }
+
+        function updateFlash(deltaTime) {
+
+            if (flashAmount <= 0)
+                return;
+
+            // How quickly the flash disappears.
+            flashAmount -=
+                deltaTime * 5.0;
+
+            flashAmount =
+                Math.max(
+                    0,
+                    flashAmount
+                );
+
+
+            for (
+                let i = 0;
+                i < PARTICLE_COUNT;
+                i++
+            ) {
+
+                const index =
+                    i * 3;
+
+                // Blend normal particle color toward pure white.
+
+                colors[index] =
+                    THREE.MathUtils.lerp(
+                        baseColors[index],
+                        1.0,
+                        flashAmount
+                    );
+
+                colors[index + 1] =
+                    THREE.MathUtils.lerp(
+                        baseColors[index + 1],
+                        1.0,
+                        flashAmount
+                    );
+
+                colors[index + 2] =
+                    THREE.MathUtils.lerp(
+                        baseColors[index + 2],
+                        1.0,
+                        flashAmount
+                    );
+            }
+
+
+            particleGeometry
+                .attributes
+                .color
+                .needsUpdate = true;
         }
 
 
@@ -694,6 +752,10 @@
                 deltaTime
             );
 
+            updateFlash(
+                deltaTime
+            );
+
             updateCamera();
 
 
@@ -732,6 +794,14 @@
                     window.innerWidth,
                     window.innerHeight
                 );
+            }
+        );
+
+        window.addEventListener(
+            "click",
+            function () {
+
+                flash();
             }
         );
 
