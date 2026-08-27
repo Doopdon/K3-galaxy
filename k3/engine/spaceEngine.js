@@ -1,3 +1,13 @@
+const desktopControls =
+    document.getElementById(
+        "controls"
+    );
+
+const hideHint =
+    document.getElementById(
+        "hideHint"
+    );
+
 const activeSceneStack = [
     mainSceneData
 ];
@@ -190,22 +200,55 @@ const mobileLookControls =
         "mobileLookControls"
     );
 
+const mobileMoveControls =
+    document.getElementById(
+        "mobileMoveControls"
+    );
+
 
 function updateMobileControls() {
 
-    if (
-        typeof isProbablyPhone === "function"
-        &&
-        isProbablyPhone()
-    ) {
+    const mobile =
+        isProbablyPhone();
+
+
+    if (mobile) {
 
         mobileLookControls.style.display =
             "block";
+
+        mobileMoveControls.style.display =
+            "block";
+
+
+        desktopControls.style.display =
+            "none";
+
+        hideHint.style.display =
+            "none";
+
+
+        if (document.pointerLockElement) {
+
+            document.exitPointerLock();
+        }
 
     } else {
 
         mobileLookControls.style.display =
             "none";
+
+        mobileMoveControls.style.display =
+            "none";
+
+
+        desktopControls.style.display =
+            controlsVisible
+                ? "block"
+                : "none";
+
+        hideHint.style.display =
+            "block";
     }
 }
 
@@ -267,6 +310,57 @@ document
 
         button.addEventListener(
             "pointerleave",
+            release
+        );
+    });
+
+document
+    .querySelectorAll(
+        ".moveButton"
+    )
+    .forEach(button => {
+
+        const key =
+            button.dataset.key;
+
+
+        const press = event => {
+
+            event.preventDefault();
+
+            keys[key] = true;
+
+            button.setPointerCapture?.(
+                event.pointerId
+            );
+        };
+
+
+        const release = event => {
+
+            event.preventDefault();
+
+            keys[key] = false;
+        };
+
+
+        button.addEventListener(
+            "pointerdown",
+            press
+        );
+
+        button.addEventListener(
+            "pointerup",
+            release
+        );
+
+        button.addEventListener(
+            "pointercancel",
+            release
+        );
+
+        button.addEventListener(
+            "lostpointercapture",
             release
         );
     });

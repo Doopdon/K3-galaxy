@@ -89,12 +89,118 @@
 
             pointer-events: none;
         }
+
+        #mobileMoveControls {
+
+            display: none;
+
+            position: fixed;
+
+            left: 20px;
+            bottom: 20px;
+
+            width: 150px;
+            height: 150px;
+
+            z-index: 15000;
+
+            user-select: none;
+
+            touch-action: none;
+        }
+
+
+        .moveButton {
+
+            position: absolute;
+
+            width: 52px;
+            height: 52px;
+
+            border-radius: 50%;
+
+            border:
+                1px solid rgba(255, 255, 255, 0.45);
+
+            background:
+                rgba(0, 0, 0, 0.5);
+
+            color: white;
+
+            font-size: 24px;
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            padding: 0;
+
+            touch-action: none;
+
+            -webkit-tap-highlight-color:
+                transparent;
+        }
+
+
+        .moveButton:active {
+
+            background:
+                rgba(255, 255, 255, 0.25);
+        }
+
+
+        .moveUp {
+
+            top: 0;
+            left: 49px;
+        }
+
+
+        .moveDown {
+
+            bottom: 0;
+            left: 49px;
+        }
+
+
+        .moveLeft {
+
+            left: 0;
+            top: 49px;
+        }
+
+
+        .moveRight {
+
+            right: 0;
+            top: 49px;
+        }
     </style>
 
 </head>
 
 
 <body>
+    <div id="mobileMoveControls">
+
+        <button class="moveButton moveUp" data-key="w">
+            ▲
+        </button>
+
+        <button class="moveButton moveLeft" data-key="a">
+            ◀
+        </button>
+
+        <button class="moveButton moveRight" data-key="d">
+            ▶
+        </button>
+
+        <button class="moveButton moveDown" data-key="s">
+            ▼
+        </button>
+
+    </div>
 
     <div id="mobileLookControls">
 
