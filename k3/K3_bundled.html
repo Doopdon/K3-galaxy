@@ -5,7 +5,6 @@
     <title>K3</title>
 
     <style>
-
         html,
         body {
             margin: 0;
@@ -90,7 +89,6 @@
 
             pointer-events: none;
         }
-
     </style>
 
 </head>
@@ -98,6 +96,19 @@
 
 <body>
 
+    <div id="landscapeNotice">
+        <div class="phoneIcon">
+            ↻
+        </div>
+
+        <div class="landscapeTitle">
+            Best enjoyed in landscape
+        </div>
+
+        <div class="landscapeText">
+            Turn your phone sideways
+        </div>
+    </div>
 
     <!-- ========================================
          MOVEMENT INSTRUCTIONS
@@ -168,6 +179,83 @@
 
 
         // ========================================
+        // MOBILE LANDSCAPE NOTICE
+        // ========================================
+
+        const landscapeNotice =
+            document.getElementById(
+                "landscapeNotice"
+            );
+
+
+        function isProbablyPhone() {
+
+            const hasTouch =
+                navigator.maxTouchPoints > 0;
+
+
+            const smallestScreenDimension =
+                Math.min(
+                    screen.width,
+                    screen.height
+                );
+
+
+            // Most phones are well below this.
+            // Tablets usually start getting above it.
+            const phoneSized =
+                smallestScreenDimension <= 600;
+
+
+            return (
+                hasTouch &&
+                phoneSized
+            );
+        }
+
+
+        function updateLandscapeNotice() {
+
+            const isPhone =
+                isProbablyPhone();
+
+
+            const isPortrait =
+                window.innerHeight >
+                window.innerWidth;
+
+
+            if (
+                isPhone &&
+                isPortrait
+            ) {
+
+                landscapeNotice.style.display =
+                    "flex";
+
+            } else {
+
+                landscapeNotice.style.display =
+                    "none";
+            }
+        }
+
+
+        updateLandscapeNotice();
+
+
+        window.addEventListener(
+            "resize",
+            updateLandscapeNotice
+        );
+
+
+        window.addEventListener(
+            "orientationchange",
+            updateLandscapeNotice
+        );
+
+        // ========================================
         // CONTROLS HUD
         // ========================================
 
@@ -221,7 +309,7 @@
             });
 
 
-        window.showCollider = function(collider) {
+        window.showCollider = function (collider) {
 
             if (!collider.geometry) {
                 return;
@@ -6226,5 +6314,61 @@ function run() {
     </script>
 
 </body>
+<style>
+    #landscapeNotice {
+
+        display: none;
+
+        position: fixed;
+
+        inset: 0;
+
+        z-index: 20000;
+
+        background: rgba(0, 0, 0, 0.88);
+
+        color: white;
+
+        font-family: monospace;
+
+        text-align: center;
+
+        align-items: center;
+
+        justify-content: center;
+
+        flex-direction: column;
+
+        gap: 12px;
+
+        user-select: none;
+    }
+
+
+    #landscapeNotice .phoneIcon {
+
+        font-size: 60px;
+
+        line-height: 1;
+
+        margin-bottom: 8px;
+    }
+
+
+    #landscapeNotice .landscapeTitle {
+
+        font-size: 22px;
+
+        font-weight: bold;
+    }
+
+
+    #landscapeNotice .landscapeText {
+
+        font-size: 14px;
+
+        color: rgba(255, 255, 255, 0.7);
+    }
+</style>
 
 </html>
