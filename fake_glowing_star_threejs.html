@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Fake Glowing Star - Three.js</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Classic Three.js build so this can be opened directly as a single HTML file -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+
+
+        // ============================================================
+        // CAMERA
+        // ============================================================
+
+        const camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+
+        camera.position.set(0, 5, 32);
+        camera.lookAt(0, 0, 0);
+
+
+        // ============================================================
+        // RENDERER
+        // ============================================================
+
+        const renderer = new THREE.WebGLRenderer({
+            antialias: true
+        });
+
+        renderer.setSize(
+            window.innerWidth,
+            window.innerHeight
+        );
+
+        renderer.setPixelRatio(
+            Math.min(window.devicePixelRatio, 2)
+        );
+
+        document.body.appendChild(
+            renderer.domElement
+        );
+
+
+        // ============================================================
+        // STAR
+        // ============================================================
+        //
+        // This is NOT a light.
+        // It is just a white sphere using MeshBasicMaterial.
+        //
+
+        const STAR_RADIUS = .125 * 4;
+
+        const star = new THREE.Mesh(
+            new THREE.SphereGeometry(
+                STAR_RADIUS,
+                48,
+                32
+            ),
+            new THREE.MeshBasicMaterial({
+                color: 0xffffff
+            })
+        );
+
+        scene.add(star);
+
+
+        // ============================================================
+        // ORBITING DOTS
+        // ============================================================
+
+        const PARTICLE_COUNT = 100000;
+
+        const MIN_RADIUS = .18 * 6;
+        const MAX_RADIUS = 1.60 * 6;
+
+        // Controls overall orbital speed.
+        //
+        // Circular Kepler orbit:
+        //
+        // angularVelocity = sqrt(mu / r^3)
+        //
+        // So particles closer to the star orbit much faster.
+        //
+        const MU = 14.0;
+
+
+        // ------------------------------------------------------------
+        // PARTICLE DATA
+        // ------------------------------------------------------------
+
+        const positions =
+            new Float32Array(
+                PARTICLE_COUNT * 3
+            );
+
+        const colors =
+            new Float32Array(
+                PARTICLE_COUNT * 3
+            );
+
+        const particles = [];
+
+
+        // ============================================================
+        // RANDOM UNIT VECTOR
+        // ============================================================
+
+        function randomUnitVector() {
+
+            const z =
+                Math.random() * 2 - 1;
+
+            const angle =
+                Math.random() * Math.PI * 2;
+
+            const radius =
+                Math.sqrt(
+                    1 - z * z
+                );
+
+            return new THREE.Vector3(
+                radius * Math.cos(angle),
+                radius * Math.sin(angle),
+                z
+            );
+        }
+
+
+        // ============================================================
+        // CREATE PARTICLES
+        // ============================================================
+
+        for (
+            let i = 0;
+            i < PARTICLE_COUNT;
+            i++
+        ) {
+
+            // --------------------------------------------------------
+            // ORBIT RADIUS
+            // --------------------------------------------------------
+            //
+            // Slight bias toward the center.
+            // Change exponent if you want a different distribution.
+            //
+
+            // --------------------------------------------------------
+            // ORBIT RADIUS
+            // --------------------------------------------------------
+            //
+            // Peak density at medium altitudes.
+            // Fewer particles near the inner and outer extremes.
+            //
+
+            const t =
+                (
+                    Math.random() +
+                    Math.random() 
+                ) / 2;
+
+            const radius =
+                MIN_RADIUS +
+                t * (
+                    MAX_RADIUS -
+                    MIN_RADIUS
+                );
+
+
+
+
+            // --------------------------------------------------------
+            // RANDOM ORBIT PLANE
+            // --------------------------------------------------------
+            //
+            // normal = axis perpendicular to the circular orbit.
+            //
+
+            const normal =
+                randomUnitVector();
+
+
+            // Find a vector not parallel to the normal.
+
+            let helper =
+                Math.abs(normal.y) < 0.9
+                    ? new THREE.Vector3(0, 1, 0)
+                    : new THREE.Vector3(1, 0, 0);
+
+
+            // Two perpendicular basis vectors lying in the orbit plane.
+
+            const axisA =
+                new THREE.Vector3()
+                    .crossVectors(
+                        normal,
+                        helper
+                    )
+                    .normalize();
+
+            const axisB =
+                new THREE.Vector3()
+                    .crossVectors(
+                        normal,
+                        axisA
+                    )
+                    .normalize();
+
+
+            // --------------------------------------------------------
+            // STARTING ANGLE
+            // --------------------------------------------------------
+
+            const angle =
+                Math.random() *
+                Math.PI *
+                2;
+
+
+            // --------------------------------------------------------
+            // REALISTIC CIRCULAR ORBIT SPEED
+            // --------------------------------------------------------
+
+            const angularVelocity =
+                Math.sqrt(
+                    MU /
+                    (
+                        radius *
+                        radius *
+                        radius
+                    )
+                );
+
+
+            // Some orbit clockwise, some counter-clockwise.
+
+            const direction =
+                Math.random() < 0.5
+                    ? -1
+                    : 1;
+
+
+            particles.push({
+
+                radius,
+
+                axisA,
+                axisB,
+
+                angle,
+
+                angularVelocity:
+                    angularVelocity *
+                    direction
+            });
+
+
+            // --------------------------------------------------------
+            // BRIGHTNESS
+            // --------------------------------------------------------
+            //
+            // ONLY radius controls brightness.
+            //
+            // Near star  = white
+            // Far away   = almost black
+            //
+
+            const normalizedDistance =
+                (
+                    radius -
+                    MIN_RADIUS
+                )
+                /
+                (
+                    MAX_RADIUS -
+                    MIN_RADIUS
+                );
+
+
+            // Nonlinear falloff.
+            //
+            // Increase 2.2 to make outer particles darker faster.
+
+            const brightness =
+                THREE.MathUtils.lerp(
+                    1.0,
+                    0.045,
+                    Math.pow(
+                        normalizedDistance,
+                        0.75
+                    )
+                );
+
+
+            colors[
+                i * 3
+            ] = brightness;
+
+            colors[
+                i * 3 + 1
+            ] = brightness;
+
+            colors[
+                i * 3 + 2
+            ] = brightness;
+        }
+
+
+        // ============================================================
+        // POINT GEOMETRY
+        // ============================================================
+
+        const particleGeometry =
+            new THREE.BufferGeometry();
+
+        particleGeometry.setAttribute(
+            "position",
+            new THREE.BufferAttribute(
+                positions,
+                3
+            )
+        );
+
+        particleGeometry.setAttribute(
+            "color",
+            new THREE.BufferAttribute(
+                colors,
+                3
+            )
+        );
+
+
+        // ============================================================
+        // POINT MATERIAL
+        // ============================================================
+        //
+        // No lighting.
+        // No bloom.
+        // No glow.
+        // Just colored pixels.
+        //
+
+        const particleMaterial =
+            new THREE.PointsMaterial({
+
+                size: 0.095,
+
+                sizeAttenuation: true,
+
+                vertexColors: true,
+
+                transparent: false,
+
+                depthWrite: true
+            });
+
+
+        const particleCloud =
+            new THREE.Points(
+                particleGeometry,
+                particleMaterial
+            );
+
+        scene.add(
+            particleCloud
+        );
+
+
+        // ============================================================
+        // INITIAL PARTICLE POSITION UPDATE
+        // ============================================================
+
+        function updateParticles(
+            deltaTime
+        ) {
+
+            const positionAttribute =
+                particleGeometry
+                    .attributes
+                    .position;
+
+
+            for (
+                let i = 0;
+                i < PARTICLE_COUNT;
+                i++
+            ) {
+
+                const p =
+                    particles[i];
+
+
+                p.angle +=
+                    p.angularVelocity *
+                    deltaTime;
+
+
+                const cosA =
+                    Math.cos(
+                        p.angle
+                    );
+
+                const sinA =
+                    Math.sin(
+                        p.angle
+                    );
+
+
+                // Circular orbit:
+                //
+                // position =
+                // axisA * cos(angle) * radius
+                // +
+                // axisB * sin(angle) * radius
+
+                const x =
+                    (
+                        p.axisA.x *
+                        cosA
+                        +
+                        p.axisB.x *
+                        sinA
+                    )
+                    *
+                    p.radius;
+
+                const y =
+                    (
+                        p.axisA.y *
+                        cosA
+                        +
+                        p.axisB.y *
+                        sinA
+                    )
+                    *
+                    p.radius;
+
+                const z =
+                    (
+                        p.axisA.z *
+                        cosA
+                        +
+                        p.axisB.z *
+                        sinA
+                    )
+                    *
+                    p.radius;
+
+
+                positions[
+                    i * 3
+                ] = x;
+
+                positions[
+                    i * 3 + 1
+                ] = y;
+
+                positions[
+                    i * 3 + 2
+                ] = z;
+            }
+
+
+            positionAttribute.needsUpdate =
+                true;
+        }
+
+
+        // ============================================================
+        // MOUSE CAMERA
+        // ============================================================
+        //
+        // Very simple click-and-drag camera rotation around the star.
+        //
+
+        let dragging = false;
+
+        let previousX = 0;
+        let previousY = 0;
+
+        let cameraYaw = 0;
+        let cameraPitch = 0.15;
+
+        let CAMERA_DISTANCE = 32;
+
+
+        renderer.domElement.addEventListener(
+            "pointerdown",
+            function (event) {
+
+                dragging = true;
+
+                previousX =
+                    event.clientX;
+
+                previousY =
+                    event.clientY;
+
+                renderer.domElement
+                    .setPointerCapture(
+                        event.pointerId
+                    );
+            }
+        );
+
+
+        renderer.domElement.addEventListener(
+            "pointermove",
+            function (event) {
+
+                if (!dragging)
+                    return;
+
+
+                const dx =
+                    event.clientX -
+                    previousX;
+
+                const dy =
+                    event.clientY -
+                    previousY;
+
+
+                previousX =
+                    event.clientX;
+
+                previousY =
+                    event.clientY;
+
+
+                cameraYaw -=
+                    dx * 0.005;
+
+                cameraPitch -=
+                    dy * 0.005;
+
+
+                cameraPitch =
+                    THREE.MathUtils.clamp(
+                        cameraPitch,
+                        -Math.PI * 0.49,
+                        Math.PI * 0.49
+                    );
+            }
+        );
+
+
+        renderer.domElement.addEventListener(
+            "pointerup",
+            function () {
+
+                dragging = false;
+            }
+        );
+
+        renderer.domElement.addEventListener(
+            "wheel",
+            function (event) {
+
+                event.preventDefault();
+
+                const zoomFactor =
+                    Math.exp(
+                        event.deltaY * 0.001
+                    );
+
+                CAMERA_DISTANCE *=
+                    zoomFactor;
+
+                CAMERA_DISTANCE =
+                    THREE.MathUtils.clamp(
+                        CAMERA_DISTANCE,
+                        2,
+                        200
+                    );
+            },
+            {
+                passive: false
+            }
+        );
+
+        function updateCamera() {
+
+            const cosPitch =
+                Math.cos(
+                    cameraPitch
+                );
+
+
+            camera.position.set(
+
+                Math.sin(cameraYaw) *
+                cosPitch *
+                CAMERA_DISTANCE,
+
+                Math.sin(cameraPitch) *
+                CAMERA_DISTANCE,
+
+                Math.cos(cameraYaw) *
+                cosPitch *
+                CAMERA_DISTANCE
+            );
+
+
+            camera.lookAt(
+                0,
+                0,
+                0
+            );
+        }
+
+
+        // ============================================================
+        // ANIMATION LOOP
+        // ============================================================
+
+        const clock =
+            new THREE.Clock();
+
+
+        function animate() {
+
+            requestAnimationFrame(
+                animate
+            );
+
+
+            const deltaTime =
+                Math.min(
+                    clock.getDelta(),
+                    0.05
+                );
+
+
+            updateParticles(
+                deltaTime
+            );
+
+            updateCamera();
+
+
+            renderer.render(
+                scene,
+                camera
+            );
+        }
+
+
+        updateParticles(
+            0
+        );
+
+        updateCamera();
+
+        animate();
+
+
+        // ============================================================
+        // RESIZE
+        // ============================================================
+
+        window.addEventListener(
+            "resize",
+            function () {
+
+                camera.aspect =
+                    window.innerWidth /
+                    window.innerHeight;
+
+                camera.updateProjectionMatrix();
+
+
+                renderer.setSize(
+                    window.innerWidth,
+                    window.innerHeight
+                );
+            }
+        );
+
+    </script>
+
+</body>
+
+</html>
