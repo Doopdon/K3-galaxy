@@ -1,0 +1,6040 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>K3</title>
+</head>
+
+<body style="margin: 0; overflow: hidden;">
+
+    <script type="module">
+
+        import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/+esm";
+        import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/postprocessing/EffectComposer.js/+esm";
+        import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/postprocessing/RenderPass.js/+esm";
+        import { UnrealBloomPass } from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/postprocessing/UnrealBloomPass.js/+esm";
+
+
+        // Make them available to ordinary JS files
+        window.THREE = THREE;
+        window.EffectComposer = EffectComposer;
+        window.RenderPass = RenderPass;
+        window.UnrealBloomPass = UnrealBloomPass;
+
+        window.colliderDebugMaterial =
+            new THREE.MeshBasicMaterial({
+
+                color: 0x00ff00,
+
+                wireframe: true,
+
+                transparent: true,
+
+                opacity: 0.8,
+
+                depthTest: false,
+
+                depthWrite: false
+            });
+
+
+        window.showCollider = function(collider) {
+
+            if (!collider.geometry) {
+                return;
+            }
+
+
+            const debugMesh =
+                new THREE.Mesh(
+                    collider.geometry,
+                    colliderDebugMaterial
+                );
+
+
+            // Slightly enlarge it so the wireframe
+            // doesn't fight with the visible surface.
+            debugMesh.scale.setScalar(
+                1.01
+            );
+
+
+            debugMesh.renderOrder =
+                999;
+
+
+            // Since it is a child of the collider,
+            // it automatically gets the exact same
+            // position + rotation + scale.
+            collider.add(
+                debugMesh
+            );
+        }
+
+
+        function loadScript(path) {
+
+            return new Promise((resolve, reject) => {
+
+                const script =
+                    document.createElement("script");
+
+                script.src = path;
+
+                script.onload = resolve;
+                script.onerror = reject;
+
+                document.body.appendChild(script);
+            });
+        }
+
+
+        // Load in dependency order
+        
+
+        // ====================================================
+        // BEGIN BUNDLED FILE: helpers.js
+        // ====================================================
+
+function captureSkybox(
+    renderer,
+    scene,
+    position,
+    resolution = 128
+) {
+    const target =
+        new THREE.WebGLCubeRenderTarget(
+            resolution,
+            {
+                type: THREE.HalfFloatType,
+
+                generateMipmaps: true,
+
+                minFilter:
+                    THREE.LinearMipmapLinearFilter
+            }
+        );
+
+    const cubeCamera =
+        new THREE.CubeCamera(
+            0.1,
+            10000,
+            target
+        );
+
+    cubeCamera.position.copy(position);
+
+    scene.add(cubeCamera);
+
+    cubeCamera.update(
+        renderer,
+        scene
+    );
+
+    scene.remove(cubeCamera);
+
+
+    // Keep the render target alive along with the texture.
+    target.texture.userData.renderTarget =
+        target;
+
+    return target.texture;
+}
+
+        // ====================================================
+        // END BUNDLED FILE: helpers.js
+        // ====================================================
+
+
+
+        
+
+        // ====================================================
+        // BEGIN BUNDLED FILE: engine/sceneDataClasses.js
+        // ====================================================
+
+class SpatialHashGrid {
+
+    constructor(cellSize) {
+        this.cellSize = cellSize;
+        this.cells = new Map();
+    }
+
+    getKey(position) {
+
+        const x = Math.floor(position.x / this.cellSize);
+        const y = Math.floor(position.y / this.cellSize);
+        const z = Math.floor(position.z / this.cellSize);
+
+        return `${x},${y},${z}`;
+    }
+
+    add(object, position) {
+
+        const key = this.getKey(position);
+
+        if (!this.cells.has(key)) {
+            this.cells.set(key, []);
+        }
+
+        this.cells.get(key).push(object);
+    }
+
+    getNearby(position) {
+
+        const cx = Math.floor(position.x / this.cellSize);
+        const cy = Math.floor(position.y / this.cellSize);
+        const cz = Math.floor(position.z / this.cellSize);
+
+        const results = [];
+
+        for (let x = -1; x <= 1; x++) {
+            for (let y = -1; y <= 1; y++) {
+                for (let z = -1; z <= 1; z++) {
+
+                    const key =
+                        `${cx + x},${cy + y},${cz + z}`;
+
+                    const cell =
+                        this.cells.get(key);
+
+                    if (cell) {
+                        results.push(...cell);
+                    }
+                }
+            }
+        }
+
+        return results;
+    }
+}
+
+class SceneData {
+
+    constructor({
+        scale,
+        timescale = 1,
+        disapearDistance = 1,
+        childScenes = [],
+        collisionEnterDistance = 0.01,
+        getSubSceneData,
+        populateScene,
+        animate
+    }) {
+
+        this.scene = new THREE.Scene();
+
+        this.camera = new THREE.PerspectiveCamera(
+            70,
+            window.innerWidth / window.innerHeight,
+            0.005,
+            7000
+        );
+
+        this.camera.rotation.order = "YXZ";
+        this.camera.position.z = 5;
+
+
+        // Scene properties
+        this.scale = scale;
+        this.timescale = timescale;
+        this.speedMultiplier = 1;
+
+        this.disapearDistance = disapearDistance;
+        this.childScenes = childScenes;
+
+
+        // Only these objects can be entered
+        this.colliders = [];
+
+
+        // Current thing we're riding
+        this.activeCollider = null;
+        this.activeSubScene = null;
+
+        this.parentCollider = null;
+        this.parentSceneData = null;
+
+
+        // Previous transform of collider
+        this.lastColliderPosition = new THREE.Vector3();
+        this.lastColliderQuaternion = new THREE.Quaternion();
+
+
+        // User supplied behavior
+        this.populateSceneFunction = populateScene;
+        this.animateFunction = animate;
+
+        if (getSubSceneData) {
+            this.getSubSceneData = getSubSceneData;
+        }
+
+        this.rootGroup = new THREE.Group();
+        this.scene.add(this.rootGroup);
+    }
+
+    addCollider(object) {
+
+        this.colliders.push(object);
+
+        return object;
+    }
+
+    updateParentLock() {
+
+        if (!this.parentCollider) return;
+
+        const position = new THREE.Vector3();
+        const quaternion = new THREE.Quaternion();
+
+        this.parentCollider.getWorldPosition(position);
+        this.parentCollider.getWorldQuaternion(quaternion);
+
+        position.multiplyScalar(
+            this.parentSceneData.scale / this.scale
+        );
+
+        this.rootGroup.position.copy(position);
+        this.rootGroup.quaternion.copy(quaternion);
+    }
+
+    getColliderLocalQuaternion(collider) {
+
+        const colliderWorld = new THREE.Quaternion();
+        const rootWorld = new THREE.Quaternion();
+
+        collider.getWorldQuaternion(colliderWorld);
+        this.rootGroup.getWorldQuaternion(rootWorld);
+
+        return rootWorld
+            .invert()
+            .multiply(colliderWorld);
+    }
+
+    populateScene() {
+
+        this.colliders = [];
+
+        // Clear old child content
+        this.rootGroup.clear();
+
+        // Rebuild the scene contents locally around rootGroup
+        this.populateSceneFunction?.call(this);
+    }
+
+    update(deltaTime) {
+
+        this.updateParentLock();
+
+        const scaledDelta =
+            deltaTime * this.speedMultiplier;
+
+        this.animateFunction?.call(
+            this,
+            scaledDelta
+        );
+
+        this.scene.updateMatrixWorld(true);
+
+        this.updateCameraLock();
+    }
+
+    getColliders() {
+        return this.colliders;
+    }
+
+    getColliderDistance(collider) {
+
+        const cameraWorld =
+            new THREE.Vector3();
+
+        this.camera.getWorldPosition(
+            cameraWorld
+        );
+
+
+        // --------------------------------
+        // POINT COLLIDER
+        // --------------------------------
+
+        if (
+            collider.userData
+                ?.collisionType === "point"
+        ) {
+
+            const colliderWorld =
+                new THREE.Vector3();
+
+            collider.getWorldPosition(
+                colliderWorld
+            );
+
+
+            return cameraWorld.distanceTo(
+                colliderWorld
+            );
+        }
+
+
+        // --------------------------------
+        // NO GEOMETRY FALLBACK
+        // --------------------------------
+
+        if (!collider.geometry) {
+
+            const colliderWorld =
+                new THREE.Vector3();
+
+            collider.getWorldPosition(
+                colliderWorld
+            );
+
+
+            return cameraWorld.distanceTo(
+                colliderWorld
+            );
+        }
+
+
+        // --------------------------------
+        // GEOMETRY COLLIDER
+        // --------------------------------
+
+        if (
+            !collider.geometry.boundingBox
+        ) {
+
+            collider.geometry
+                .computeBoundingBox();
+        }
+
+
+        // Camera in collider-local space.
+        const cameraLocal =
+            collider.worldToLocal(
+                cameraWorld.clone()
+            );
+
+
+        // Closest point on the box.
+        const closestLocal =
+            cameraLocal.clone()
+                .clamp(
+                    collider.geometry
+                        .boundingBox.min,
+
+                    collider.geometry
+                        .boundingBox.max
+                );
+
+
+        // Convert closest point back to world.
+        const closestWorld =
+            collider.localToWorld(
+                closestLocal
+            );
+
+
+        return cameraWorld.distanceTo(
+            closestWorld
+        );
+    }
+
+    isCameraInsideCollider(collider) {
+
+        if (!collider.geometry) {
+            return false;
+        }
+
+
+        if (
+            !collider.geometry.boundingBox
+        ) {
+
+            collider.geometry
+                .computeBoundingBox();
+        }
+
+
+        const cameraWorld =
+            new THREE.Vector3();
+
+        this.camera.getWorldPosition(
+            cameraWorld
+        );
+
+
+        // Transform the camera into the
+        // collider's local coordinate system.
+        const cameraLocal =
+            collider.worldToLocal(
+                cameraWorld.clone()
+            );
+
+
+        return collider.geometry
+            .boundingBox
+            .containsPoint(
+                cameraLocal
+            );
+    }
+
+    checkCollision() {
+
+        this.scene.updateMatrixWorld(true);
+
+
+        // --------------------------------
+        // ALREADY INSIDE SOMETHING
+        // --------------------------------
+
+        if (this.activeCollider) {
+
+            const distance =
+                this.getColliderDistance(
+                    this.activeCollider
+                );
+
+
+            if (
+                distance >
+                this.disapearDistance
+            ) {
+
+                this.leaveCollider();
+            }
+
+            return;
+        }
+
+
+        // --------------------------------
+        // LOOK FOR COLLIDERS
+        // --------------------------------
+
+        const cameraWorld =
+            new THREE.Vector3();
+
+        this.camera.getWorldPosition(
+            cameraWorld
+        );
+
+
+        let bestCollider =
+            null;
+
+        let bestCenterDistance =
+            Infinity;
+
+
+        for (
+            const collider
+            of this.getColliders()
+        ) {
+
+            const isPoint =
+                collider.userData
+                    ?.collisionType === "point";
+
+
+            let collided;
+
+
+            // Point objects:
+            // stars, mirrors, pyramids, etc.
+            if (isPoint) {
+
+                collided =
+                    this.getColliderDistance(
+                        collider
+                    ) <
+                    this.disapearDistance;
+            }
+
+
+            // Physical objects:
+            // box colliders.
+            else {
+
+                collided =
+                    this.isCameraInsideCollider(
+                        collider
+                    );
+            }
+
+
+            if (!collided) {
+                continue;
+            }
+
+
+            // Multiple colliders may overlap.
+            // Pick the nearest one.
+            const center =
+                new THREE.Vector3();
+
+            collider.getWorldPosition(
+                center
+            );
+
+
+            const centerDistance =
+                cameraWorld.distanceTo(
+                    center
+                );
+
+
+            if (
+                centerDistance <
+                bestCenterDistance
+            ) {
+
+                bestCollider =
+                    collider;
+
+                bestCenterDistance =
+                    centerDistance;
+            }
+        }
+
+
+        // --------------------------------
+        // ENTER WINNER
+        // --------------------------------
+
+        if (bestCollider) {
+
+            const position =
+                new THREE.Vector3();
+
+            bestCollider.getWorldPosition(
+                position
+            );
+
+
+            this.enterCollider(
+                bestCollider,
+                position
+            );
+        }
+    }
+
+    enterCollider(collider, worldPosition) {
+        // any extra functionality to call when enetering an object.
+        this.onColide?.(collider, worldPosition)
+
+        const subScene = this.getSubSceneData(collider);
+
+
+        // Always lock to the collider
+        this.activeCollider = collider;
+        this.activeSubScene = subScene ?? null;
+
+
+        // Remember its current transform for camera locking
+        collider.getWorldPosition(
+            this.lastColliderPosition
+        );
+
+        // Convert from world position into this scene's local frame
+        this.rootGroup.worldToLocal(
+            this.lastColliderPosition
+        );
+
+        this.lastColliderQuaternion.copy(
+            this.getColliderLocalQuaternion(collider)
+        );
+
+
+        // No deeper scene:
+        // stay locked to the object, but don't change the stack
+        if (!subScene) {
+            return;
+        }
+
+
+        // Tell the child scene what object/frame it belongs to
+        subScene.parentCollider = collider;
+        subScene.parentSceneData = this;
+
+
+        // Hide parent object because we've descended inside it
+        collider.visible = false;
+
+
+        // Position child scene root at the collider
+        subScene.updateParentLock();
+        subScene.populateScene();
+
+        // subScene.alignCameraUp();
+
+
+        // Add child to active hierarchy
+        const index =
+            activeSceneStack.indexOf(this);
+
+        activeSceneStack.splice(index + 1);
+
+        activeSceneStack.push(subScene);
+
+
+
+
+        updateTimeScales();
+    }
+
+    leaveCollider() {
+        if (!this.activeCollider) return;
+
+
+        this.activeSubScene?.remove();
+
+        this.activeCollider.visible = true;
+
+        this.activeCollider = null;
+        this.activeSubScene = null;
+
+
+        const index =
+            activeSceneStack.indexOf(this);
+
+        activeSceneStack.splice(index + 1);
+
+
+        updateTimeScales();
+
+        // this.alignCameraUp()
+    }
+
+    updateCameraLock() {
+
+        if (!this.activeCollider) return;
+
+        const mainCamera = scenesData[0].camera;
+
+
+        // ----------------------
+        // COLLIDER LOCAL POSITION
+        // ----------------------
+
+        const newPosition = new THREE.Vector3();
+
+        this.activeCollider.getWorldPosition(
+            newPosition
+        );
+
+        this.rootGroup.worldToLocal(
+            newPosition
+        );
+
+
+        // ----------------------
+        // COLLIDER LOCAL ROTATION
+        // ----------------------
+
+        const newQuaternion =
+            this.getColliderLocalQuaternion(
+                this.activeCollider
+            );
+
+
+        // ----------------------
+        // TRANSLATION CHANGE
+        // ----------------------
+
+        const movement = newPosition
+            .clone()
+            .sub(this.lastColliderPosition);
+
+
+        // Movement is currently in rootGroup coordinates.
+        // Convert its direction back into world coordinates.
+
+        const rootQuaternion =
+            new THREE.Quaternion();
+
+        this.rootGroup.getWorldQuaternion(
+            rootQuaternion
+        );
+
+        movement.applyQuaternion(
+            rootQuaternion
+        );
+
+
+        movement.multiplyScalar(
+            this.scale / scenesData[0].scale
+        );
+
+
+        mainCamera.position.add(
+            movement
+        );
+
+
+        // ----------------------
+        // ROTATION CHANGE
+        // ----------------------
+
+        const rotationChange =
+            newQuaternion
+                .clone()
+                .multiply(
+                    this.lastColliderQuaternion
+                        .clone()
+                        .invert()
+                );
+
+
+        // rotationChange is local to rootGroup.
+        // Convert it into world-space rotation.
+
+        const rootInverse =
+            rootQuaternion
+                .clone()
+                .invert();
+
+        const worldRotationChange =
+            rootQuaternion
+                .clone()
+                .multiply(rotationChange)
+                .multiply(rootInverse);
+
+
+        // ----------------------
+        // ROTATE CAMERA POSITION
+        // AROUND THE COLLIDER
+        // ----------------------
+
+        const colliderWorldPosition =
+            new THREE.Vector3();
+
+        this.activeCollider.getWorldPosition(
+            colliderWorldPosition
+        );
+
+        colliderWorldPosition.multiplyScalar(
+            this.scale / scenesData[0].scale
+        );
+
+
+        const cameraOffset =
+            mainCamera.position
+                .clone()
+                .sub(colliderWorldPosition);
+
+
+        cameraOffset.applyQuaternion(
+            worldRotationChange
+        );
+
+
+        mainCamera.position
+            .copy(colliderWorldPosition)
+            .add(cameraOffset);
+
+
+        // Rotate where camera is looking too
+        mainCamera.quaternion.premultiply(
+            worldRotationChange
+        );
+
+
+        // ----------------------
+        // SAVE FOR NEXT FRAME
+        // ----------------------
+
+        this.lastColliderPosition.copy(
+            newPosition
+        );
+
+        this.lastColliderQuaternion.copy(
+            newQuaternion
+        );
+    }
+
+    getSubSceneData(collider) {
+        return this.childScenes[0];
+    }
+
+    remove() {
+
+        this.activeSubScene?.remove();
+
+        this.rootGroup.clear();
+
+        this.colliders = [];
+
+        this.activeCollider = null;
+        this.activeSubScene = null;
+
+        this.parentCollider = null;
+        this.parentSceneData = null;
+    }
+
+}
+
+class HabSceneData extends SceneData {
+
+    constructor(options) {
+
+        super(options);
+
+        // In the room:
+        //
+        // +Z = radially outward / floor
+        // -Z = radially inward / ceiling
+        //
+        // Therefore camera UP is -Z.
+        this.upAxisLocal =
+            new THREE.Vector3(0, 0, -1);
+    }
+
+
+    // --------------------------------
+    // HAB UPDATE
+    // --------------------------------
+
+    update(deltaTime) {
+
+        super.update(deltaTime);
+
+        this.alignCameraToHabUp();
+    }
+
+
+    // --------------------------------
+    // GET ROOM "UP" IN WORLD SPACE
+    // --------------------------------
+
+    getHabUpWorld() {
+
+        const quaternion =
+            new THREE.Quaternion();
+
+        this.rootGroup.getWorldQuaternion(
+            quaternion
+        );
+
+
+        return this.upAxisLocal
+            .clone()
+            .applyQuaternion(quaternion)
+            .normalize();
+    }
+
+
+    // --------------------------------
+    // KEEP CAMERA UPRIGHT IN HAB
+    // --------------------------------
+
+    alignCameraToHabUp() {
+
+        const camera =
+            scenesData[0].camera;
+
+        const up =
+            this.getHabUpWorld();
+
+
+        // Current look direction.
+        const forward =
+            new THREE.Vector3(0, 0, -1)
+                .applyQuaternion(
+                    camera.quaternion
+                )
+                .normalize();
+
+
+        // --------------------------------
+        // CURRENT PITCH
+        // --------------------------------
+
+        let pitch =
+            Math.asin(
+                THREE.MathUtils.clamp(
+                    forward.dot(up),
+                    -1,
+                    1
+                )
+            );
+
+
+        const maxPitch =
+            THREE.MathUtils.degToRad(89);
+
+
+        pitch =
+            THREE.MathUtils.clamp(
+                pitch,
+                -maxPitch,
+                maxPitch
+            );
+
+
+        // --------------------------------
+        // REMOVE VERTICAL COMPONENT
+        // TO FIND HEADING
+        // --------------------------------
+
+        const horizontalForward =
+            forward
+                .clone()
+                .addScaledVector(
+                    up,
+                    -forward.dot(up)
+                );
+
+
+        // If we're nearly looking straight
+        // up/down, recover heading from
+        // camera-right instead.
+        if (
+            horizontalForward.lengthSq() <
+            0.000001
+        ) {
+
+            const right =
+                new THREE.Vector3(1, 0, 0)
+                    .applyQuaternion(
+                        camera.quaternion
+                    )
+                    .normalize();
+
+
+            horizontalForward
+                .copy(up)
+                .cross(right);
+        }
+
+
+        if (
+            horizontalForward.lengthSq() <
+            0.000001
+        ) {
+            return;
+        }
+
+
+        horizontalForward.normalize();
+
+
+        // --------------------------------
+        // REBUILD LOOK DIRECTION
+        // --------------------------------
+
+        const correctedForward =
+            horizontalForward
+                .multiplyScalar(
+                    Math.cos(pitch)
+                )
+                .addScaledVector(
+                    up,
+                    Math.sin(pitch)
+                )
+                .normalize();
+
+
+        // --------------------------------
+        // FORCE CAMERA TOP TOWARD CEILING
+        // --------------------------------
+
+        camera.up.copy(up);
+
+
+        camera.lookAt(
+            camera.position
+                .clone()
+                .add(correctedForward)
+        );
+    }
+}
+class GalaxySceneData extends SceneData {
+    constructor(options) {
+        super(options);
+    }
+    buildCollisionGrid(
+        collisionFrame,
+        cellSize = this.disapearDistance * 2
+    ) {
+
+        this.collisionFrame = collisionFrame;
+
+        this.collisionGrid =
+            new SpatialHashGrid(cellSize);
+
+        this.scene.updateMatrixWorld(true);
+
+        for (const collider of this.colliders) {
+
+            const position = new THREE.Vector3();
+
+            collider.getWorldPosition(position);
+
+            collisionFrame.worldToLocal(position);
+
+            this.collisionGrid.add(
+                collider,
+                position
+            );
+        }
+    }
+
+    getColliders() {
+        return this.getNearbyColliders();
+    }
+
+    getNearbyColliders() {
+
+        // Small scene / no grid
+        if (!this.collisionGrid) {
+            return this.colliders;
+        }
+
+        const cameraPosition =
+            this.camera.position.clone();
+
+        // Camera and collisionFrame exist in same scene,
+        // so convert camera to the grid's local coordinates.
+        this.collisionFrame.worldToLocal(
+            cameraPosition
+        );
+
+        return this.collisionGrid.getNearby(
+            cameraPosition
+        );
+    }
+}
+
+
+        // ====================================================
+        // END BUNDLED FILE: engine/sceneDataClasses.js
+        // ====================================================
+
+
+
+        /// =======Scenes========
+
+        
+
+        // ====================================================
+        // BEGIN BUNDLED FILE: scenes/roomScene.js
+        // ====================================================
+
+const roomSceneData =
+    new HabSceneData({
+
+        scale: 0.000000001,
+
+        timescale: 5,
+
+        disapearDistance: 1.0,
+
+        childScenes: [],
+
+
+        populateScene: function () {
+
+            // --------------------------------
+            // ROOM SIZE
+            // --------------------------------
+
+            const width = 12;
+            const height = 7;
+            const depth = 16;
+
+            const wallThickness = 0.15;
+
+
+            // --------------------------------
+            // FIND WHERE THE PLAYER ACTUALLY IS
+            // IN THIS SCENE
+            // --------------------------------
+
+            this.scene.updateMatrixWorld(true);
+
+
+            const mainCamera =
+                scenesData[0].camera;
+
+
+            // Same conversion your engine uses
+            // when syncing child-scene cameras.
+            const cameraInScene =
+                mainCamera.position
+                    .clone()
+                    .multiplyScalar(
+                        1 / this.scale
+                    );
+
+
+            // Convert into rootGroup-local space.
+            const roomCenter =
+                this.rootGroup.worldToLocal(
+                    cameraInScene
+                );
+
+
+            // --------------------------------
+            // PUT THE PLAYER NEAR THE FLOOR
+            // --------------------------------
+            //
+            // +Z = floor / radial outward
+            // -Z = ceiling / radial inward
+            //
+            // Put the floor about 1.6 units
+            // below the camera.
+
+            const standingHeight = 1.6;
+
+
+            roomCenter.z -=
+                height / 2 -
+                standingHeight;
+
+
+
+            // --------------------------------
+            // MATERIALS
+            // --------------------------------
+
+            const wallMaterial =
+                new THREE.MeshStandardMaterial({
+
+                    color: 0xb8b1a5,
+
+                    roughness: 0.8,
+
+                    metalness: 0,
+
+                    side:
+                        THREE.DoubleSide
+                });
+
+
+            const floorMaterial =
+                new THREE.MeshStandardMaterial({
+
+                    color: 0x403b35,
+
+                    roughness: 0.9,
+
+                    side:
+                        THREE.DoubleSide
+                });
+
+
+            // --------------------------------
+            // HELPER
+            // --------------------------------
+            //
+            // All coordinates are relative
+            // to roomCenter now.
+
+            const makeWall =
+                (
+                    sizeX,
+                    sizeY,
+                    sizeZ,
+
+                    x,
+                    y,
+                    z,
+
+                    material = wallMaterial
+                ) => {
+
+                    const wall =
+                        new THREE.Mesh(
+
+                            new THREE.BoxGeometry(
+                                sizeX,
+                                sizeY,
+                                sizeZ
+                            ),
+
+                            material
+                        );
+
+
+                    wall.position.set(
+
+                        roomCenter.x + x,
+
+                        roomCenter.y + y,
+
+                        roomCenter.z + z
+
+                    );
+
+
+                    this.rootGroup.add(
+                        wall
+                    );
+
+
+                    return wall;
+                };
+
+
+            // =================================
+            // FLOOR
+            // RADIAL OUTWARD (+Z)
+            // =================================
+
+            makeWall(
+
+                width,
+                depth,
+                wallThickness,
+
+                0,
+                0,
+                height / 2,
+
+                floorMaterial
+            );
+
+
+            // =================================
+            // CEILING
+            // RADIAL INWARD (-Z)
+            // =================================
+
+            makeWall(
+
+                width,
+                depth,
+                wallThickness,
+
+                0,
+                0,
+                -height / 2
+            );
+
+
+            // =================================
+            // LEFT WALL
+            // =================================
+
+            makeWall(
+
+                wallThickness,
+                depth,
+                height,
+
+                -width / 2,
+                0,
+                0
+            );
+
+
+            // =================================
+            // FRONT WALL
+            // =================================
+
+            makeWall(
+
+                width,
+                wallThickness,
+                height,
+
+                0,
+                -depth / 2,
+                0
+            );
+
+
+            // =================================
+            // BACK WALL
+            // =================================
+
+            makeWall(
+
+                width,
+                wallThickness,
+                height,
+
+                0,
+                depth / 2,
+                0
+            );
+
+
+            // =================================
+            // RIGHT WALL WITH WINDOW
+            // =================================
+
+            const windowWidth = 6;
+
+            const windowHeight = 3.5;
+
+            const windowCenterZ = 0;
+
+
+            // --------------------------------
+            // SIDES OF WINDOW
+            // --------------------------------
+
+            const sideDepth =
+                (
+                    depth -
+                    windowWidth
+                ) / 2;
+
+
+            makeWall(
+
+                wallThickness,
+                sideDepth,
+                height,
+
+                width / 2,
+
+                -(
+                    windowWidth / 2 +
+                    sideDepth / 2
+                ),
+
+                0
+            );
+
+
+            makeWall(
+
+                wallThickness,
+                sideDepth,
+                height,
+
+                width / 2,
+
+                (
+                    windowWidth / 2 +
+                    sideDepth / 2
+                ),
+
+                0
+            );
+
+
+            // =================================
+            // ABOVE WINDOW
+            // toward ceiling (-Z)
+            // =================================
+
+            const ceilingEdge =
+                -height / 2;
+
+
+            const windowTop =
+                windowCenterZ -
+                windowHeight / 2;
+
+
+            const topHeight =
+                windowTop -
+                ceilingEdge;
+
+
+            makeWall(
+
+                wallThickness,
+                windowWidth,
+                topHeight,
+
+                width / 2,
+                0,
+
+                ceilingEdge +
+                topHeight / 2
+            );
+
+
+            // =================================
+            // BELOW WINDOW
+            // toward floor (+Z)
+            // =================================
+
+            const floorEdge =
+                height / 2;
+
+
+            const windowBottom =
+                windowCenterZ +
+                windowHeight / 2;
+
+
+            const bottomHeight =
+                floorEdge -
+                windowBottom;
+
+
+            makeWall(
+
+                wallThickness,
+                windowWidth,
+                bottomHeight,
+
+                width / 2,
+                0,
+
+                windowBottom +
+                bottomHeight / 2
+            );
+
+
+            // =================================
+            // WINDOW FRAME
+            // =================================
+
+            const frameMaterial =
+                new THREE.MeshStandardMaterial({
+
+                    color: 0x22252a,
+
+                    metalness: 0.7,
+
+                    roughness: 0.3
+                });
+
+
+            const frameThickness = 0.12;
+
+            const frameDepth = 0.25;
+
+
+            // top
+            makeWall(
+
+                frameDepth,
+
+                windowWidth +
+                frameThickness * 2,
+
+                frameThickness,
+
+                width / 2,
+
+                0,
+
+                windowCenterZ -
+                windowHeight / 2,
+
+                frameMaterial
+            );
+
+
+            // bottom
+            makeWall(
+
+                frameDepth,
+
+                windowWidth +
+                frameThickness * 2,
+
+                frameThickness,
+
+                width / 2,
+
+                0,
+
+                windowCenterZ +
+                windowHeight / 2,
+
+                frameMaterial
+            );
+
+
+            // left
+            makeWall(
+
+                frameDepth,
+
+                frameThickness,
+
+                windowHeight,
+
+                width / 2,
+
+                -windowWidth / 2,
+
+                windowCenterZ,
+
+                frameMaterial
+            );
+
+
+            // right
+            makeWall(
+
+                frameDepth,
+
+                frameThickness,
+
+                windowHeight,
+
+                width / 2,
+
+                windowWidth / 2,
+
+                windowCenterZ,
+
+                frameMaterial
+            );
+
+
+            // =================================
+            // CEILING LIGHT
+            // =================================
+
+            const roomLight =
+                new THREE.PointLight(
+
+                    0xffe4c4,
+
+                    25,
+
+                    30
+                );
+
+
+            // Ceiling is -Z.
+            // Move slightly toward the room (+Z)
+            // so the light isn't buried in it.
+            roomLight.position.set(
+
+                roomCenter.x,
+
+                roomCenter.y,
+
+                roomCenter.z -
+                height / 2 +
+                0.4
+
+            );
+
+
+            this.rootGroup.add(
+                roomLight
+            );
+
+
+            // --------------------------------
+            // VISIBLE CEILING FIXTURE
+            // --------------------------------
+
+            const lightFixture =
+                new THREE.Mesh(
+
+                    new THREE.SphereGeometry(
+                        0.15,
+                        12,
+                        8
+                    ),
+
+                    new THREE.MeshBasicMaterial({
+                        color: 0xffeedd
+                    })
+                );
+
+
+            lightFixture.position.set(
+
+                roomCenter.x,
+
+                roomCenter.y,
+
+                roomCenter.z -
+                height / 2 +
+                0.18
+
+            );
+
+
+            this.rootGroup.add(
+                lightFixture
+            );
+        }
+    });
+
+        // ====================================================
+        // END BUNDLED FILE: scenes/roomScene.js
+        // ====================================================
+
+
+        
+        
+
+        // ====================================================
+        // BEGIN BUNDLED FILE: scenes/cylindarScene.js
+        // ====================================================
+
+const cylinderSceneData = new SceneData({
+
+    scale: 0.000001,
+
+    timescale: 10,
+
+    disapearDistance: 0.05,
+
+    childScenes: [roomSceneData],
+
+
+    populateScene: function () {
+
+        const parentCylinder =
+            this.parentCollider;
+
+
+        // -----------------------------------
+        // GET PARENT CYLINDER SIZE
+        // -----------------------------------
+
+        parentCylinder.geometry.computeBoundingBox();
+
+        const box =
+            parentCylinder.geometry.boundingBox;
+
+        const size =
+            new THREE.Vector3();
+
+        box.getSize(size);
+
+
+        // Include any scaling on the actual mesh.
+        size.multiply(
+            parentCylinder.scale
+        );
+
+
+        // Convert parent scene units
+        // into this scene's units.
+        const scaleRatio =
+            this.parentSceneData.scale /
+            this.scale;
+
+        size.multiplyScalar(
+            scaleRatio
+        );
+
+
+        // CylinderGeometry uses Y
+        // as its long axis.
+        const cylinderLength =
+            size.y / 2;
+
+        const cylinderRadius =
+            Math.min(
+                size.x / 2,
+                size.z / 2
+            ) * 0.5;
+
+
+
+        // -----------------------------------
+        // MATERIAL
+        // -----------------------------------
+
+        const material = makeCylinderMaterial();
+
+        material.map.repeat.set(
+            1,
+            1
+        );
+
+        material.emissiveMap.repeat.set(
+            1,
+            1
+        );
+
+        const textureTileSize =
+            cylinderRadius * 0.06;
+
+        // -----------------------------------
+        // RANDOM RADIAL STRUCTURES
+        // -----------------------------------
+
+        const structureCount =
+            500;
+
+
+        for (
+            let i = 0;
+            i < structureCount;
+            i++
+        ) {
+
+            // Random location along
+            // the length of the cylinder.
+            const y =
+                (
+                    Math.random() - 0.5
+                ) *
+                cylinderLength;
+
+
+            // Random angle around
+            // the central axis.
+            const angle =
+                Math.random() *
+                Math.PI *
+                2;
+
+
+            // -----------------------------------
+            // RANDOM BUILDING SIZE
+            // -----------------------------------
+
+            // radial length
+            const radialLength =
+                cylinderRadius *
+                (
+                    0.08 +
+                    Math.random() *
+                    0.30
+                );
+
+
+            // width around circumference
+            const width =
+                cylinderRadius *
+                (
+                    0.025 +
+                    Math.random() *
+                    0.07
+                );
+
+
+            // length along cylinder axis
+            const axialLength =
+                cylinderLength *
+                (
+                    0.004 +
+                    Math.random() *
+                    0.02
+                );
+
+
+            const geometry =
+                new THREE.BoxGeometry(
+                    width,
+                    axialLength,
+                    radialLength
+                );
+
+
+            tileBoxUVs(
+                geometry,
+
+                width,
+                axialLength,
+                radialLength,
+
+                textureTileSize
+            );
+
+
+            const structure =
+                new THREE.Mesh(
+
+                    geometry,
+
+                    material
+
+                );
+
+            this.addCollider(
+                structure
+            );
+
+
+            // -----------------------------------
+            // POSITION
+            // -----------------------------------
+
+            // Put the center of the building
+            // somewhere between the center axis
+            // and outer edge.
+            //
+            // Bias toward the outside so it
+            // resembles a cylindrical city.
+
+            const startRadius =
+                cylinderRadius * 0.5;
+
+
+            // Center must be half the building's
+            // radial length beyond its starting point.
+            const radialPosition =
+                startRadius +
+                radialLength * 0.5;
+
+
+            structure.position.set(
+
+                Math.sin(angle) *
+                radialPosition,
+
+                y,
+
+                Math.cos(angle) *
+                radialPosition
+
+            );
+
+
+            // BoxGeometry's long radial direction
+            // is local Z, so rotate local Z outward.
+            structure.rotation.set(
+                0,
+                angle,
+                0
+            );
+
+
+
+            // -----------------------------------
+            // ROTATE BUILDING OUTWARD
+            // -----------------------------------
+
+            structure.rotation.y =
+                angle;
+
+
+
+            this.rootGroup.add(
+                structure
+            );
+        }
+
+
+
+        // -----------------------------------
+        // DIM CENTRAL CORE
+        // -----------------------------------
+
+        // Helps visually establish the
+        // cylinder's central axis.
+
+        const coreGeometry =
+            new THREE.CylinderGeometry(
+
+                cylinderRadius * 0.5,
+
+                cylinderRadius * 0.5,
+
+                cylinderLength,
+
+                64
+
+            );
+
+
+        const core =
+            new THREE.Mesh(
+
+                coreGeometry,
+
+                material
+
+            );
+
+
+        this.rootGroup.add(
+            core
+        );
+
+
+
+        // -----------------------------------
+        // LIGHT
+        // -----------------------------------
+
+        const light =
+            new THREE.AmbientLight(
+
+                0xffffff,
+
+                0.7
+
+            );
+
+        this.rootGroup.add(
+            light
+        );
+    },
+
+
+    animate: function (deltaTime) {
+
+        // stationary for now
+
+    }
+
+});
+
+function tileBoxUVs(
+    geometry,
+    width,
+    height,
+    depth,
+    tileSize
+) {
+
+    const uv =
+        geometry.attributes.uv;
+
+
+    function setFace(
+        start,
+        uRepeat,
+        vRepeat
+    ) {
+
+        uRepeat =
+            Math.max(
+                1,
+                uRepeat
+            );
+
+        vRepeat =
+            Math.max(
+                1,
+                vRepeat
+            );
+
+
+        uv.setXY(
+            start + 0,
+            0,
+            vRepeat
+        );
+
+        uv.setXY(
+            start + 1,
+            uRepeat,
+            vRepeat
+        );
+
+        uv.setXY(
+            start + 2,
+            0,
+            0
+        );
+
+        uv.setXY(
+            start + 3,
+            uRepeat,
+            0
+        );
+    }
+
+
+    // +X
+    setFace(
+        0,
+        depth / tileSize,
+        height / tileSize
+    );
+
+    // -X
+    setFace(
+        4,
+        depth / tileSize,
+        height / tileSize
+    );
+
+    // +Y
+    setFace(
+        8,
+        width / tileSize,
+        depth / tileSize
+    );
+
+    // -Y
+    setFace(
+        12,
+        width / tileSize,
+        depth / tileSize
+    );
+
+    // +Z
+    setFace(
+        16,
+        width / tileSize,
+        height / tileSize
+    );
+
+    // -Z
+    setFace(
+        20,
+        width / tileSize,
+        height / tileSize
+    );
+
+
+    uv.needsUpdate = true;
+}
+
+        // ====================================================
+        // END BUNDLED FILE: scenes/cylindarScene.js
+        // ====================================================
+
+
+
+        
+
+        // ====================================================
+        // BEGIN BUNDLED FILE: scenes/cityScene.js
+        // ====================================================
+
+const citySceneData = new SceneData({
+
+    scale: 0.00001,
+
+    timescale: 10,
+
+    disapearDistance: 0.10,
+
+    childScenes: [cylinderSceneData],
+
+
+    populateScene: function () {
+
+        const parentPyramid =
+            this.parentCollider;
+
+
+        // -----------------------------------
+        // GET THE SIZE OF THE PARENT PYRAMID
+        // -----------------------------------
+
+        parentPyramid.geometry.computeBoundingBox();
+
+        const box =
+            parentPyramid.geometry.boundingBox;
+
+        const size =
+            new THREE.Vector3();
+
+        box.getSize(size);
+
+
+        // Apply the pyramid mesh's scale.
+        size.multiply(
+            parentPyramid.scale
+        );
+
+
+        // Convert from parent-scene units
+        // into city-scene units.
+        const scaleRatio =
+            this.parentSceneData.scale /
+            this.scale;
+
+        size.multiplyScalar(
+            scaleRatio
+        );
+
+
+        const height =
+            size.y;
+
+        const baseRadius =
+            Math.min(
+                size.x,
+                size.z
+            ) * 0.5;
+
+        const cylinderMaterial = makeCylinderMaterial();
+
+
+        // -----------------------------------
+        // KEEP TRACK OF MOVING CYLINDERS
+        // -----------------------------------
+
+        this.cityCylinders = [];
+
+
+
+        // -----------------------------------
+        // CENTRAL TRUNK
+        // -----------------------------------
+
+        const trunkRadius =
+            baseRadius * 0.08;
+
+        const trunkHeight =
+            height * 0.82;
+
+
+        const trunkGeometry =
+            new THREE.CylinderGeometry(
+                trunkRadius,
+                trunkRadius,
+                trunkHeight,
+                16
+            );
+
+
+        const trunk =
+            new THREE.Mesh(
+                trunkGeometry,
+                cylinderMaterial
+            );
+
+
+        trunk.position.y =
+            -height * 0.05;
+
+
+        this.rootGroup.add(
+            trunk
+        );
+
+
+
+        // -----------------------------------
+        // RADIAL CYLINDER TIERS
+        // -----------------------------------
+
+        const tierCount = 11;
+
+
+        for (
+            let tier = 0;
+            tier < tierCount;
+            tier++
+        ) {
+
+            // 0 = bottom
+            // 1 = top
+            const t =
+                tier /
+                (tierCount - 1);
+
+
+            // Keep away from absolute bottom/top
+            const y =
+                -height * 0.38 +
+                t * height * 0.70;
+
+
+            // Pyramid becomes narrower
+            // toward the top.
+            const availableRadius =
+                baseRadius *
+                (1.0 - t * 0.82);
+
+
+            // More cylinders near the bottom,
+            // fewer near the top.
+            const spokeCount =
+                Math.max(
+                    4,
+                    Math.round(
+                        12 -
+                        t * 6
+                    )
+                );
+
+            const minBranchLength =
+                availableRadius * 0.45;
+
+            const maxBranchLength =
+                availableRadius * 0.95;
+
+
+            for (
+                let i = 0;
+                i < spokeCount;
+                i++
+            ) {
+
+                const cylinderLength =
+                    THREE.MathUtils.lerp(
+                        minBranchLength,
+                        maxBranchLength,
+                        Math.random()
+                    );
+
+                const cylinderRadius =
+                    Math.max(
+                        baseRadius * 0.025,
+                        availableRadius * 0.06
+                    );
+
+                const geometry =
+                    new THREE.CylinderGeometry(
+
+                        cylinderRadius,
+                        cylinderRadius,
+
+                        cylinderLength,
+
+                        12
+
+                    );
+
+                // Offset alternating tiers
+                // so they don't make straight columns.
+                const angle =
+                    (
+                        i /
+                        spokeCount
+                    ) *
+                    Math.PI *
+                    2
+                    +
+                    tier * 0.27;
+
+
+                const direction =
+                    new THREE.Vector3(
+
+                        Math.cos(angle),
+
+                        0,
+
+                        Math.sin(angle)
+
+                    );
+
+
+                const cylinder =
+                    new THREE.Mesh(
+                        geometry,
+                        cylinderMaterial
+                    );
+
+
+                // -----------------------------------
+                // BOX COLLIDER
+                // -----------------------------------
+                //
+                // CylinderGeometry:
+                // X/Z = diameter
+                // Y   = length
+                //
+                // So this box exactly surrounds
+                // the cylinder.
+
+                const colliderGeometry =
+                    new THREE.BoxGeometry(
+                        cylinderRadius * 5,
+                        cylinderLength * 2,
+                        cylinderRadius * 5
+                    );
+
+
+                const colliderMaterial =
+                    new THREE.MeshBasicMaterial({
+                        visible: false
+                    });
+
+
+                const collider =
+                    new THREE.Mesh(
+                        colliderGeometry,
+                        colliderMaterial
+                    );
+
+
+                // Make the collider follow the cylinder.
+                //
+                // Since it is a child, it automatically
+                // inherits the cylinder's position,
+                // rotation, and spinning.
+                cylinder.add(
+                    collider
+                );
+
+
+                // THIS is now the thing we collide with.
+                this.addCollider(
+                    collider
+                );
+
+
+                // Draw the debug wireframe around
+                // the actual box collider.
+                // showCollider(
+                //     collider
+                // );
+
+
+                // Position it halfway outward
+                // from the trunk.
+                const centerDistance =
+                    trunkRadius +
+                    cylinderLength * 0.48;
+
+
+                cylinder.position.set(
+
+                    direction.x *
+                    centerDistance,
+
+                    y,
+
+                    direction.z *
+                    centerDistance
+
+                );
+
+
+                // CylinderGeometry normally
+                // points along +Y.
+                //
+                // Rotate +Y so it points
+                // outward from the trunk.
+
+                cylinder.quaternion
+                    .setFromUnitVectors(
+
+                        new THREE.Vector3(
+                            0,
+                            1,
+                            0
+                        ),
+
+                        direction
+
+                    );
+
+
+                // Different cylinders rotate
+                // at slightly different speeds.
+                cylinder.userData.spinSpeed =
+                    0.5;
+
+
+                this.cityCylinders.push(
+                    cylinder
+                );
+
+
+                this.rootGroup.add(
+                    cylinder
+                );
+            }
+        }
+    },
+
+
+    animate: function (deltaTime) {
+
+        if (!this.cityCylinders) {
+            return;
+        }
+
+
+        for (
+            const cylinder
+            of this.cityCylinders
+        ) {
+
+            // rotate around the cylinder's
+            // OWN long axis
+            cylinder.rotateY(
+
+                cylinder.userData.spinSpeed *
+                deltaTime
+
+            );
+        }
+    }
+
+});
+
+function makeCylinderMaterial() {
+    // -----------------------------------
+    // METALLIC TEXTURE + TINY WINDOWS
+    // -----------------------------------
+
+    const canvas =
+        document.createElement("canvas");
+
+    canvas.width = 256;
+    canvas.height = 128;
+
+    const ctx =
+        canvas.getContext("2d");
+
+
+    // dark metallic base
+    ctx.fillStyle = "#24272b";
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    // subtle metal bands
+    for (
+        let x = 0;
+        x < canvas.width;
+        x += 32
+    ) {
+
+        ctx.fillStyle = "#4a4f54";
+
+        ctx.fillRect(
+            x,
+            0,
+            10,
+            canvas.height
+        );
+
+
+        ctx.fillStyle = "#303438";
+
+        ctx.fillRect(
+            x + 10,
+            0,
+            19,
+            canvas.height
+        );
+
+
+        ctx.fillStyle = "#737980";
+
+        ctx.fillRect(
+            x + 29,
+            0,
+            3,
+            canvas.height
+        );
+    }
+
+
+
+    // -----------------------------------
+    // EMISSIVE TEXTURE
+    // -----------------------------------
+
+    const glowCanvas =
+        document.createElement("canvas");
+
+    glowCanvas.width = 256;
+    glowCanvas.height = 128;
+
+    const glowCtx =
+        glowCanvas.getContext("2d");
+
+
+    glowCtx.fillStyle = "#000000";
+
+    glowCtx.fillRect(
+        0,
+        0,
+        glowCanvas.width,
+        glowCanvas.height
+    );
+
+
+
+    // -----------------------------------
+    // RANDOM WINDOWS
+    // -----------------------------------
+
+    const windowCount = 110;
+
+
+    for (
+        let i = 0;
+        i < windowCount;
+        i++
+    ) {
+
+        const x =
+            Math.floor(
+                Math.random() *
+                canvas.width
+            );
+
+
+        const y =
+            Math.floor(
+                Math.random() *
+                canvas.height
+            );
+
+
+        // Tiny rectangular windows
+        const width =
+            Math.random() < 0.8
+                ? 1
+                : 2;
+
+
+        const height =
+            Math.random() < 0.85
+                ? 1
+                : 2;
+
+
+        // Mostly warm yellow,
+        // some red/orange.
+        const isRed =
+            Math.random() < 0.28;
+
+
+        const color =
+            isRed
+                ? "#ff3b18"
+                : "#ffd35a";
+
+
+        ctx.fillStyle =
+            color;
+
+        ctx.fillRect(
+            x,
+            y,
+            width,
+            height
+        );
+
+
+        // same window in emissive map
+        glowCtx.fillStyle =
+            color;
+
+        glowCtx.fillRect(
+            x,
+            y,
+            width,
+            height
+        );
+    }
+
+
+
+    // -----------------------------------
+    // CREATE TEXTURES
+    // -----------------------------------
+
+    const cylinderTexture =
+        new THREE.CanvasTexture(
+            canvas
+        );
+
+    cylinderTexture.wrapS =
+        THREE.RepeatWrapping;
+
+    cylinderTexture.wrapT =
+        THREE.RepeatWrapping;
+
+    cylinderTexture.repeat.set(
+        4,
+        8
+    );
+
+
+
+    const glowTexture =
+        new THREE.CanvasTexture(
+            glowCanvas
+        );
+
+    glowTexture.wrapS =
+        THREE.RepeatWrapping;
+
+    glowTexture.wrapT =
+        THREE.RepeatWrapping;
+
+    glowTexture.repeat.set(
+        4,
+        8
+    );
+
+
+
+    // -----------------------------------
+    // MATERIAL
+    // -----------------------------------
+
+    return cylinderMaterial =
+        new THREE.MeshStandardMaterial({
+
+            map:
+                cylinderTexture,
+
+            metalness:
+                0.9,
+
+            roughness:
+                0.3,
+
+            emissive:
+                0xffffff,
+
+            emissiveMap:
+                glowTexture,
+
+            emissiveIntensity:
+                2.5
+
+        });
+}
+
+        // ====================================================
+        // END BUNDLED FILE: scenes/cityScene.js
+        // ====================================================
+
+
+
+        
+
+        // ====================================================
+        // BEGIN BUNDLED FILE: scenes/mirrorScene.js
+        // ====================================================
+
+const mirrorSceneData = new SceneData({
+
+    scale: 0.0001,
+
+    timescale: 10,
+
+    disapearDistance: 1.0,
+
+    childScenes: [citySceneData],
+
+    populateScene: function () {
+
+        const parentMirror =
+            this.parentCollider;
+
+        const scaleRatio =
+            this.parentSceneData.scale /
+            this.scale;
+
+
+        // --------------------------------
+        // MIRROR
+        // --------------------------------
+
+        const mirror =
+            parentMirror.clone();
+
+        mirror.material =
+            parentMirror.material.clone();
+
+        mirror.position.set(0, 0, 0);
+        mirror.quaternion.identity();
+
+        mirror.scale.copy(
+            parentMirror.scale
+        );
+
+        mirror.scale.multiplyScalar(
+            scaleRatio
+        );
+
+
+        const environmentTexture =
+            this.parentSceneData.environmentTexture;
+
+        if (environmentTexture) {
+
+            this.scene.environment =
+                environmentTexture;
+
+            this.scene.environmentIntensity = 0.1;
+        }
+
+
+        mirror.visible = true;
+
+        this.rootGroup.add(mirror);
+
+
+        // --------------------------------
+        // GET MIRROR SIZE
+        // --------------------------------
+
+        mirror.geometry.computeBoundingBox();
+
+        const box =
+            mirror.geometry.boundingBox;
+
+        const mirrorHalfX =
+            (
+                box.max.x -
+                box.min.x
+            ) *
+            mirror.scale.x *
+            0.5;
+
+        const mirrorHalfY =
+            (
+                box.max.y -
+                box.min.y
+            ) *
+            mirror.scale.y *
+            0.5;
+
+        const mirrorHalfZ =
+            (
+                box.max.z -
+                box.min.z
+            ) *
+            mirror.scale.z *
+            0.5;
+
+
+        // --------------------------------
+        // PYRAMID CITIES
+        // --------------------------------
+
+        this.cityPyramids = [];
+        this.cityGlowData = [];
+        this.dotConnections = [];
+        this.backFieldDots = [];
+
+        this.makeMirrorFieldDots(
+            mirror,
+            mirrorHalfX
+        );
+
+        // Move them slightly inward from
+        // the literal edge of the mirror.
+        const cityPositions =
+            this.getMirrorCorners(
+                mirror
+            );
+
+
+        const inset = 0.25;
+
+
+        // Find polygon center
+        const center =
+            new THREE.Vector3();
+
+        for (const position of cityPositions) {
+
+            center.add(
+                position
+            );
+        }
+
+        center.divideScalar(
+            cityPositions.length
+        );
+
+
+        // Move every city slightly toward
+        // the center of the polygon.
+        for (const position of cityPositions) {
+
+            const inward =
+                new THREE.Vector3(
+                    0,
+                    center.y - position.y,
+                    center.z - position.z
+                );
+
+            if (
+                inward.lengthSq() >
+                0
+            ) {
+
+                inward
+                    .normalize()
+                    .multiplyScalar(
+                        inset
+                    );
+
+                position.add(
+                    inward
+                );
+            }
+        }
+
+        // --------------------------------
+        // RANDOM CENTRAL CITY
+        // --------------------------------
+
+        // Pick a random corner to give us
+        // a direction away from the center.
+        const randomCorner =
+            cityPositions[
+            Math.floor(
+                Math.random() *
+                cityPositions.length
+            )
+            ];
+
+
+        // Keep it somewhere in the inner
+        // part of the mirror.
+        //
+        // 0 = exact center
+        // 1 = all the way at the corner
+        const centralDistance =
+            0.1 +
+            Math.random() * 0.3;
+
+
+        const centralCityPosition =
+            new THREE.Vector3(
+
+                center.x,
+
+                THREE.MathUtils.lerp(
+                    center.y,
+                    randomCorner.y,
+                    centralDistance
+                ),
+
+                THREE.MathUtils.lerp(
+                    center.z,
+                    randomCorner.z,
+                    centralDistance
+                )
+            );
+
+
+        cityPositions.push(
+            centralCityPosition
+        );
+
+        // Pyramid metal is shared by ALL cities.
+        // Much cheaper than making a new material
+        // for every pyramid.
+        const pyramidMaterial =
+            new THREE.MeshStandardMaterial({
+
+                color: 0x777788,
+
+                metalness: 0.95,
+
+                roughness: 0.22
+            });
+
+
+
+        for (
+            let i = 0;
+            i < cityPositions.length;
+            i++
+        ) {
+
+            const pyramid =
+                this.makeCityPyramid(
+                    cityPositions[i],
+                    pyramidMaterial,
+                );
+
+            this.rootGroup.add(
+                pyramid
+            );
+
+            pyramid.userData.collisionType = "point";
+
+            this.addCollider(
+                pyramid
+            );
+
+            this.cityPyramids.push(
+                pyramid
+            );
+        }
+
+        // --------------------------------
+        // TRAFFIC CONNECTIONS
+        // --------------------------------
+
+        for (var i = 0; i < this.cityPyramids.length - 1; i++) {
+            this.makeDottedConnection(this.cityPyramids[i], this.cityPyramids[i + 1])
+        }
+
+        for (var i = 0; i < this.cityPyramids.length - 1; i++) {
+            this.makeDottedConnection(this.cityPyramids[i], this.cityPyramids[this.cityPyramids.length - 1])
+        }
+    },
+
+
+    animate: function (deltaTime) {
+
+        this.updateDottedConnections(
+            deltaTime
+        );
+
+        this.animateCityGlows(
+            deltaTime
+        );
+
+        this.animateBackFieldDots(
+            deltaTime
+        );
+    }
+
+});
+
+mirrorSceneData.getMirrorCorners =
+    function (mirror) {
+
+        const geometry =
+            mirror.geometry;
+
+        const positions =
+            geometry.attributes.position;
+
+
+        geometry.computeBoundingBox();
+
+        // The inhabited/front surface of the
+        // mirror is the +X face.
+        const frontX =
+            geometry.boundingBox.max.x;
+
+
+        const tolerance = 0.0001;
+
+        const corners = [];
+
+
+        for (
+            let i = 0;
+            i < positions.count;
+            i++
+        ) {
+
+            const x =
+                positions.getX(i);
+
+            // Only look at vertices on
+            // the front face.
+            if (
+                Math.abs(
+                    x - frontX
+                ) > tolerance
+            ) {
+                continue;
+            }
+
+
+            const y =
+                positions.getY(i);
+
+            const z =
+                positions.getZ(i);
+
+
+            // ExtrudeGeometry duplicates
+            // vertices internally, so remove
+            // duplicates.
+            const alreadyExists =
+                corners.some(
+                    corner =>
+                        Math.abs(corner.y - y) <
+                        tolerance &&
+                        Math.abs(corner.z - z) <
+                        tolerance
+                );
+
+
+            if (!alreadyExists) {
+
+                corners.push(
+                    new THREE.Vector3(
+                        x,
+                        y,
+                        z
+                    )
+                );
+            }
+        }
+
+
+        // Put them in perimeter order.
+        // Important later for connecting
+        // neighboring cities.
+        let centerY = 0;
+        let centerZ = 0;
+
+        for (const corner of corners) {
+
+            centerY += corner.y;
+            centerZ += corner.z;
+        }
+
+        centerY /= corners.length;
+        centerZ /= corners.length;
+
+
+        corners.sort(
+            (a, b) => {
+
+                const angleA =
+                    Math.atan2(
+                        a.z - centerZ,
+                        a.y - centerY
+                    );
+
+                const angleB =
+                    Math.atan2(
+                        b.z - centerZ,
+                        b.y - centerY
+                    );
+
+                return angleA - angleB;
+            }
+        );
+
+
+        // Geometry coordinates need to be
+        // converted into this child scene's
+        // scaled mirror coordinates.
+        for (const corner of corners) {
+
+            corner.x *=
+                mirror.scale.x;
+
+            corner.y *=
+                mirror.scale.y;
+
+            corner.z *=
+                mirror.scale.z;
+        }
+
+
+        return corners;
+    };
+
+mirrorSceneData.makeMirrorFieldDots =
+    function (
+        mirror,
+        mirrorHalfX
+    ) {
+
+        const dotCount = 96;
+
+        // Get actual n-gon corners.
+        const corners =
+            this.getMirrorCorners(
+                mirror
+            );
+
+
+        // --------------------------------
+        // FIND Y/Z BOUNDING AREA
+        // --------------------------------
+
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        let minZ = Infinity;
+        let maxZ = -Infinity;
+
+
+        for (const corner of corners) {
+
+            minY =
+                Math.min(
+                    minY,
+                    corner.y
+                );
+
+            maxY =
+                Math.max(
+                    maxY,
+                    corner.y
+                );
+
+            minZ =
+                Math.min(
+                    minZ,
+                    corner.z
+                );
+
+            maxZ =
+                Math.max(
+                    maxZ,
+                    corner.z
+                );
+        }
+
+
+        // One field on each side
+        const xPositions = [
+
+            -mirrorHalfX - 0.03,
+
+            mirrorHalfX + 0.03
+
+        ];
+
+
+        for (const x of xPositions) {
+
+            let created = 0;
+
+
+            while (
+                created <
+                dotCount
+            ) {
+
+                // Pick random point in
+                // the bounding rectangle.
+                const y =
+                    THREE.MathUtils.lerp(
+                        minY,
+                        maxY,
+                        Math.random()
+                    );
+
+
+                const z =
+                    THREE.MathUtils.lerp(
+                        minZ,
+                        maxZ,
+                        Math.random()
+                    );
+
+
+                // Reject it if it landed
+                // outside the actual n-gon.
+                if (
+                    !this.pointInsideMirror(
+                        y,
+                        z,
+                        corners
+                    )
+                ) {
+                    continue;
+                }
+
+
+                const material =
+                    new THREE.SpriteMaterial({
+
+                        map:
+                            this.getCornerGlowTexture(),
+
+                        color:
+                            0xff3344,
+
+                        transparent:
+                            true,
+
+                        opacity:
+                            0.5,
+
+                        depthWrite:
+                            false,
+
+                        blending:
+                            THREE.AdditiveBlending
+                    });
+
+
+                const dot =
+                    new THREE.Sprite(
+                        material
+                    );
+
+
+                dot.position.set(
+                    x,
+                    y,
+                    z
+                );
+
+
+                dot.scale.set(
+                    0.08,
+                    0.08,
+                    1
+                );
+
+
+                this.rootGroup.add(
+                    dot
+                );
+
+
+                this.backFieldDots.push({
+
+                    dot: dot,
+
+                    baseScale:
+                        0.08,
+
+                    phase:
+                        Math.random() *
+                        Math.PI *
+                        2,
+
+                    speed:
+                        1.0 +
+                        Math.random() *
+                        2.0
+
+                });
+
+
+                created++;
+            }
+        }
+    };
+
+mirrorSceneData.pointInsideMirror =
+    function (
+        y,
+        z,
+        corners
+    ) {
+
+        let inside = false;
+
+
+        for (
+            let i = 0,
+            j = corners.length - 1;
+            i < corners.length;
+            j = i++
+        ) {
+
+            const yi =
+                corners[i].y;
+
+            const zi =
+                corners[i].z;
+
+            const yj =
+                corners[j].y;
+
+            const zj =
+                corners[j].z;
+
+
+            const intersects =
+                (
+                    (zi > z) !==
+                    (zj > z)
+                )
+                &&
+                (
+                    y <
+                    (
+                        (yj - yi) *
+                        (z - zi) /
+                        (zj - zi)
+                        +
+                        yi
+                    )
+                );
+
+
+            if (intersects) {
+
+                inside =
+                    !inside;
+            }
+        }
+
+
+        return inside;
+    };
+
+mirrorSceneData.animateBackFieldDots =
+    function (deltaTime) {
+
+        if (!this.backFieldDots) {
+            return;
+        }
+
+        for (const fieldDot of this.backFieldDots) {
+
+            fieldDot.phase +=
+                deltaTime *
+                fieldDot.speed;
+
+
+            const pulse =
+                0.5 +
+                0.5 *
+                Math.sin(fieldDot.phase);
+
+
+            fieldDot.dot.material.opacity =
+                0.15 + pulse * 0.65;
+
+
+            const scale =
+                fieldDot.baseScale *
+                (0.85 + pulse * 0.35);
+
+            fieldDot.dot.scale.set(
+                scale,
+                scale,
+                1
+            );
+        }
+    };
+
+mirrorSceneData.makeCityPyramid =
+    function (
+        position,
+        pyramidMaterial,
+    ) {
+
+        const height = 0.65 / 5;
+        const radius = 0.24 / 5;
+
+
+        const pyramid =
+            new THREE.Mesh(
+
+                new THREE.ConeGeometry(
+                    radius,
+                    height,
+                    4
+                ),
+
+                pyramidMaterial
+            );
+
+
+        // ConeGeometry normally points upward
+        // on Y.
+        //
+        // Rotate it so it sticks OUT from
+        // the mirror along +X.
+        pyramid.rotation.z =
+            -Math.PI / 2;
+
+
+        // Because position represents the
+        // mirror surface, move the pyramid
+        // half its height outward.
+        pyramid.position.copy(
+            position
+        );
+
+        pyramid.position.x +=
+            height * 0.5;
+
+        return pyramid;
+    };
+
+mirrorSceneData.getCornerGlowTexture =
+    function () {
+
+        if (this.cornerGlowTexture) {
+
+            return this.cornerGlowTexture;
+        }
+
+
+        const canvas =
+            document.createElement(
+                "canvas"
+            );
+
+        canvas.width = 64;
+        canvas.height = 64;
+
+
+        const ctx =
+            canvas.getContext("2d");
+
+
+        const gradient =
+            ctx.createRadialGradient(
+                32,
+                32,
+                0,
+
+                32,
+                32,
+                32
+            );
+
+
+        gradient.addColorStop(
+            0.0,
+            "rgba(255,255,255,1)"
+        );
+
+        gradient.addColorStop(
+            0.25,
+            "rgba(255,255,255,0.8)"
+        );
+
+        gradient.addColorStop(
+            0.6,
+            "rgba(255,255,255,0.2)"
+        );
+
+        gradient.addColorStop(
+            1.0,
+            "rgba(255,255,255,0)"
+        );
+
+
+        ctx.fillStyle =
+            gradient;
+
+        ctx.fillRect(
+            0,
+            0,
+            64,
+            64
+        );
+
+
+        this.cornerGlowTexture =
+            new THREE.CanvasTexture(
+                canvas
+            );
+
+
+        return this.cornerGlowTexture;
+    };
+
+mirrorSceneData.makeDottedConnection =
+    function (a, b) {
+
+        const dotsPerDirection = 5;
+
+        const totalDots =
+            dotsPerDirection * 2;
+
+
+        const positions =
+            new Float32Array(
+                totalDots * 3
+            );
+
+
+        const colors =
+            new Float32Array(
+                totalDots * 3
+            );
+
+
+        const colorForward =
+            new THREE.Color(
+                0xff9944
+            );
+
+        const colorBackward =
+            new THREE.Color(
+                0xff9944
+            );
+
+
+        for (
+            let i = 0;
+            i < dotsPerDirection;
+            i++
+        ) {
+
+            colors.set(
+                [
+                    colorForward.r,
+                    colorForward.g,
+                    colorForward.b
+                ],
+                i * 3
+            );
+        }
+
+
+        for (
+            let i = dotsPerDirection;
+            i < totalDots;
+            i++
+        ) {
+
+            colors.set(
+                [
+                    colorBackward.r,
+                    colorBackward.g,
+                    colorBackward.b
+                ],
+                i * 3
+            );
+        }
+
+
+        const geometry =
+            new THREE.BufferGeometry();
+
+
+        geometry.setAttribute(
+
+            "position",
+
+            new THREE.BufferAttribute(
+                positions,
+                3
+            )
+        );
+
+
+        geometry.setAttribute(
+
+            "color",
+
+            new THREE.BufferAttribute(
+                colors,
+                3
+            )
+        );
+
+
+        const material =
+            new THREE.PointsMaterial({
+
+                size: 10,
+
+                sizeAttenuation: false,
+
+                map: this.getCornerGlowTexture(),
+
+                transparent: true,
+
+                opacity: 0.9,
+
+                depthWrite: false,
+
+                blending: THREE.AdditiveBlending,
+
+                vertexColors: true,
+
+                alphaTest: 0.01
+            });
+
+
+        const dots =
+            new THREE.Points(
+                geometry,
+                material
+            );
+
+        dots.frustumCulled = false;
+
+
+        this.rootGroup.add(
+            dots
+        );
+
+
+        this.dotConnections.push({
+
+            a: a,
+
+            b: b,
+
+            phase:
+                Math.random(),
+
+            speed:
+                0.2 +
+                Math.random() *
+                0.15,
+
+            dots:
+                dots,
+
+            dotsPerDirection:
+                dotsPerDirection
+
+        });
+    };
+
+mirrorSceneData.updateDottedConnections =
+    function (deltaTime) {
+
+        if (!this.dotConnections) {
+            return;
+        }
+
+
+        const a =
+            new THREE.Vector3();
+
+        const b =
+            new THREE.Vector3();
+
+        const direction =
+            new THREE.Vector3();
+
+        const perpendicular =
+            new THREE.Vector3();
+
+
+        for (
+            const connection
+            of this.dotConnections
+        ) {
+
+            connection.phase +=
+                deltaTime *
+                connection.speed;
+
+            connection.phase %= 1;
+
+
+            connection.a.getWorldPosition(
+                a
+            );
+
+            connection.b.getWorldPosition(
+                b
+            );
+
+
+            this.rootGroup.worldToLocal(
+                a
+            );
+
+            this.rootGroup.worldToLocal(
+                b
+            );
+
+
+            direction
+                .subVectors(
+                    b,
+                    a
+                );
+
+
+            // Create a sideways direction
+            // in the mirror's Y/Z plane.
+            perpendicular.set(
+
+                0,
+
+                -direction.z,
+
+                direction.y
+            );
+
+
+            if (
+                perpendicular.lengthSq() >
+                0.00001
+            ) {
+
+                perpendicular
+                    .normalize()
+                    .multiplyScalar(
+                        0.035
+                    );
+            }
+
+
+            const positions =
+                connection.dots
+                    .geometry
+                    .attributes
+                    .position;
+
+
+            const count =
+                connection
+                    .dotsPerDirection;
+
+
+            // -----------------------------
+            // FORWARD TRAFFIC
+            // -----------------------------
+
+            for (
+                let i = 0;
+                i < count;
+                i++
+            ) {
+
+                const t =
+                    (
+                        i / count +
+                        connection.phase
+                    ) % 1;
+
+
+                positions.setXYZ(
+
+                    i,
+
+                    THREE.MathUtils.lerp(
+                        a.x,
+                        b.x,
+                        t
+                    ) +
+                    perpendicular.x,
+
+                    THREE.MathUtils.lerp(
+                        a.y,
+                        b.y,
+                        t
+                    ) +
+                    perpendicular.y,
+
+                    THREE.MathUtils.lerp(
+                        a.z,
+                        b.z,
+                        t
+                    ) +
+                    perpendicular.z
+                );
+            }
+
+
+            // -----------------------------
+            // RETURN TRAFFIC
+            // -----------------------------
+
+            for (
+                let i = 0;
+                i < count;
+                i++
+            ) {
+
+                let t =
+                    (
+                        i / count -
+                        connection.phase
+                    ) % 1;
+
+                if (t < 0) {
+                    t += 1;
+                }
+
+
+                positions.setXYZ(
+
+                    count + i,
+
+                    THREE.MathUtils.lerp(
+                        a.x,
+                        b.x,
+                        t
+                    ) -
+                    perpendicular.x,
+
+                    THREE.MathUtils.lerp(
+                        a.y,
+                        b.y,
+                        t
+                    ) -
+                    perpendicular.y,
+
+                    THREE.MathUtils.lerp(
+                        a.z,
+                        b.z,
+                        t
+                    ) -
+                    perpendicular.z
+                );
+            }
+
+
+            positions.needsUpdate =
+                true;
+        }
+    };
+
+mirrorSceneData.animateCityGlows =
+    function (deltaTime) {
+
+        if (!this.cityGlowData) {
+            return;
+        }
+
+
+        for (
+            const glow
+            of this.cityGlowData
+        ) {
+
+            glow.phase +=
+                deltaTime *
+                1.5;
+
+
+            const pulse =
+                1 +
+                Math.sin(
+                    glow.phase
+                ) *
+                0.08;
+
+
+            glow.glow.scale.set(
+                0.16 * pulse,
+                0.16 * pulse,
+                1
+            );
+        }
+    };
+
+        // ====================================================
+        // END BUNDLED FILE: scenes/mirrorScene.js
+        // ====================================================
+
+
+
+        
+
+        // ====================================================
+        // BEGIN BUNDLED FILE: scenes/starSystemScene.js
+        // ====================================================
+
+function makeHighDefStar(radius, coreColor, glowColor) {
+
+    const group = new THREE.Group();
+
+    const core = new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 48, 48),
+
+        new THREE.MeshStandardMaterial({
+            color: coreColor,
+            emissive: coreColor,
+            emissiveIntensity: 8,
+            metalness: 0,
+            roughness: 0.8
+        })
+    );
+
+
+    // Tight glow
+    const glow1 =
+        makeGlowingSphere(
+            radius * 1.6,
+            glowColor
+        );
+
+    glow1.material.opacity = 0.45;
+
+
+    // Medium corona
+    const glow2 =
+        makeGlowingSphere(
+            radius * 3.0,
+            glowColor
+        );
+
+    glow2.material.opacity = 0.15;
+
+
+    // Huge bright glare
+    const glare =
+        makeGlowingSphere(
+            radius * 35.0,
+            0xffffff
+        );
+
+    glare.material.opacity = 0.8;
+    glare.material.depthTest = false;
+    glare.material.depthWrite = false;
+
+
+    group.add(glare);
+    group.add(glow2);
+    group.add(glow1);
+    group.add(core);
+
+    return group;
+}
+
+function makeGlowingSphere(radius, glowColor) {
+
+    const canvas = document.createElement("canvas");
+
+    canvas.width = 128;
+    canvas.height = 128;
+
+    const ctx = canvas.getContext("2d");
+
+    const gradient = ctx.createRadialGradient(
+        64, 64, 0,
+        64, 64, 64
+    );
+
+    gradient.addColorStop(0.00, "rgba(255,255,255,1)");
+    gradient.addColorStop(0.20, "rgba(255,255,255,0.6)");
+    gradient.addColorStop(0.50, "rgba(255,255,255,0.12)");
+    gradient.addColorStop(1.00, "rgba(255,255,255,0)");
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 128, 128);
+
+    const texture = new THREE.CanvasTexture(canvas);
+
+    const material = new THREE.SpriteMaterial({
+        map: texture,
+        color: glowColor,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+    });
+
+    const glow = new THREE.Sprite(material);
+
+    glow.scale.set(
+        radius * 2,
+        radius * 2,
+        1
+    );
+
+    return glow;
+}
+
+
+const solarSystemSceneData = new SceneData({
+
+    scale: 0.001,
+
+    timescale: 10,
+
+    disapearDistance: 1.0,
+
+    childScenes: [mirrorSceneData],
+
+    populateScene: function () {
+
+        const skyTexture = window.galaxySkyBox;
+
+        if (skyTexture) {
+
+            this.scene.environment = skyTexture;
+            this.scene.environmentIntensity = 0.5;
+
+            // Save it so children can access it
+            this.environmentTexture = skyTexture;
+        }
+
+        const group = new THREE.Group();
+
+        // Random tilt for the whole system
+        group.rotation.x = Math.random() * 0.8;
+        group.rotation.z = Math.random() * 0.8;
+
+        this.localUp = new THREE.Vector3(0, 1, 0)
+            .applyQuaternion(group.quaternion)
+            .normalize();
+
+        // Glowing sun
+        const sun = makeHighDefStar(1.0, 0xffdd66, 0xffaa22);
+        group.add(sun);
+
+        const sunLight = new THREE.PointLight(
+            0xfff8ee,
+            8000,
+            0,
+            2
+        );
+
+        group.add(sunLight);
+
+        const fillLight = new THREE.HemisphereLight(
+            0x6688aa,
+            0x080808,
+            0.08
+        );
+
+        group.add(fillLight);
+
+        this.makeOrbitingObjects(group);
+
+        for (let i = 0; i < 100; i++) {
+            this.makeDottedConnection(group);
+        }
+
+        this.rootGroup.add(group);
+        this.orbitGroup = group;
+    },
+
+    animate: function (deltaTime) {
+
+        if (!this.planetPivots) return;
+
+        for (const orbit of this.planetPivots) {
+
+            orbit.pivot.rotateY(
+                orbit.speed * deltaTime
+            );
+        }
+
+        this.updateDottedConnection(
+            deltaTime
+        );
+    },
+});
+
+solarSystemSceneData.makeDottedConnection = function (group) {
+
+    if (!this.dotConnections) {
+        this.dotConnections = [];
+    }
+    // Pick two different random mirrors
+    const aIndex =
+        Math.floor(
+            Math.random() *
+            this.planetPivots.length
+        );
+
+    let bIndex =
+        Math.floor(
+            Math.random() *
+            this.planetPivots.length
+        );
+
+    while (bIndex === aIndex) {
+        bIndex =
+            Math.floor(
+                Math.random() *
+                this.planetPivots.length
+            );
+    }
+
+
+    const dotCount = 4;
+
+    const positions =
+        new Float32Array(
+            dotCount * 3
+        );
+
+
+    const geometry =
+        new THREE.BufferGeometry();
+
+    geometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(
+            positions,
+            3
+        )
+    );
+
+
+    const material =
+        new THREE.PointsMaterial({
+
+            color: 0xffffff,
+
+            // Pixels, because sizeAttenuation is false
+            size: 1,
+
+            sizeAttenuation: false,
+
+            transparent: true,
+
+            opacity: 0.9,
+
+            depthWrite: false
+        });
+
+
+    const dottedLine =
+        new THREE.Points(
+            geometry,
+            material
+        );
+
+    group.add(dottedLine);
+
+
+    this.dotConnections.push({
+        a: this.planetPivots[aIndex].mirror,
+        b: this.planetPivots[bIndex].mirror,
+        group: group,
+        phase: Math.random(), // nice: don't synchronize them
+        dottedLine: dottedLine
+    });
+};
+
+solarSystemSceneData.updateDottedConnection =
+    function (deltaTime) {
+
+        if (!this.dotConnections) return;
+
+
+        for (const connection of this.dotConnections) {
+
+            connection.phase +=
+                deltaTime * 0.2;
+
+            connection.phase %= 1;
+
+
+            const a =
+                new THREE.Vector3();
+
+            const b =
+                new THREE.Vector3();
+
+
+            connection.a.getWorldPosition(a);
+            connection.b.getWorldPosition(b);
+
+            connection.group.worldToLocal(a);
+            connection.group.worldToLocal(b);
+
+
+            const positions =
+                connection.dottedLine
+                    .geometry
+                    .attributes
+                    .position;
+
+
+            const dotCount =
+                positions.count;
+
+
+            for (
+                let i = 0;
+                i < dotCount;
+                i++
+            ) {
+
+                const t =
+                    (
+                        i / dotCount +
+                        connection.phase
+                    ) % 1;
+
+
+                positions.setXYZ(
+                    i,
+
+                    THREE.MathUtils.lerp(
+                        a.x,
+                        b.x,
+                        t
+                    ),
+
+                    THREE.MathUtils.lerp(
+                        a.y,
+                        b.y,
+                        t
+                    ),
+
+                    THREE.MathUtils.lerp(
+                        a.z,
+                        b.z,
+                        t
+                    )
+                );
+            }
+
+
+            positions.needsUpdate = true;
+        }
+    };
+
+solarSystemSceneData.makeOrbitingObjects = function (group) {
+
+    this.planetPivots = [];
+
+    const planetCount = 80;
+
+    // Controls overall animation speed.
+    // Increase this if everything feels too slow.
+    const orbitalSpeedScale = 3.0;
+
+    for (let i = 0; i < planetCount; i++) {
+
+        const pivot = new THREE.Group();
+
+
+        // Orbital distance
+        const radius =
+            3 +
+            Math.random() * 20;
+
+
+        // Object size
+        const size =
+            0.08 +
+            Math.random() * 0.25;
+
+
+        const color = new THREE.Color(0xffffff);
+
+
+        const mirrorWidth =
+            0.2 + Math.random() * 0.5;
+
+        const mirrorHeight =
+            0.2 + Math.random() * 0.5;
+
+        const mirrorThickness =
+            0.01 + Math.random() * 0.02;
+
+        const sideCount =
+            5 +
+            Math.floor(
+                Math.random() * 6
+            );
+
+        // 5 through 10 sides
+        const mirror = new THREE.Mesh(
+
+            makeIrregularNgonGeometry(
+                mirrorWidth,
+                mirrorHeight,
+                mirrorThickness,
+                sideCount
+            ),
+
+            new THREE.MeshPhysicalMaterial({
+                color: 0xffffff,
+
+                metalness: 1.0,
+
+                roughness:
+                    0.01 +
+                    Math.random() * 0.04,
+
+                clearcoat: 1.0,
+                clearcoatRoughness: 0.01,
+
+                envMapIntensity: 1.5
+            })
+        );
+
+
+        // Put planet at orbital radius
+        mirror.position.set(
+            radius,
+            0,
+            0
+        );
+
+
+        // Small orbital inclination
+        pivot.rotation.x =
+            Math.random() * Math.PI * 2;
+
+        pivot.rotation.z =
+            Math.random() * Math.PI * 2;
+
+
+        // Random starting position around orbit
+        pivot.rotation.y =
+            Math.random() *
+            Math.PI *
+            2;
+
+
+        pivot.add(mirror);
+
+        group.add(pivot);
+
+        mirror.userData.collisionType = "point";
+
+        this.addCollider(mirror);
+
+
+        // Keplerian angular velocity:
+        //
+        // omega ∝ 1 / r^(3/2)
+        //
+        const angularSpeed =
+            orbitalSpeedScale /
+            Math.pow(radius, 1.5);
+
+
+        this.planetPivots.push({
+            pivot,
+            mirror,
+            speed: angularSpeed
+        });
+    }
+};
+
+function makeIrregularNgonGeometry(
+    width,
+    height,
+    thickness,
+    sides
+) {
+
+    const points = [];
+
+    for (let i = 0; i < sides; i++) {
+
+        // Base angle around the polygon
+        const angle =
+            (i / sides) *
+            Math.PI *
+            2;
+
+        // Random distance from center.
+        // This is what gives us unequal side lengths.
+        const radius =
+            0.65 +
+            Math.random() * 0.35;
+
+        const x =
+            Math.cos(angle) *
+            width *
+            0.5 *
+            radius;
+
+        const y =
+            Math.sin(angle) *
+            height *
+            0.5 *
+            radius;
+
+        points.push(
+            new THREE.Vector2(
+                x,
+                y
+            )
+        );
+    }
+
+
+    const shape =
+        new THREE.Shape(points);
+
+
+    const geometry =
+        new THREE.ExtrudeGeometry(
+            shape,
+            {
+                depth: thickness,
+                bevelEnabled: false
+            }
+        );
+
+
+    // ExtrudeGeometry is thin along Z by default.
+    //
+    // Rotate it so the thin direction becomes X,
+    // matching your old BoxGeometry:
+    //
+    // X = thickness / points toward sun
+    // Y = polygon height
+    // Z = polygon width
+    geometry.rotateY(
+        Math.PI / 2
+    );
+
+
+    // Put the polygon's center at its local origin.
+    geometry.center();
+
+
+    return geometry;
+}
+
+        // ====================================================
+        // END BUNDLED FILE: scenes/starSystemScene.js
+        // ====================================================
+
+
+
+        
+
+        // ====================================================
+        // BEGIN BUNDLED FILE: scenes/galaxyScene.js
+        // ====================================================
+
+class StarCollider {
+
+    constructor(position, frame, index) {
+
+        this.position = position.clone();
+
+        this.frame = frame;
+
+        this.visible = true;
+
+        this.userData = {
+            starIndex: index
+        };
+    }
+
+
+    getWorldPosition(target) {
+
+        this.frame.updateWorldMatrix(
+            true,
+            false
+        );
+
+        return target
+            .copy(this.position)
+            .applyMatrix4(
+                this.frame.matrixWorld
+            );
+    }
+
+
+    getWorldQuaternion(target) {
+
+        return this.frame
+            .getWorldQuaternion(target);
+    }
+}
+
+function randomGaussian() {
+    let u = 0;
+    let v = 0;
+
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function makeStarTexture() {
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+
+    const context = canvas.getContext("2d");
+
+    const gradient = context.createRadialGradient(
+        32, 32, 0,
+        32, 32, 32
+    );
+
+    gradient.addColorStop(0.00, "rgba(255,255,255,1)");
+    gradient.addColorStop(0.10, "rgba(255,255,255,0.96)");
+    gradient.addColorStop(0.32, "rgba(255,255,255,0.38)");
+    gradient.addColorStop(1.00, "rgba(255,255,255,0)");
+
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 64, 64);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+
+    return texture;
+}
+
+function buildGalaxyConnectionNetwork(
+    sourcePositions,
+    group,
+    neighborCount = 6
+) {
+
+    const count =
+        sourcePositions.length / 3;
+
+
+    const workerSource = String.raw`
+
+        self.onmessage = (event) => {
+
+            const {
+                positionsBuffer,
+                count,
+                neighborCount
+            } = event.data;
+
+
+            const positions =
+                new Float32Array(
+                    positionsBuffer
+                );
+
+
+            const indices =
+                new Int32Array(count);
+
+
+            for (let i = 0; i < count; i++) {
+                indices[i] = i;
+            }
+
+
+
+            // ========================================
+            // KD TREE
+            // ========================================
+
+            const coordinate =
+                (pointIndex, axis) =>
+                    positions[
+                        pointIndex * 3 + axis
+                    ];
+
+
+            function swap(a, b) {
+
+                const temp =
+                    indices[a];
+
+                indices[a] =
+                    indices[b];
+
+                indices[b] =
+                    temp;
+            }
+
+
+            function partition(
+                left,
+                right,
+                pivotIndex,
+                axis
+            ) {
+
+                const pivotValue =
+                    coordinate(
+                        indices[pivotIndex],
+                        axis
+                    );
+
+
+                swap(
+                    pivotIndex,
+                    right
+                );
+
+
+                let storeIndex =
+                    left;
+
+
+                for (
+                    let i = left;
+                    i < right;
+                    i++
+                ) {
+
+                    if (
+                        coordinate(
+                            indices[i],
+                            axis
+                        ) <
+                        pivotValue
+                    ) {
+
+                        swap(
+                            storeIndex,
+                            i
+                        );
+
+                        storeIndex++;
+                    }
+                }
+
+
+                swap(
+                    right,
+                    storeIndex
+                );
+
+
+                return storeIndex;
+            }
+
+
+            function quickSelect(
+                left,
+                right,
+                target,
+                axis
+            ) {
+
+                while (
+                    left < right
+                ) {
+
+                    let pivotIndex =
+                        (left + right) >> 1;
+
+
+                    pivotIndex =
+                        partition(
+                            left,
+                            right,
+                            pivotIndex,
+                            axis
+                        );
+
+
+                    if (
+                        target ===
+                        pivotIndex
+                    ) {
+                        return;
+                    }
+
+
+                    if (
+                        target <
+                        pivotIndex
+                    ) {
+
+                        right =
+                            pivotIndex - 1;
+
+                    } else {
+
+                        left =
+                            pivotIndex + 1;
+                    }
+                }
+            }
+
+
+            function buildTree(
+                left,
+                right,
+                depth
+            ) {
+
+                if (
+                    left > right
+                ) return;
+
+
+                const middle =
+                    (left + right) >> 1;
+
+
+                quickSelect(
+                    left,
+                    right,
+                    middle,
+                    depth % 3
+                );
+
+
+                buildTree(
+                    left,
+                    middle - 1,
+                    depth + 1
+                );
+
+
+                buildTree(
+                    middle + 1,
+                    right,
+                    depth + 1
+                );
+            }
+
+
+            console.log(
+                "Worker: building KD tree"
+            );
+
+
+            buildTree(
+                0,
+                count - 1,
+                0
+            );
+
+
+
+            // ========================================
+            // NEAREST NEIGHBOR SEARCH
+            // ========================================
+
+            const nearestIndices =
+                new Int32Array(
+                    neighborCount
+                );
+
+
+            const nearestDistances =
+                new Float64Array(
+                    neighborCount
+                );
+
+
+            let nearestSize = 0;
+            let worstSlot = 0;
+            let worstDistance =
+                Infinity;
+
+
+            let targetIndex = 0;
+            let targetX = 0;
+            let targetY = 0;
+            let targetZ = 0;
+
+
+            function refreshWorst() {
+
+                if (
+                    nearestSize <
+                    neighborCount
+                ) {
+
+                    worstDistance =
+                        Infinity;
+
+                    worstSlot =
+                        nearestSize;
+
+                    return;
+                }
+
+
+                worstSlot = 0;
+
+                worstDistance =
+                    nearestDistances[0];
+
+
+                for (
+                    let i = 1;
+                    i < nearestSize;
+                    i++
+                ) {
+
+                    if (
+                        nearestDistances[i] >
+                        worstDistance
+                    ) {
+
+                        worstDistance =
+                            nearestDistances[i];
+
+                        worstSlot = i;
+                    }
+                }
+            }
+
+
+            function consider(
+                pointIndex
+            ) {
+
+                if (
+                    pointIndex ===
+                    targetIndex
+                ) return;
+
+
+                const offset =
+                    pointIndex * 3;
+
+
+                const dx =
+                    positions[offset] -
+                    targetX;
+
+                const dy =
+                    positions[offset + 1] -
+                    targetY;
+
+                const dz =
+                    positions[offset + 2] -
+                    targetZ;
+
+
+                const distanceSquared =
+                    dx * dx +
+                    dy * dy +
+                    dz * dz;
+
+
+                if (
+                    nearestSize <
+                    neighborCount
+                ) {
+
+                    nearestIndices[
+                        nearestSize
+                    ] = pointIndex;
+
+                    nearestDistances[
+                        nearestSize
+                    ] = distanceSquared;
+
+
+                    nearestSize++;
+
+                    refreshWorst();
+
+                } else if (
+                    distanceSquared <
+                    worstDistance
+                ) {
+
+                    nearestIndices[
+                        worstSlot
+                    ] = pointIndex;
+
+                    nearestDistances[
+                        worstSlot
+                    ] = distanceSquared;
+
+
+                    refreshWorst();
+                }
+            }
+
+
+            function searchTree(
+                left,
+                right,
+                depth
+            ) {
+
+                if (
+                    left > right
+                ) return;
+
+
+                const middle =
+                    (left + right) >> 1;
+
+                const pointIndex =
+                    indices[middle];
+
+                const axis =
+                    depth % 3;
+
+
+                const targetCoordinate =
+                    axis === 0
+                        ? targetX
+                        : axis === 1
+                            ? targetY
+                            : targetZ;
+
+
+                const difference =
+                    targetCoordinate -
+                    positions[
+                        pointIndex * 3 +
+                        axis
+                    ];
+
+
+                if (
+                    difference <= 0
+                ) {
+
+                    searchTree(
+                        left,
+                        middle - 1,
+                        depth + 1
+                    );
+
+
+                    consider(
+                        pointIndex
+                    );
+
+
+                    if (
+                        difference *
+                        difference <
+                        worstDistance
+                    ) {
+
+                        searchTree(
+                            middle + 1,
+                            right,
+                            depth + 1
+                        );
+                    }
+
+                } else {
+
+                    searchTree(
+                        middle + 1,
+                        right,
+                        depth + 1
+                    );
+
+
+                    consider(
+                        pointIndex
+                    );
+
+
+                    if (
+                        difference *
+                        difference <
+                        worstDistance
+                    ) {
+
+                        searchTree(
+                            left,
+                            middle - 1,
+                            depth + 1
+                        );
+                    }
+                }
+            }
+
+
+
+            // ========================================
+            // BUILD UNIQUE CONNECTION LIST
+            // ========================================
+
+            const edgeSet =
+                new Set();
+
+
+            for (
+                targetIndex = 0;
+                targetIndex < count;
+                targetIndex++
+            ) {
+
+                const offset =
+                    targetIndex * 3;
+
+
+                targetX =
+                    positions[offset];
+
+                targetY =
+                    positions[offset + 1];
+
+                targetZ =
+                    positions[offset + 2];
+
+
+                nearestSize = 0;
+
+                worstSlot = 0;
+
+                worstDistance =
+                    Infinity;
+
+
+                searchTree(
+                    0,
+                    count - 1,
+                    0
+                );
+
+
+                for (
+                    let i = 0;
+                    i < nearestSize;
+                    i++
+                ) {
+
+                    const neighbor =
+                        nearestIndices[i];
+
+
+                    const low =
+                        Math.min(
+                            targetIndex,
+                            neighbor
+                        );
+
+                    const high =
+                        Math.max(
+                            targetIndex,
+                            neighbor
+                        );
+
+
+                    edgeSet.add(
+                        low * count +
+                        high
+                    );
+                }
+            }
+
+
+
+            // ========================================
+            // CREATE LINE BUFFERS
+            // ========================================
+
+            const edgeCount =
+                edgeSet.size;
+
+
+            const linePositions =
+                new Float32Array(
+                    edgeCount * 6
+                );
+
+
+            const lineColors =
+                new Float32Array(
+                    edgeCount * 6
+                );
+
+
+            let writeOffset = 0;
+
+
+            for (
+                const key of edgeSet
+            ) {
+
+                const first =
+                    Math.floor(
+                        key / count
+                    );
+
+                const second =
+                    key -
+                    first * count;
+
+
+                const a =
+                    first * 3;
+
+                const b =
+                    second * 3;
+
+
+                const dx =
+                    positions[a] -
+                    positions[b];
+
+                const dy =
+                    positions[a + 1] -
+                    positions[b + 1];
+
+                const dz =
+                    positions[a + 2] -
+                    positions[b + 2];
+
+
+                const distance =
+                    Math.sqrt(
+                        dx * dx +
+                        dy * dy +
+                        dz * dz
+                    );
+
+
+                // Exact old-galaxy brightness logic
+                const intensity =
+                    Math.max(
+                        0.055,
+                        Math.min(
+                            0.72,
+                            1.1 /
+                            (
+                                1 +
+                                distance *
+                                0.075
+                            )
+                        )
+                    );
+
+
+                linePositions[
+                    writeOffset
+                ] =
+                    positions[a];
+
+                linePositions[
+                    writeOffset + 1
+                ] =
+                    positions[a + 1];
+
+                linePositions[
+                    writeOffset + 2
+                ] =
+                    positions[a + 2];
+
+
+                linePositions[
+                    writeOffset + 3
+                ] =
+                    positions[b];
+
+                linePositions[
+                    writeOffset + 4
+                ] =
+                    positions[b + 1];
+
+                linePositions[
+                    writeOffset + 5
+                ] =
+                    positions[b + 2];
+
+
+                const redBrightness =
+                    intensity * 0.2;
+
+
+                lineColors[
+                    writeOffset
+                ] =
+                    redBrightness;
+
+                lineColors[
+                    writeOffset + 1
+                ] =
+                    redBrightness *
+                    0.025;
+
+                lineColors[
+                    writeOffset + 2
+                ] = 0;
+
+
+                lineColors[
+                    writeOffset + 3
+                ] =
+                    redBrightness;
+
+                lineColors[
+                    writeOffset + 4
+                ] =
+                    redBrightness *
+                    0.025;
+
+                lineColors[
+                    writeOffset + 5
+                ] = 0;
+
+
+                writeOffset += 6;
+            }
+
+
+            self.postMessage(
+                {
+                    edgeCount,
+
+                    positionsBuffer:
+                        linePositions.buffer,
+
+                    colorsBuffer:
+                        lineColors.buffer
+                },
+                [
+                    linePositions.buffer,
+                    lineColors.buffer
+                ]
+            );
+        };
+
+    `;
+
+
+
+    // ========================================
+    // START WORKER
+    // ========================================
+
+    const blob =
+        new Blob(
+            [workerSource],
+            {
+                type:
+                    "text/javascript"
+            }
+        );
+
+
+    const url =
+        URL.createObjectURL(
+            blob
+        );
+
+
+    const worker =
+        new Worker(url);
+
+
+    worker.onmessage =
+        event => {
+
+            console.log(
+                "Galaxy links:",
+                event.data.edgeCount
+            );
+
+
+            const geometry =
+                new THREE.BufferGeometry();
+
+
+            geometry.setAttribute(
+                "position",
+                new THREE.BufferAttribute(
+                    new Float32Array(
+                        event.data
+                            .positionsBuffer
+                    ),
+                    3
+                )
+            );
+
+
+            geometry.setAttribute(
+                "color",
+                new THREE.BufferAttribute(
+                    new Float32Array(
+                        event.data
+                            .colorsBuffer
+                    ),
+                    3
+                )
+            );
+
+
+            geometry.computeBoundingSphere();
+
+
+            const material =
+                new THREE.LineBasicMaterial({
+
+                    vertexColors: true,
+
+                    transparent: true,
+
+                    opacity: 0.78,
+
+                    depthWrite: false,
+
+                    blending:
+                        THREE.AdditiveBlending,
+
+                    fog: true
+                });
+
+
+            const lines =
+                new THREE.LineSegments(
+                    geometry,
+                    material
+                );
+
+
+            // IMPORTANT:
+            // lines live in the SAME group as stars,
+            // so tilt + galaxy rotation happen automatically.
+            group.add(lines);
+
+
+            worker.terminate();
+
+            URL.revokeObjectURL(
+                url
+            );
+        };
+
+
+    worker.onerror =
+        error => {
+
+            console.error(
+                "Galaxy connection worker failed:",
+                error
+            );
+
+            worker.terminate();
+
+            URL.revokeObjectURL(
+                url
+            );
+        };
+
+
+    // COPY IT!
+    //
+    // Transferring the original positions.buffer
+    // would detach your actual galaxy array.
+    const positionCopy =
+        sourcePositions.slice();
+
+
+    worker.postMessage(
+        {
+            positionsBuffer:
+                positionCopy.buffer,
+
+            count,
+
+            neighborCount
+        },
+        [
+            positionCopy.buffer
+        ]
+    );
+
+
+    return worker;
+}
+
+const galaxySceneData = new GalaxySceneData({
+
+    scale: 1,
+
+    timescale: 1,
+
+    disapearDistance: 5,
+
+    childScenes: [
+        solarSystemSceneData
+    ],
+
+    getSubSceneData: function (star) {
+        return solarSystemSceneData;
+    },
+
+    populateScene: function () {
+
+        const STAR_COUNT = 50000;
+        const GALAXY_RADIUS = 650;
+        const GALAXY_THICKNESS = 48;
+        const ARM_COUNT = 2;
+
+        const group = new THREE.Group();
+
+        const positions = new Float32Array(STAR_COUNT * 3);
+        const colors = new Float32Array(STAR_COUNT * 3);
+        const color = new THREE.Color();
+
+        for (let i = 0; i < STAR_COUNT; i++) {
+            const i3 = i * 3;
+            const component = Math.random();
+
+            let x;
+            let y;
+            let z;
+            let radius;
+            let temperature;
+
+            if (component < 0.72) {
+                // Spiral disk
+                radius = Math.pow(Math.random(), 0.52) * GALAXY_RADIUS;
+
+                const arm = Math.floor(Math.random() * ARM_COUNT);
+                const armBase = arm * (Math.PI * 2 / ARM_COUNT);
+                const winding = radius * 0.018;
+                const spread =
+                    0.20 +
+                    Math.pow(radius / GALAXY_RADIUS, 1.2) * 0.1;
+
+                const angle =
+                    armBase +
+                    winding +
+                    randomGaussian() * spread;
+
+                const radialScatter =
+                    randomGaussian() * (8 + radius * 0.035);
+
+                const scatteredRadius =
+                    radius + radialScatter;
+
+                x = Math.cos(angle) * scatteredRadius;
+                z = Math.sin(angle) * scatteredRadius;
+
+                const diskHeight =
+                    3.5 +
+                    (1 - radius / GALAXY_RADIUS) * GALAXY_THICKNESS;
+
+                y = randomGaussian() * diskHeight;
+
+                // Outer arms skew slightly blue; inner stars skew warm
+                temperature =
+                    Math.random() +
+                    (radius / GALAXY_RADIUS) * 0.45;
+
+            } else if (component < 0.93) {
+                // Dense central bulge
+                radius = Math.pow(Math.random(), 2.1) * 190;
+
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                x = Math.sin(phi) * Math.cos(theta) * radius * 1.25;
+                z = Math.sin(phi) * Math.sin(theta) * radius * 1.25;
+                y = Math.cos(phi) * radius * 0.48;
+
+                x += randomGaussian() * 5;
+                y += randomGaussian() * 3;
+                z += randomGaussian() * 5;
+
+                temperature = Math.random() * 0.72;
+
+            } else {
+                // Sparse halo
+                radius = Math.pow(Math.random(), 0.34) * GALAXY_RADIUS * 1.18;
+
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                x = Math.sin(phi) * Math.cos(theta) * radius;
+                z = Math.sin(phi) * Math.sin(theta) * radius;
+                y = Math.cos(phi) * radius * 0.42;
+
+                temperature = Math.random() * 1.25;
+            }
+
+            const collider =
+                new StarCollider(
+                    new THREE.Vector3(x, y, z),
+                    group,
+                    i
+                );
+
+            collider.userData.collisionType =
+                "point";
+
+            this.addCollider(collider);
+
+            positions[i3] = x;
+            positions[i3 + 1] = y;
+            positions[i3 + 2] = z;
+
+            if (temperature < 0.26) {
+                color.setRGB(
+                    1.00,
+                    0.55 + Math.random() * 0.18,
+                    0.34
+                );
+            } else if (temperature < 0.70) {
+                color.setRGB(
+                    1.00,
+                    0.80 + Math.random() * 0.16,
+                    0.62 + Math.random() * 0.18
+                );
+            } else if (temperature < 1.08) {
+                const whiteness = 0.84 + Math.random() * 0.16;
+                color.setRGB(
+                    whiteness,
+                    whiteness,
+                    1.00
+                );
+            } else {
+                color.setRGB(
+                    0.58 + Math.random() * 0.12,
+                    0.72 + Math.random() * 0.12,
+                    1.00
+                );
+            }
+
+            const brightness =
+                0.42 + Math.random() * 0.58;
+
+            colors[i3] = color.r * brightness;
+            colors[i3 + 1] = color.g * brightness;
+            colors[i3 + 2] = color.b * brightness;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+
+        geometry.setAttribute(
+            "position",
+            new THREE.BufferAttribute(positions, 3)
+        );
+
+        geometry.setAttribute(
+            "color",
+            new THREE.BufferAttribute(colors, 3)
+        );
+
+        geometry.computeBoundingSphere();
+
+        const material = new THREE.PointsMaterial({
+            size: .75,
+            sizeAttenuation: true,
+            map: makeStarTexture(),
+            transparent: true,
+            opacity: 0.9,
+            alphaTest: 0.01,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            vertexColors: true,
+
+            fog: false
+        });
+
+        const stars = new THREE.Points(geometry, material);
+
+        group.add(stars);
+
+        // Match the tilt from the good version
+        group.rotation.x = THREE.MathUtils.degToRad(-8);
+        group.rotation.z = THREE.MathUtils.degToRad(5);
+
+        this.rootGroup.add(group);
+        this.orbitGroup = group;
+
+        this.connectionWorker =
+            buildGalaxyConnectionNetwork(
+                positions,
+                group,
+                6
+            );
+
+        // Save if you want colliders later
+        this.starPositions = positions;
+        this.starColors = colors;
+        this.starPoints = stars;
+    },
+
+    animate: function (deltaTime) {
+        if (!this.orbitGroup) return;
+
+        // Slow it way down
+        this.orbitGroup.rotation.y += 0.0006 * deltaTime;
+    },
+});
+
+galaxySceneData.onColide = function () {
+    window.galaxySkyBox = captureSkybox(window.renderer, this.scene, this.camera.position)
+}
+
+galaxySceneData.scene.background =
+    new THREE.Color(0x000003);
+
+galaxySceneData.scene.fog =
+    new THREE.FogExp2(
+        0x000003,
+        0.00024
+    );
+
+        // ====================================================
+        // END BUNDLED FILE: scenes/galaxyScene.js
+        // ====================================================
+
+
+
+        window.mainSceneData = galaxySceneData
+
+        window.cam_position = [
+            0,
+            115,
+            890
+        ];
+
+        window.cam_lookAt = [
+            0,
+            0,
+            0
+        ];
+
+        
+
+        // ====================================================
+        // BEGIN BUNDLED FILE: engine/spaceEngine.js
+        // ====================================================
+
+const activeSceneStack = [
+    mainSceneData
+];
+// start sim
+const scenesData = [mainSceneData];
+
+function addChildScenes(parentSceneData) {
+
+    parentSceneData.childScenes.forEach(childScene => {
+        scenesData.push(childScene);
+    });
+
+    parentSceneData.childScenes.forEach(childScene => {
+        addChildScenes(childScene);
+    });
+}
+
+function updateActiveScenes(
+    deltaTime
+) {
+
+    activeSceneStack.forEach(
+        (data, i) => {
+
+            // -------------------------
+            // SYNC CAMERA
+            // -------------------------
+
+            if (i !== 0) {
+
+                data.camera.quaternion.copy(
+                    activeSceneStack[0]
+                        .camera
+                        .quaternion
+                );
+
+                data.camera.position
+                    .copy(
+                        activeSceneStack[0]
+                            .camera
+                            .position
+                    )
+                    .multiplyScalar(
+                        1 / data.scale
+                    );
+            }
+
+
+            // -------------------------
+            // UPDATE SCENE FIRST
+            // -------------------------
+
+            data.update?.(
+                deltaTime
+            );
+
+
+            // updateCameraLock() may have
+            // moved the main camera, so sync
+            // the child camera once more.
+            if (i !== 0) {
+
+                data.camera.quaternion.copy(
+                    activeSceneStack[0]
+                        .camera
+                        .quaternion
+                );
+
+                data.camera.position
+                    .copy(
+                        activeSceneStack[0]
+                            .camera
+                            .position
+                    )
+                    .multiplyScalar(
+                        1 / data.scale
+                    );
+            }
+
+
+            // -------------------------
+            // NOW CHECK COLLISION
+            // -------------------------
+
+            data.checkCollision?.();
+        }
+    );
+}
+
+function renderActiveScenes() {
+
+    renderer.clear();
+
+    activeSceneStack.forEach((data, i) => {
+
+        if (i !== 0) {
+            renderer.clearDepth();
+        }
+
+
+        if (data === mainSceneData) {
+
+            renderMainScene();
+
+        } else {
+
+            renderer.render(
+                data.scene,
+                data.camera
+            );
+        }
+    });
+}
+
+function renderMainScene() {
+
+    composer.render();
+}
+
+addChildScenes(mainSceneData);
+
+window.renderer =
+    new THREE.WebGLRenderer({
+        antialias: false,
+        powerPreference: "high-performance"
+    });
+
+renderer.setPixelRatio(
+    Math.min(
+        window.devicePixelRatio,
+        2
+    )
+);
+
+renderer.setSize(
+    window.innerWidth,
+    window.innerHeight
+);
+
+renderer.outputColorSpace =
+    THREE.SRGBColorSpace;
+
+renderer.toneMapping =
+    THREE.ACESFilmicToneMapping;
+
+renderer.toneMappingExposure =
+    1.12;
+
+renderer.autoClear = false;
+
+document.body.appendChild(
+    renderer.domElement
+);
+
+const composer =
+    new EffectComposer(renderer);
+
+composer.addPass(
+    new RenderPass(
+        mainSceneData.scene,
+        mainSceneData.camera
+    )
+);
+
+const bloomPass =
+    new UnrealBloomPass(
+        new THREE.Vector2(
+            window.innerWidth,
+            window.innerHeight
+        ),
+        0.95,
+        0.72,
+        0.06
+    );
+
+composer.addPass(
+    bloomPass
+);
+
+
+
+let keys = {};
+
+
+function yawCamera(camera, amount) {
+    camera.rotateY(amount);
+}
+
+function pitchCamera(camera, amount) {
+
+    const activeScene =
+        activeSceneStack[
+        activeSceneStack.length - 1
+        ];
+
+
+    // --------------------------------
+    // NORMAL SPACE CAMERA
+    // --------------------------------
+
+    if (
+        !(activeScene instanceof HabSceneData)
+    ) {
+
+        camera.rotateX(amount);
+
+        return;
+    }
+
+
+    // --------------------------------
+    // HAB CAMERA
+    // --------------------------------
+
+    const up =
+        activeScene.getHabUpWorld();
+
+
+    const forward =
+        new THREE.Vector3(0, 0, -1)
+            .applyQuaternion(
+                camera.quaternion
+            )
+            .normalize();
+
+
+    const currentPitch =
+        Math.asin(
+            THREE.MathUtils.clamp(
+                forward.dot(up),
+                -1,
+                1
+            )
+        );
+
+
+    const maxPitch =
+        THREE.MathUtils.degToRad(89);
+
+
+    const desiredPitch =
+        THREE.MathUtils.clamp(
+            currentPitch + amount,
+            -maxPitch,
+            maxPitch
+        );
+
+
+    const allowedAmount =
+        desiredPitch - currentPitch;
+
+
+    camera.rotateX(
+        allowedAmount
+    );
+}
+
+function rollCamera(camera, amount) {
+    camera.rotateZ(amount);
+}
+
+function addEventHandlers() {
+
+    const mainCamera = scenesData[0].camera;
+
+    addEventListener(
+        "keydown",
+        e => keys[e.key.toLowerCase()] = true
+    );
+
+    addEventListener(
+        "keyup",
+        e => keys[e.key.toLowerCase()] = false
+    );
+
+    renderer.domElement.addEventListener(
+        "click",
+        () => renderer.domElement.requestPointerLock()
+    );
+
+    addEventListener("mousemove", e => {
+
+        if (
+            document.pointerLockElement !==
+            renderer.domElement
+        ) return;
+
+        yawCamera(
+            mainCamera,
+            -e.movementX * 0.002
+        );
+
+        pitchCamera(
+            mainCamera,
+            -e.movementY * 0.002
+        );
+    });
+}
+
+
+let speed = 1;
+
+function moveCamera() {
+
+    const mainCamera = scenesData[0].camera;
+
+    // Movement
+    if (keys["w"])
+        mainCamera.translateZ(-speed);
+
+    if (keys["s"])
+        mainCamera.translateZ(speed);
+
+    if (keys["a"])
+        mainCamera.translateX(-speed);
+
+    if (keys["d"])
+        mainCamera.translateX(speed);
+
+
+    // Speed
+    if (keys["f"])
+        speed *= 1.1;
+
+    if (keys["r"])
+        speed /= 1.1;
+
+
+    if (keys["q"])
+        rollCamera(mainCamera, 0.01);
+
+    if (keys["e"])
+        rollCamera(mainCamera, -0.01);
+
+    if (keys["arrowleft"])
+        yawCamera(mainCamera, 0.01);
+
+    if (keys["arrowright"])
+        yawCamera(mainCamera, -0.01);
+
+    if (keys["arrowup"])
+        pitchCamera(mainCamera, 0.01);
+
+    if (keys["arrowdown"])
+        pitchCamera(mainCamera, -0.01);
+}
+
+scenesData[0].populateScene();
+
+addEventHandlers();
+const clock = new THREE.Clock();
+
+function updateTimeScales() {
+
+    let slowdown = 1;
+
+    for (let i = activeSceneStack.length - 1; i >= 0; i--) {
+
+        const sceneData = activeSceneStack[i];
+
+        sceneData.speedMultiplier = 1 / slowdown;
+
+        slowdown *= sceneData.timescale;
+    }
+}
+
+const camera = scenesData[0].camera;
+
+camera.position.set(...cam_position);
+
+camera.lookAt(...cam_lookAt);
+
+let timers = [0];
+function run() {
+
+    setTimeout(() => {
+
+        const deltaTime =
+            clock.getDelta();
+
+        moveCamera();
+
+        updateActiveScenes(
+            deltaTime
+        );
+
+        renderActiveScenes();
+
+        run();
+
+    }, 10);
+}
+
+
+        // ====================================================
+        // END BUNDLED FILE: engine/spaceEngine.js
+        // ====================================================
+
+
+
+
+        // Everything now exists
+        run();
+
+    </script>
+</body>
+
+</html>
