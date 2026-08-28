@@ -28,9 +28,135 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 
     <script>
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
 
+        const scene =
+            new THREE.Scene();
+
+        scene.background =
+            new THREE.Color(0x000000);
+
+        // ============================================================
+        // FLASH FLARE
+        // ============================================================
+
+        function makeFlareTexture() {
+
+            const size = 256;
+
+            const canvas =
+                document.createElement("canvas");
+
+            canvas.width =
+                size;
+
+            canvas.height =
+                size;
+
+            const ctx =
+                canvas.getContext("2d");
+
+
+            const gradient =
+                ctx.createRadialGradient(
+                    size / 2,
+                    size / 2,
+                    0,
+
+                    size / 2,
+                    size / 2,
+                    size / 2
+                );
+
+
+            gradient.addColorStop(
+                0.00,
+                "rgba(255,255,255,1)"
+            );
+
+            gradient.addColorStop(
+                0.08,
+                "rgba(255,220,220,1)"
+            );
+
+            gradient.addColorStop(
+                0.25,
+                "rgba(255,80,60,0.55)"
+            );
+
+            gradient.addColorStop(
+                0.55,
+                "rgba(180,15,5,0.15)"
+            );
+
+            gradient.addColorStop(
+                1.00,
+                "rgba(0,0,0,0)"
+            );
+
+
+            ctx.fillStyle =
+                gradient;
+
+            ctx.fillRect(
+                0,
+                0,
+                size,
+                size
+            );
+
+
+            return new THREE.CanvasTexture(
+                canvas
+            );
+        }
+
+
+        const flareMaterial =
+            new THREE.SpriteMaterial({
+
+                map:
+                    makeFlareTexture(),
+
+                transparent:
+                    true,
+
+                blending:
+                    THREE.AdditiveBlending,
+
+                depthWrite:
+                    false,
+
+                depthTest:
+                    false,
+
+                opacity:
+                    0
+            });
+
+
+        const flashFlare =
+            new THREE.Sprite(
+                flareMaterial
+            );
+
+        flashFlare.position.set(
+            0,
+            0,
+            0
+        );
+
+        flashFlare.scale.set(
+            1,
+            1,
+            1
+        );
+
+        flashFlare.renderOrder =
+            100;
+
+        scene.add(
+            flashFlare
+        );
 
         // ============================================================
         // CAMERA
@@ -545,17 +671,38 @@
 
         function updateFlash(deltaTime) {
 
-            if (flashAmount > 0) {
+            // Use the same flash strength for everything this frame.
+            const FLASH_INTENSITY = 0.1;
 
-                flashAmount *=
-                    Math.exp(
-                        -deltaTime * 8.0
-                    );
+            const currentFlash =
+                flashAmount *
+                FLASH_INTENSITY;
 
-                if (flashAmount < 0.001)
-                    flashAmount = 0;
-            }
 
+            // ============================================
+            // FLARE
+            // ============================================
+
+            flareMaterial.opacity =
+                Math.pow(
+                    currentFlash,
+                    0.35
+                );
+
+            const flareSize =
+                3 +
+                currentFlash * 20;
+
+            flashFlare.scale.set(
+                flareSize,
+                flareSize,
+                1
+            );
+
+
+            // ============================================
+            // PARTICLES
+            // ============================================
 
             for (
                 let i = 0;
@@ -567,8 +714,9 @@
                     i * 3;
 
                 const localFlash =
-                    flashAmount *
+                    currentFlash *
                     flashWeights[i];
+
 
                 colors[index] =
                     THREE.MathUtils.lerp(
@@ -592,12 +740,32 @@
                     );
             }
 
+
             particleGeometry
                 .attributes
                 .color
                 .needsUpdate = true;
-        }
 
+
+            // ============================================
+            // DECAY FLASH AFTER USING IT
+            // ============================================
+
+            if (flashAmount > 0) {
+
+                flashAmount *=
+                    Math.exp(
+                        -deltaTime * 8.0
+                    );
+
+                if (flashAmount < 0.001) {
+
+                    flashAmount = 0;
+
+                    flareMaterial.opacity = 0;
+                }
+            }
+        }
         // ============================================================
         // MOUSE CAMERA
         // ============================================================
