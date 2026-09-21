@@ -11,7 +11,8 @@ This is a Three.js K3 galaxy prototype.
 - Entering a K3Scene hides its outside representation and shows the outside representations of its children. Ancestor layers retain the siblings of the entered scene.
 - Positions and sizes are local to the parent scene.
 - In k3-2, insideSize defines the interior radius in independent local units; size defines the outside radius in parent units. Convert camera positions across one boundary at a time instead of accumulating a global scale.
-- Collision checks should only operate on the currently active scene and its immediate children.
+- Collision checks operate on the active scene and its immediate children, plus immediate children of overlapping sibling interiors at the same movement depth. Keep one movement frame until its boundary is exited.
+- Overlapping containing spheres hide their shells and reveal their interiors together. Put peer interiors into a common local render layer so their geometry shares depth testing.
 
 ## Project constraints
 

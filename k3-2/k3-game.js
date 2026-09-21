@@ -168,6 +168,9 @@ class K3Game {
 
         if (!this.activeScene.containsInsidePosition(this.camera.position)) {
             this.exit();
+            // Crossing out of one sphere can leave us inside an overlapping one.
+            const next = this.checkChildCollision(this.camera.position);
+            if (next) this.enterVisibleScene(next);
             return;
         }
 
@@ -184,7 +187,7 @@ class K3Game {
                 child.name
             );
 
-            this.enter(child);
+            this.enterVisibleScene(child);
 
         }
 
@@ -553,6 +556,16 @@ class K3Game {
 
 
 
+    enterVisibleScene(scene) {
+        // Change coordinate frames through the common ancestor. A visible planet
+        // may belong to an overlapping sibling rather than the movement scene.
+        const path = [];
+        for (let node = scene; node; node = node.parent) path.unshift(node);
+        while (!path.includes(this.activeScene)) this.exit();
+        const start = path.indexOf(this.activeScene) + 1;
+        for (let index = start; index < path.length; index++) this.enter(path[index]);
+    }
+
     checkChildCollision(position) {
 
         if (
@@ -588,6 +601,22 @@ class K3Game {
 
         }
 
+        // Check children of overlapping peers at the current movement depth.
+        // Once inside a planet, keep that frame until exiting it; switching to
+        // another containing planet at the same depth would cause oscillation.
+        const parentPosition = position.clone();
+        const branch = this.activeScene;
+        if (branch.parent) {
+            parentPosition.multiplyScalar(branch.size / branch.insideSize).add(branch.position);
+            for (const sibling of branch.parent.children) {
+                if (sibling === branch || parentPosition.distanceTo(sibling.position) > sibling.size) continue;
+                const local = parentPosition.clone().sub(sibling.position)
+                    .multiplyScalar(sibling.insideSize / sibling.size);
+                for (const child of sibling.children) {
+                    if (local.distanceTo(child.position) <= child.size) return child;
+                }
+            }
+        }
 
         return null;
     }
@@ -639,7 +668,63 @@ class K3Game {
         }
     }
 
+    syncOverlappingInteriors() {
+        if (this.mode !== "inside") return;
+        const positions = new Map();
+        const position = this.camera.position.clone();
+        for (let index = this.layers.length - 1; index >= 0; index--) {
+            const node = this.layers[index].node;
+            positions.set(node, position.clone());
+            if (index > 0) position.multiplyScalar(node.size / node.insideSize).add(node.position);
+        }
+
+        for (let index = 0; index + 1 < this.layers.length; index++) {
+            const parentLayer = this.layers[index];
+            const foreground = this.layers[index + 1];
+            const anchor = foreground.node;
+            const parentPosition = positions.get(parentLayer.node);
+            if (!foreground.overlapInteriors) foreground.overlapInteriors = new Map();
+            const visible = new Set();
+
+            for (const sibling of parentLayer.node.children) {
+                if (sibling === anchor || parentPosition.distanceTo(sibling.position) > sibling.size) continue;
+                visible.add(sibling);
+                let inside = foreground.overlapInteriors.get(sibling);
+                if (!inside) {
+                    inside = sibling.createInside();
+                    foreground.overlapInteriors.set(sibling, inside);
+                    foreground.scene.add(inside);
+                }
+                // Put sibling interiors in the SAME scene and coordinate frame as
+                // the active interior, so a single depth buffer orders their planets.
+                const parentToAnchor = anchor.insideSize / anchor.size;
+                inside.position.copy(sibling.position).sub(anchor.position).multiplyScalar(parentToAnchor);
+                inside.scale.setScalar(parentToAnchor * sibling.size / sibling.insideSize);
+            }
+
+            for (const [sibling, inside] of foreground.overlapInteriors) {
+                if (visible.has(sibling)) continue;
+                foreground.scene.remove(inside);
+                inside.traverse(object => {
+                    if (object.geometry) object.geometry.dispose();
+                    if (object.material) {
+                        const materials = Array.isArray(object.material) ? object.material : [object.material];
+                        for (const material of materials) material.dispose();
+                    }
+                });
+                foreground.overlapInteriors.delete(sibling);
+            }
+
+            // Only the parent's own child shells are affected, not nested models.
+            for (const object of parentLayer.scene.children[0].children) {
+                const node = object.userData.k3Scene;
+                if (node && node.parent === parentLayer.node) object.visible = !visible.has(node);
+            }
+        }
+    }
+
     renderLayers() {
+        this.syncOverlappingInteriors();
         if (!this.shuttleSystem) {
             const status = document.getElementById("ride-status");
             if (status && this.activeScene) {

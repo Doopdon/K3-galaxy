@@ -51,7 +51,7 @@ const sceneFolder = "test-scenes";
 const source = ["k3-scene.js", sceneFolder + "/planet-scenes.js", sceneFolder + "/main-scene.js",
     sceneFolder + "/shuttle-scene.js", "k3-game.js", "shuttles.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
-const { K3Game, mainScene, K3ShuttleSystem } = vm.runInContext(source + ";({ K3Game, mainScene, K3ShuttleSystem });", context);
+const { K3Scene, K3Game, mainScene, K3ShuttleSystem } = vm.runInContext(source + ";({ K3Scene, K3Game, mainScene, K3ShuttleSystem });", context);
 const game = Object.create(K3Game.prototype);
 Object.assign(game, { camera: new Camera(), layers: [], worldRoot: new Group(), threeScene: new Group(), mode: "outside", activeScene: null });
 const calls = [];
@@ -272,3 +272,77 @@ animationTime = 0;
 timeGame.updateSimulation(0.1);
 assert.ok(Math.abs(animationTime - 0.05) < 1e-10);
 console.log("PASS: shared animation time scaling, slower time, inverse adjustments, bounded simulation steps, and independent flight speed.");
+
+// Overlapping interiors share one depth-tested scene, including different scales.
+function makeOverlapSphere(name, x, insideSize) {
+    const children = [];
+    for (const px of [-0.45, 0.45]) {
+        for (const py of [-0.45, 0.45]) {
+            for (const pz of [-0.45, 0.45]) {
+                children.push(new K3Scene({ size: insideSize * 0.1, insideSize: 1000,
+                    position: [px * insideSize, py * insideSize, pz * insideSize] }));
+            }
+        }
+    }
+    return new K3Scene({ name, size: 250, insideSize, position: [x, 0, 0], children });
+}
+const left = makeOverlapSphere("Left", 0, 1000);
+const right = makeOverlapSphere("Right", 350, 2000);
+const overlapRoot = new K3Scene({ size: 5000, children: [left, right] });
+const overlapGame = Object.create(K3Game.prototype);
+Object.assign(overlapGame, { camera: new Camera(), layers: [], worldRoot: new Group(),
+    threeScene: new Group(), mode: "outside", activeScene: null, moveSpeed: 50,
+    timeScale: 1, renderer: game.renderer });
+overlapGame.load(overlapRoot);
+overlapGame.enter(overlapRoot);
+overlapGame.camera.position.set(175, 0, 0);
+overlapGame.updateSceneTransitions();
+assert.equal(overlapGame.activeScene, left);
+calls.length = 0;
+overlapGame.renderLayers();
+const foreground = overlapGame.layers[1];
+const otherInside = foreground.overlapInteriors.get(right);
+assert.ok(otherInside);
+assert.equal(otherInside.children.length, 8);
+assert.equal(overlapGame.worldRoot.children.length, 8);
+assert.equal(otherInside.position.x, 1400);
+assert.equal(otherInside.scale.x, 0.5);
+assert.equal(overlapGame.layers[0].scene.children[0].children[0].visible, false);
+assert.equal(foreground.scene.children.length, 2);
+assert.deepEqual(calls, ["clear", "depth", overlapGame.layers[0].scene, "depth", foreground.scene]);
+// Do not rebuild geometry every frame.
+overlapGame.renderLayers();
+assert.equal(foreground.overlapInteriors.get(right), otherInside);
+// Leaving only the right sphere restores its shell and removes its interior.
+overlapGame.camera.position.set(0, 0, 0);
+overlapGame.renderLayers();
+assert.equal(foreground.overlapInteriors.size, 0);
+assert.equal(overlapGame.layers[0].scene.children[0].children[0].visible, true);
+// Enter a planet belonging to the non-active overlapping sphere.
+right.children[0].position.set(-900, 0, 0);
+overlapGame.camera.position.set(950, 0, 0); // Parent x=237.5, inside both spheres.
+assert.equal(overlapGame.checkChildCollision(overlapGame.camera.position), right.children[0]);
+overlapGame.updateSceneTransitions();
+assert.equal(overlapGame.activeScene, right.children[0]);
+assert.ok(overlapGame.camera.position.length() < 1e-8);
+assert.ok(Math.abs(overlapGame.moveSpeed - 2000) < 1e-8);
+const previousPlanetPosition = left.children[0].position.clone();
+left.children[0].position.set(950, 0, 0);
+overlapGame.updateSceneTransitions();
+assert.equal(overlapGame.activeScene, right.children[0]);
+left.children[0].position.copy(previousPlanetPosition);
+overlapGame.renderLayers();
+assert.ok(overlapGame.layers[1].overlapInteriors.has(left));
+// Moving directly from left-only to right-only switches movement frames.
+overlapGame.exit();
+overlapGame.exit();
+overlapGame.camera.position.set(175, 0, 0);
+overlapGame.updateSceneTransitions();
+assert.equal(overlapGame.activeScene, left);
+overlapGame.camera.position.set(1040, 0, 0); // Parent x=260, outside left, inside right.
+overlapGame.updateSceneTransitions();
+assert.equal(overlapGame.activeScene, right);
+assert.ok(Math.abs(overlapGame.camera.position.x + 720) < 1e-8);
+overlapGame.renderLayers();
+assert.equal(overlapGame.layers[1].overlapInteriors.size, 0);
+console.log("PASS: overlapping interiors, common depth pass, unequal scales, shell restoration, sibling planet entry, and direct overlap exit.");
