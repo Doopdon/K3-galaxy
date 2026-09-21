@@ -16,19 +16,22 @@ for (let index = 0; index < 7; index++) {
             : [Math.cos(angle) * orbitRadius, 0, Math.sin(angle) * orbitRadius],
         // Each sphere carries its contents and any camera inside it.
         rotationSpeed: orbitSpeed,
-        children: createPlanetScenes(1000, name + " / Planet"),
+        children: createStarScenes(1000, name + " / Star"),
         makeOutside(scene) {
-            return new THREE.Mesh(
+            const outside = new THREE.Group();
+            outside.add(new THREE.Mesh(
                 new THREE.SphereGeometry(scene.size, 32, 32),
                 new THREE.MeshBasicMaterial({ color: 0x22ddbb, wireframe: true })
-            );
+            ));
+            outside.add(createOutsideStars(scene));
+            return outside;
         }
     }));
 }
 
 const mainScene = new K3Scene({
     name: "Galaxy",
-    info: "Six spheres slowly orbit a central sphere; each contains eight planets.",
+    info: "Six spheres slowly orbit a central sphere; each contains 100 star scenes.",
     size: 5000,
     // Keep the observer's frame still while the sphere centers orbit within it.
     childrenOrbitSpeed: orbitSpeed,
