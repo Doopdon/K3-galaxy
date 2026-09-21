@@ -5,6 +5,8 @@ class K3Scene {
         size = 1,
         insideSize = size,
         position = [0, 0, 0],
+        rotation = 0,
+        rotationSpeed = 0,
         spinSpeed = 0,
         childrenOrbitSpeed = 0,
 
@@ -31,6 +33,9 @@ class K3Scene {
             position[2]
         );
         this.orbitPosition = this.position.clone();
+        // Scene-frame yaw in radians, independent of visual spin and child orbits.
+        this.rotation = rotation;
+        this.rotationSpeed = rotationSpeed;
         // Angular speeds are radians per second around the local Y axis.
         this.spinSpeed = spinSpeed;
         this.childrenOrbitSpeed = childrenOrbitSpeed;
@@ -73,6 +78,27 @@ class K3Scene {
         return this.size;
     }
 
+    rotatePosition(position, angle) {
+        const x = position.x;
+        const z = position.z;
+        position.x = x * Math.cos(angle) + z * Math.sin(angle);
+        position.z = -x * Math.sin(angle) + z * Math.cos(angle);
+        return position;
+    }
+
+    parentToLocal(position, centered = false) {
+        if (!centered) position.sub(this.position);
+        this.rotatePosition(position, -this.rotation);
+        return position.multiplyScalar(this.insideSize / this.size);
+    }
+
+    localToParent(position, centered = false) {
+        position.multiplyScalar(this.size / this.insideSize);
+        this.rotatePosition(position, this.rotation);
+        if (!centered) position.add(this.position);
+        return position;
+    }
+
     containsInsidePosition(position) {
         return position.length() <= this.insideSize;
     }
@@ -94,7 +120,7 @@ class K3Scene {
         }
 
         object.userData.k3Scene = this;
-        object.rotation.y = this.spinAngle;
+        object.rotation.y = this.rotation + this.spinAngle;
 
         return object;
     }

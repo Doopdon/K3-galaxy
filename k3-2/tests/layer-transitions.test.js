@@ -31,7 +31,7 @@ class Mesh extends Group {
 }
 class Resource { dispose() {} }
 class Camera {
-    constructor() { this.position = new Vector3(); this.rotation = { x: 0, y: 0, z: 0 }; this.quaternion = { copy() {} }; this.aspect = 1; this.fov = 60; }
+    constructor() { this.position = new Vector3(); this.rotation = { x: 0, y: 0, z: 0, copy(v) { this.x = v.x; this.y = v.y; this.z = v.z; this.order = v.order; return this; } }; this.quaternion = { copy() {} }; this.aspect = 1; this.fov = 60; }
     clone() { return new Camera(); }
     updateProjectionMatrix() {}
     lookAt() {}
@@ -346,3 +346,48 @@ assert.ok(Math.abs(overlapGame.camera.position.x + 720) < 1e-8);
 overlapGame.renderLayers();
 assert.equal(overlapGame.layers[1].overlapInteriors.size, 0);
 console.log("PASS: overlapping interiors, common depth pass, unequal scales, shell restoration, sibling planet entry, and direct overlap exit.");
+
+// Scene-frame rotation transforms camera positions, headings, and peer interiors.
+assert.equal(new K3Scene().rotation, 0);
+assert.equal(new K3Scene().rotationSpeed, 0);
+overlapGame.exit();
+overlapGame.camera.position.set(0, 0, 900);
+left.rotation = Math.PI / 2;
+right.rotation = -Math.PI / 4;
+const parentPoint = new Vector3(175, 20, 0);
+const roundTrip = left.localToParent(left.parentToLocal(parentPoint.clone()));
+assert.ok(roundTrip.distanceTo(parentPoint) < 1e-9);
+overlapGame.enter(left);
+overlapGame.camera.position.copy(left.parentToLocal(parentPoint.clone()));
+overlapGame.camera.rotation.y = 0.3;
+overlapGame.yaw = 0.3;
+overlapGame.renderLayers();
+const rotatedPeer = overlapGame.layers[1].overlapInteriors.get(right);
+assert.ok(rotatedPeer);
+assert.ok(rotatedPeer.position.distanceTo(left.parentToLocal(right.position.clone())) < 1e-9);
+assert.ok(Math.abs(rotatedPeer.rotation.y - (right.rotation - left.rotation)) < 1e-9);
+assert.ok(overlapGame.layers[0].camera.position.distanceTo(parentPoint) < 1e-9);
+assert.ok(Math.abs(overlapGame.layers[0].camera.rotation.y - (0.3 + left.rotation)) < 1e-9);
+const savedLocal = overlapGame.camera.position.clone();
+left.rotationSpeed = 0.1;
+overlapGame.updateSceneAnimation(2);
+assert.ok(overlapGame.camera.position.distanceTo(savedLocal) < 1e-9);
+assert.equal(overlapGame.camera.rotation.y, 0.3);
+overlapGame.renderLayers();
+const carriedPosition = left.localToParent(savedLocal.clone());
+assert.ok(overlapGame.layers[0].camera.position.distanceTo(carriedPosition) < 1e-9);
+overlapGame.exit();
+assert.ok(overlapGame.camera.position.distanceTo(carriedPosition) < 1e-9);
+assert.ok(Math.abs(overlapGame.yaw - (0.3 + left.rotation)) < 1e-9);
+overlapGame.enter(left);
+assert.ok(overlapGame.camera.position.distanceTo(savedLocal) < 1e-9);
+assert.ok(Math.abs(overlapGame.yaw - 0.3) < 1e-9);
+// Independent visual spin and planet orbit must not change the camera frame.
+left.rotationSpeed = 0;
+left.spinSpeed = 0.8;
+left.childrenOrbitSpeed = 0.5;
+const savedRotation = left.rotation;
+overlapGame.updateSceneAnimation(1);
+assert.equal(left.rotation, savedRotation);
+assert.ok(overlapGame.camera.position.distanceTo(savedLocal) < 1e-9);
+console.log("PASS: default scene rotation, rotated transforms, overlap alignment, camera carried by frame, heading continuity, and independent object animation.");

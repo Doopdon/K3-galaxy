@@ -10,7 +10,7 @@ const colors = [
 ];
 
 // Place eight planets at cube corners, entirely inside their galaxy.
-function createPlanetScenes(parentSize, namePrefix) {
+function createPlanetScenes(parentSize, namePrefix, spinSpeed = 0) {
     const scenes = [];
     const distance = parentSize * 0.45;
     const size = parentSize * 0.1;
@@ -27,6 +27,7 @@ function createPlanetScenes(parentSize, namePrefix) {
                     size,
                     insideSize: 1000,
                     position: [x, y, z],
+                    spinSpeed,
 
                     makeOutside(scene) {
                         return new THREE.Mesh(

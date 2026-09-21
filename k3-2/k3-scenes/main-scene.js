@@ -14,9 +14,8 @@ for (let index = 0; index < 7; index++) {
         insideSize: 1000,
         position: index === 0 ? [0, 0, 0]
             : [Math.cos(angle) * orbitRadius, 0, Math.sin(angle) * orbitRadius],
-        // All spheres rotate once per orbital period, including the center.
-        spinSpeed: orbitSpeed,
-        childrenOrbitSpeed: 0.08,
+        // Each sphere carries its contents and any camera inside it.
+        rotationSpeed: orbitSpeed,
         children: createPlanetScenes(1000, name + " / Planet"),
         makeOutside(scene) {
             return new THREE.Mesh(
@@ -31,6 +30,7 @@ const mainScene = new K3Scene({
     name: "Galaxy",
     info: "Six spheres slowly orbit a central sphere; each contains eight planets.",
     size: 5000,
+    // Keep the observer's frame still while the sphere centers orbit within it.
     childrenOrbitSpeed: orbitSpeed,
     children: galaxyScenes
 });

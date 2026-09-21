@@ -100,7 +100,7 @@ class K3ShuttleSystem {
             path.unshift(node);
         }
         for (const node of path) {
-            local.sub(node.position).multiplyScalar(node.insideSize / node.size);
+            node.parentToLocal(local);
         }
         return local;
     }
@@ -145,8 +145,8 @@ class K3ShuttleSystem {
                 if (!cube.visible) return;
                 const scale = renderOwner === this.game.rootScene ? 1 : owner.insideSize / owner.size;
                 cube.position.copy(shuttle.position);
-                if (renderOwner !== this.game.rootScene) cube.position.sub(owner.position);
-                cube.position.multiplyScalar(scale);
+                if (renderOwner !== this.game.rootScene) owner.parentToLocal(cube.position);
+                cube.rotation.y = renderOwner === this.game.rootScene ? 0 : -owner.rotation;
                 cube.scale.setScalar(scale);
             });
         }
@@ -164,8 +164,8 @@ class K3ShuttleSystem {
             const scale = owner === this.game.rootScene ? 1 : owner.insideSize / owner.size;
             scene.size = 6 * scale;
             scene.position.copy(shuttle.position);
-            if (owner !== this.game.rootScene) scene.position.sub(owner.position);
-            scene.position.multiplyScalar(scale);
+            if (owner !== this.game.rootScene) owner.parentToLocal(scene.position);
+            scene.rotation = owner === this.game.rootScene ? 0 : -owner.rotation;
         }
         // An occupied shuttle keeps its interior coordinates while its parent changes.
         if (rebuild) this.game.enter(this.game.activeScene);

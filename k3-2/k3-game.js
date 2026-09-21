@@ -481,11 +481,12 @@ class K3Game {
         // Convert only across the immediate boundary; never build a global scale.
         if (this.mode === "inside" && scene.parent === this.activeScene) {
             this.moveSpeed *= scene.insideSize / scene.size;
-            this.camera.position.sub(scene.position)
-                .multiplyScalar(scene.insideSize / scene.size);
+            scene.parentToLocal(this.camera.position);
+            this.rotateCameraFrame(-scene.rotation);
         } else if (this.mode === "outside" && this.activeScene === scene) {
             this.moveSpeed *= scene.insideSize / scene.size;
-            this.camera.position.multiplyScalar(scene.insideSize / scene.size);
+            scene.parentToLocal(this.camera.position, true);
+            this.rotateCameraFrame(-scene.rotation);
         }
 
         this.clearWorld();
@@ -533,18 +534,16 @@ class K3Game {
 
             // Restore the camera's position in the parent's coordinates.
             this.moveSpeed *= this.activeScene.size / this.activeScene.insideSize;
-            this.camera.position.multiplyScalar(
-                this.activeScene.size / this.activeScene.insideSize
-            ).add(this.activeScene.position);
+            this.activeScene.localToParent(this.camera.position);
+            this.rotateCameraFrame(this.activeScene.rotation);
 
             this.enter(parent);
 
         } else {
 
             this.moveSpeed *= this.activeScene.size / this.activeScene.insideSize;
-            this.camera.position.multiplyScalar(
-                this.activeScene.size / this.activeScene.insideSize
-            );
+            this.activeScene.localToParent(this.camera.position, true);
+            this.rotateCameraFrame(this.activeScene.rotation);
 
             this.showOutside(
                 this.activeScene
@@ -555,6 +554,15 @@ class K3Game {
     }
 
 
+
+    rotateCameraFrame(angle) {
+        // With YXZ order, changing yaw applies a parent-space Y rotation.
+        this.camera.rotation.order = "YXZ";
+        this.camera.rotation.y += angle;
+        this.pitch = this.camera.rotation.x;
+        this.yaw = this.camera.rotation.y;
+        this.roll = this.camera.rotation.z;
+    }
 
     enterVisibleScene(scene) {
         // Change coordinate frames through the common ancestor. A visible planet
@@ -607,11 +615,10 @@ class K3Game {
         const parentPosition = position.clone();
         const branch = this.activeScene;
         if (branch.parent) {
-            parentPosition.multiplyScalar(branch.size / branch.insideSize).add(branch.position);
+            branch.localToParent(parentPosition);
             for (const sibling of branch.parent.children) {
                 if (sibling === branch || parentPosition.distanceTo(sibling.position) > sibling.size) continue;
-                const local = parentPosition.clone().sub(sibling.position)
-                    .multiplyScalar(sibling.insideSize / sibling.size);
+                const local = sibling.parentToLocal(parentPosition.clone());
                 for (const child of sibling.children) {
                     if (local.distanceTo(child.position) <= child.size) return child;
                 }
@@ -646,6 +653,7 @@ class K3Game {
         const fullTurn = Math.PI * 2;
         while (pending.length > 0) {
             const node = pending.pop();
+            node.rotation = (node.rotation + node.rotationSpeed * delta) % fullTurn;
             node.spinAngle = (node.spinAngle + node.spinSpeed * delta) % fullTurn;
             node.childrenOrbitAngle =
                 (node.childrenOrbitAngle + node.childrenOrbitSpeed * delta) % fullTurn;
@@ -675,7 +683,7 @@ class K3Game {
         for (let index = this.layers.length - 1; index >= 0; index--) {
             const node = this.layers[index].node;
             positions.set(node, position.clone());
-            if (index > 0) position.multiplyScalar(node.size / node.insideSize).add(node.position);
+            if (index > 0) node.localToParent(position);
         }
 
         for (let index = 0; index + 1 < this.layers.length; index++) {
@@ -698,7 +706,8 @@ class K3Game {
                 // Put sibling interiors in the SAME scene and coordinate frame as
                 // the active interior, so a single depth buffer orders their planets.
                 const parentToAnchor = anchor.insideSize / anchor.size;
-                inside.position.copy(sibling.position).sub(anchor.position).multiplyScalar(parentToAnchor);
+                anchor.parentToLocal(inside.position.copy(sibling.position));
+                inside.rotation.y = sibling.rotation - anchor.rotation;
                 inside.scale.setScalar(parentToAnchor * sibling.size / sibling.insideSize);
             }
 
@@ -737,7 +746,7 @@ class K3Game {
             layer.scene.traverse((object) => {
                 const node = object.userData.k3Scene;
                 if (!node) return;
-                object.rotation.y = node.spinAngle;
+                object.rotation.y = node.rotation + node.spinAngle;
                 if (this.mode === "inside") object.position.copy(node.position);
             });
         }
@@ -745,18 +754,20 @@ class K3Game {
         // Map the active camera back through each parent's local coordinates.
         // Distant layers may lose tiny movements, but active geometry stays local.
         const position = this.camera.position.clone();
+        let parentRotation = 0;
         for (let index = this.layers.length - 1; index >= 0; index--) {
             const layer = this.layers[index];
             if (layer.camera !== this.camera) {
                 layer.camera.position.copy(position);
-                layer.camera.quaternion.copy(this.camera.quaternion);
+                layer.camera.rotation.copy(this.camera.rotation);
+                layer.camera.rotation.y += parentRotation;
                 layer.camera.aspect = this.camera.aspect;
                 layer.camera.fov = this.camera.fov;
                 layer.camera.updateProjectionMatrix();
             }
             if (index > 0) {
-                position.multiplyScalar(layer.node.size / layer.node.insideSize)
-                    .add(layer.node.position);
+                layer.node.localToParent(position);
+                parentRotation += layer.node.rotation;
             }
         }
 
