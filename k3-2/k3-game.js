@@ -3,39 +3,65 @@ class K3Game {
     constructor() {
 
         // --------------------------------------------------
+        // MOVEMENT
+        // --------------------------------------------------
+
+        this.moveSpeed = 50;
+
+        this.keys = {};
+
+        this.pitch = 0;
+        this.yaw = 0;
+        this.roll = 0;
+
+        this.mouseSensitivity = 0.002;
+
+        this.clock = new THREE.Clock();
+
+
+        // --------------------------------------------------
         // THREE.JS SCENE
         // --------------------------------------------------
 
         this.threeScene = new THREE.Scene();
 
-        this.threeScene.background = new THREE.Color(0x000000);
+        this.threeScene.background =
+            new THREE.Color(0x000000);
 
 
         // --------------------------------------------------
         // CAMERA
         // --------------------------------------------------
 
-        this.camera = new THREE.PerspectiveCamera(
-            60,
-            window.innerWidth / window.innerHeight,
-            0.1,
-            100000
+        this.camera =
+            new THREE.PerspectiveCamera(
+                60,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                100000
+            );
+
+        this.camera.position.set(
+            0,
+            0,
+            300
         );
 
-        // Main scene sphere is radius 100,
-        // so put the camera far enough away to see it.
-        this.camera.position.set(0, 0, 300);
-
-        this.camera.lookAt(0, 0, 0);
+        this.camera.lookAt(
+            0,
+            0,
+            0
+        );
 
 
         // --------------------------------------------------
         // RENDERER
         // --------------------------------------------------
 
-        this.renderer = new THREE.WebGLRenderer({
-            antialias: true
-        });
+        this.renderer =
+            new THREE.WebGLRenderer({
+                antialias: true
+            });
 
         this.renderer.setSize(
             window.innerWidth,
@@ -52,20 +78,26 @@ class K3Game {
 
 
         // --------------------------------------------------
+        // CONTROLS
+        // Renderer now exists!
+        // --------------------------------------------------
+
+        this.setupControls();
+
+
+        // --------------------------------------------------
         // CURRENT WORLD
         // --------------------------------------------------
 
-        this.worldRoot = new THREE.Group();
+        this.worldRoot =
+            new THREE.Group();
 
         this.threeScene.add(
             this.worldRoot
         );
 
-
         this.activeScene = null;
-
         this.rootScene = null;
-
         this.mode = "outside";
 
 
@@ -80,7 +112,7 @@ class K3Game {
 
 
         // --------------------------------------------------
-        // START RENDER LOOP
+        // START
         // --------------------------------------------------
 
         this.animate();
@@ -93,6 +125,213 @@ class K3Game {
         this.rootScene = rootScene;
 
         rootScene.bind(this);
+
+    }
+
+    setupControls() {
+
+        window.addEventListener("keydown", (event) => {
+
+            this.keys[event.code] = true;
+
+            // Increase speed
+            if (event.code === "KeyF") {
+
+                this.moveSpeed *= 2;
+
+                console.log(
+                    "Speed:",
+                    this.moveSpeed
+                );
+            }
+
+            // Decrease speed
+            if (event.code === "KeyR") {
+
+                this.moveSpeed /= 2;
+
+                console.log(
+                    "Speed:",
+                    this.moveSpeed
+                );
+            }
+
+        });
+
+
+        window.addEventListener("keyup", (event) => {
+
+            this.keys[event.code] = false;
+
+        });
+
+
+        // Click screen to capture mouse
+        this.renderer.domElement.addEventListener(
+            "click",
+            () => {
+
+                this.renderer.domElement.requestPointerLock();
+
+            }
+        );
+
+
+        window.addEventListener("mousemove", (event) => {
+
+            if (
+                document.pointerLockElement !==
+                this.renderer.domElement
+            ) {
+                return;
+            }
+
+
+            this.yaw -=
+                event.movementX *
+                this.mouseSensitivity;
+
+
+            this.pitch -=
+                event.movementY *
+                this.mouseSensitivity;
+
+
+            // Stop camera from flipping vertically
+            const limit =
+                Math.PI / 2 - 0.01;
+
+            this.pitch = Math.max(
+                -limit,
+                Math.min(
+                    limit,
+                    this.pitch
+                )
+            );
+
+        });
+
+    }
+
+    updateControls(delta) {
+
+        let speed =
+            this.moveSpeed *
+            delta;
+
+
+        // Hold shift = turbo
+        if (
+            this.keys["ShiftLeft"] ||
+            this.keys["ShiftRight"]
+        ) {
+
+            speed *= 5;
+
+        }
+
+
+        // ----------------------------------------------
+        // FORWARD / BACK
+        // ----------------------------------------------
+
+        if (this.keys["KeyW"]) {
+
+            this.camera.translateZ(
+                -speed
+            );
+
+        }
+
+
+        if (this.keys["KeyS"]) {
+
+            this.camera.translateZ(
+                speed
+            );
+
+        }
+
+
+        // ----------------------------------------------
+        // LEFT / RIGHT
+        // ----------------------------------------------
+
+        if (this.keys["KeyA"]) {
+
+            this.camera.translateX(
+                -speed
+            );
+
+        }
+
+
+        if (this.keys["KeyD"]) {
+
+            this.camera.translateX(
+                speed
+            );
+
+        }
+
+
+        // ----------------------------------------------
+        // UP / DOWN
+        // ----------------------------------------------
+
+        if (this.keys["Space"]) {
+
+            this.camera.translateY(
+                speed
+            );
+
+        }
+
+
+        if (this.keys["KeyC"]) {
+
+            this.camera.translateY(
+                -speed
+            );
+
+        }
+
+
+        // ----------------------------------------------
+        // ROLL
+        // ----------------------------------------------
+
+        const rollSpeed =
+            1.5 * delta;
+
+
+        if (this.keys["KeyQ"]) {
+
+            this.roll += rollSpeed;
+
+        }
+
+
+        if (this.keys["KeyE"]) {
+
+            this.roll -= rollSpeed;
+
+        }
+
+
+        // ----------------------------------------------
+        // CAMERA ROTATION
+        // ----------------------------------------------
+
+        this.camera.rotation.order =
+            "YXZ";
+
+
+        this.camera.rotation.set(
+            this.pitch,
+            this.yaw,
+            this.roll
+        );
 
     }
 
@@ -251,6 +490,15 @@ class K3Game {
 
         requestAnimationFrame(
             () => this.animate()
+        );
+
+
+        const delta =
+            this.clock.getDelta();
+
+
+        this.updateControls(
+            delta
         );
 
 
