@@ -1,11 +1,7 @@
 const galaxyScenes = [];
 
-const galaxySize = 250;
-const spacing = 350;
 const orbitSpeed = 0.025;
 
-// How many rings around the center?
-const ringCount = 2;
 
 function addGalaxySphere(x, z, name, size, starCount) {
     galaxyScenes.push(new K3Scene({
@@ -25,13 +21,13 @@ function addGalaxySphere(x, z, name, size, starCount) {
         makeOutside(scene) {
             const outside = new THREE.Group();
 
-            outside.add(new THREE.Mesh(
-                new THREE.SphereGeometry(scene.size, 32, 32),
-                new THREE.MeshBasicMaterial({
-                    color: 0x22ddbb,
-                    wireframe: true
-                })
-            ));
+            // outside.add(new THREE.Mesh(
+            //     new THREE.SphereGeometry(scene.size, 32, 32),
+            //     new THREE.MeshBasicMaterial({
+            //         color: 0x22ddbb,
+            //         wireframe: true
+            //     })
+            // ));
 
             outside.add(createOutsideStars(scene));
 
@@ -41,47 +37,111 @@ function addGalaxySphere(x, z, name, size, starCount) {
 }
 
 
-// CENTER
-addGalaxySphere(0, 0, "Central Sphere", 250, 100);
+// ============================================================
+// CORE
+// ============================================================
+
+// Large, dense galactic core
+addGalaxySphere(
+    0,
+    0,
+    "Galactic Core",
+    300,    // size
+    800     // stars
+);
 
 
-// TWO CLEAN SPIRAL ARMS
-const spheresPerArm = 20;
+// ============================================================
+// TWO SPIRAL ARMS
+// ============================================================
 
-// Distance between neighboring spheres
-const sphereSpacing = 350;
+const spheresPerArm = 24;
 
-// Controls how tightly the arms curl.
-// Bigger = more open spiral
+// Shape of the spiral
 const spiralGrowth = 180;
 
+// Sphere-to-sphere spacing
+const sphereSpacing = 260;
 
-// Create each arm
+// Arm spheres start large/dense...
+const innerSphereSize = 240;
+const innerStarCount = 350;
+
+// ...and end small/sparse
+const outerSphereSize = 360;
+const outerStarCount = 40;
+
+
 for (let arm = 0; arm < 2; arm++) {
 
     let theta = 0;
 
-    for (let i = 1; i <= spheresPerArm; i++) {
+    for (let i = 0; i < spheresPerArm; i++) {
 
-        // Radius grows as we travel outward
-        const radius = spiralGrowth * theta + sphereSpacing;
+        // 0 at inner arm
+        // 1 at outer arm
+        const progress = i / (spheresPerArm - 1);
 
-        // Opposite arm is rotated exactly 180 degrees
-        const angle = theta + arm * Math.PI;
 
-        const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
+        // ----------------------------------------------------
+        // SPIRAL POSITION
+        // ----------------------------------------------------
+
+        const radius =
+            spiralGrowth * theta +
+            250;
+
+        const angle =
+            theta +
+            arm * Math.PI;
+
+        const x =
+            Math.cos(angle) * radius;
+
+        const z =
+            Math.sin(angle) * radius;
+
+
+        // ----------------------------------------------------
+        // ARM THICKNESS
+        // ----------------------------------------------------
+
+        // Gradually shrink the sphere toward the edge
+        const sphereSize =
+            innerSphereSize +
+            (outerSphereSize - innerSphereSize) * progress;
+
+
+        // ----------------------------------------------------
+        // STAR DENSITY
+        // ----------------------------------------------------
+
+        // Density falls faster than sphere size.
+        // Squaring progress keeps the inner arm dense longer.
+        const densityFalloff =
+            1 - progress * progress;
+
+        const starCount =
+            Math.round(
+                outerStarCount +
+                (innerStarCount - outerStarCount) *
+                densityFalloff
+            );
+
 
         addGalaxySphere(
             x,
             z,
-            `Arm ${arm + 1} / Sphere ${i}`,
-            100,
-            100
+            `Arm ${arm + 1} / Sphere ${i + 1}`,
+            sphereSize,
+            starCount
         );
 
-        // Approximate equal distance along the spiral.
-        // At larger radius, angular steps get smaller.
+
+        // ----------------------------------------------------
+        // MOVE ALONG SPIRAL
+        // ----------------------------------------------------
+
         theta += sphereSpacing / Math.sqrt(
             radius * radius +
             spiralGrowth * spiralGrowth
@@ -89,14 +149,25 @@ for (let arm = 0; arm < 2; arm++) {
     }
 }
 
+
+// ============================================================
+// MAIN GALAXY
+// ============================================================
+
 const mainScene = new K3Scene({
     name: "Galaxy",
-    info: "Six spheres slowly orbit a central sphere; each contains 100 star scenes.",
+
+    info:
+        "A dense galactic core surrounded by two spiral arms " +
+        "that become thinner and less dense toward the edge.",
+
     size: 5000,
-    // Keep the observer's frame still while the sphere centers orbit within it.
+
     childrenOrbitSpeed: orbitSpeed,
+
     children: galaxyScenes
 });
+
 
 const sceneSetup = {
     startPosition: [0, 700, 1100],
