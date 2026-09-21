@@ -46,5 +46,3 @@ function createSphereScenes(parentSize, levels, namePrefix) {
 
     return scenes;
 }
-
-const planetScenes = createSphereScenes(100, 2, "Planet");

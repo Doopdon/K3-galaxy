@@ -4,8 +4,9 @@ function main() {
 
     game.load(mainScene);
 
-    // Looking at the galaxy from outside.
-    mainScene.show();
+    // Start inside the universe, looking at the galaxies from outside.
+    game.camera.position.set(0, 0, 900);
+    mainScene.enter();
 
     return game;
 }
