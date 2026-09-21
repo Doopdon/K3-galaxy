@@ -154,11 +154,16 @@ for (let route = 0; route < 4; route++) {
     const visited = new Set();
     let pauses = 0;
     let returnsToMain = 0;
-    for (let frame = 0; frame < 2400; frame++) {
+    for (let frame = 0; frame < 8000; frame++) {
         const previous = shuttle.scene.parent;
         const previousWait = shuttle.wait;
+        const previousPosition = shuttle.position.clone();
         game.updateSceneAnimation(0.025);
         rides.update(0.025);
+        if (previousWait === 0 && shuttle.wait === 0) {
+            const routeDistance = shuttle.position.distanceTo(previousPosition);
+            assert.ok(Math.abs(routeDistance - shuttle.speed * 0.025) < 1e-8);
+        }
         game.updateSceneTransitions();
         rides.syncLayers();
         visited.add(shuttle.scene.parent);
@@ -218,3 +223,22 @@ rides.syncLayers();
 assert.ok(game.layers.every(layer => !layer.shuttleObjects[1].visible));
 assert.equal(game.worldRoot.children.length, 1);
 console.log("PASS: occupied shuttle hides mini; manual exit/reentry swaps outside cube and inside square.");
+
+game.moveSpeed = 50;
+game.adjustSpeed(1.1);
+assert.ok(Math.abs(game.moveSpeed - 55) < 1e-10);
+game.adjustSpeed(1 / 1.1);
+assert.ok(Math.abs(game.moveSpeed - 50) < 1e-10);
+game.camera.position.set(0, 0, occupied.insideSize + 10);
+game.updateSceneTransitions();
+assert.ok(Math.abs(game.moveSpeed - 50 * occupied.size / occupied.insideSize) < 1e-10);
+game.camera.position.copy(occupied.position);
+game.updateSceneTransitions();
+assert.ok(Math.abs(game.moveSpeed - 50) < 1e-10);
+rides.startRide(0);
+const rideSpeed = rides.shuttles[0].speed;
+game.adjustSpeed(1.1);
+assert.ok(Math.abs(rides.shuttles[0].speed - rideSpeed * 1.1) < 1e-10);
+game.adjustSpeed(1 / 1.1);
+assert.ok(Math.abs(rides.shuttles[0].speed - rideSpeed) < 1e-10);
+console.log("PASS: 1.1x speed steps, inverse steps, ride speed adjustment, and reversible flight-speed unit conversion across boundaries.");

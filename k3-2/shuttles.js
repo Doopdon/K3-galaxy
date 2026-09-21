@@ -115,6 +115,8 @@ class K3ShuttleSystem {
                 continue;
             }
             const remaining = shuttle.position.distanceTo(shuttle.target.position);
+            // Route speed stays continuous through a galaxy boundary. Camera
+            // mapping already converts that movement into interior units.
             const step = shuttle.speed * delta;
             if (remaining <= step) {
                 shuttle.position.copy(shuttle.target.position);
@@ -223,5 +225,7 @@ class K3ShuttleSystem {
             ? "Riding cube " + (this.rideIndex + 1) + " · " + this.game.activeScene.name +
                 (shuttle.wait > 0 ? " · Turning around" : " · Heading to " + shuttle.target.name)
             : "Free flight · " + this.game.activeScene.name;
+        this.status.textContent += " | Speed: " +
+            (shuttle ? shuttle.speed : this.game.moveSpeed).toPrecision(4);
     }
 }

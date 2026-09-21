@@ -206,30 +206,13 @@ class K3Game {
             this.keys[event.code] = true;
             if (this.shuttleSystem) this.shuttleSystem.handleKey(event);
 
-            // Increase speed
-            if (event.code === "KeyF") {
-
-                this.moveSpeed *= 2;
-
-                console.log(
-                    "Speed:",
-                    this.moveSpeed
-                );
-            }
-
-            // Decrease speed
-            if (event.code === "KeyR") {
-
-                this.moveSpeed /= 2;
-
-                console.log(
-                    "Speed:",
-                    this.moveSpeed
-                );
-            }
-
         });
 
+        this.renderer.domElement.addEventListener("wheel", (event) => {
+            event.preventDefault();
+            if (event.deltaY === 0) return;
+            this.adjustSpeed(event.deltaY < 0 ? 1.1 : 1 / 1.1);
+        }, { passive: false });
 
         window.addEventListener("keyup", (event) => {
 
@@ -283,6 +266,17 @@ class K3Game {
 
         });
 
+    }
+
+    adjustSpeed(factor) {
+        const nextSpeed = this.moveSpeed * factor;
+        if (!Number.isFinite(nextSpeed) || nextSpeed <= 0) return;
+        this.moveSpeed = nextSpeed;
+        const system = this.shuttleSystem;
+        if (system && system.rideIndex >= 0) {
+            system.shuttles[system.rideIndex].speed *= factor;
+        }
+        if (system) system.updateStatus();
     }
 
     updateControls(delta) {
@@ -474,9 +468,11 @@ class K3Game {
 
         // Convert only across the immediate boundary; never build a global scale.
         if (this.mode === "inside" && scene.parent === this.activeScene) {
+            this.moveSpeed *= scene.insideSize / scene.size;
             this.camera.position.sub(scene.position)
                 .multiplyScalar(scene.insideSize / scene.size);
         } else if (this.mode === "outside" && this.activeScene === scene) {
+            this.moveSpeed *= scene.insideSize / scene.size;
             this.camera.position.multiplyScalar(scene.insideSize / scene.size);
         }
 
@@ -524,6 +520,7 @@ class K3Game {
         if (parent) {
 
             // Restore the camera's position in the parent's coordinates.
+            this.moveSpeed *= this.activeScene.size / this.activeScene.insideSize;
             this.camera.position.multiplyScalar(
                 this.activeScene.size / this.activeScene.insideSize
             ).add(this.activeScene.position);
@@ -532,6 +529,7 @@ class K3Game {
 
         } else {
 
+            this.moveSpeed *= this.activeScene.size / this.activeScene.insideSize;
             this.camera.position.multiplyScalar(
                 this.activeScene.size / this.activeScene.insideSize
             );
