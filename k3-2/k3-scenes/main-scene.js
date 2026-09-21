@@ -7,26 +7,31 @@ const orbitSpeed = 0.025;
 // How many rings around the center?
 const ringCount = 2;
 
-function addGalaxySphere(x, z, name) {
+function addGalaxySphere(x, z, name, size, starCount) {
     galaxyScenes.push(new K3Scene({
         name,
-        size: galaxySize,
-        insideSize: 1000,
+        size: size,
+        insideSize: size,
         position: [x, 0, z],
 
         rotationSpeed: orbitSpeed,
-        children: createStarScenes(1000, name + " / Star"),
+
+        children: createStarScenes(
+            size,
+            starCount,
+            name + " / Star"
+        ),
 
         makeOutside(scene) {
             const outside = new THREE.Group();
 
-            // outside.add(new THREE.Mesh(
-            //     new THREE.SphereGeometry(scene.size, 32, 32),
-            //     new THREE.MeshBasicMaterial({
-            //         color: 0x22ddbb,
-            //         wireframe: true
-            //     })
-            // ));
+            outside.add(new THREE.Mesh(
+                new THREE.SphereGeometry(scene.size, 32, 32),
+                new THREE.MeshBasicMaterial({
+                    color: 0x22ddbb,
+                    wireframe: true
+                })
+            ));
 
             outside.add(createOutsideStars(scene));
 
@@ -37,7 +42,7 @@ function addGalaxySphere(x, z, name) {
 
 
 // CENTER
-addGalaxySphere(0, 0, "Central Sphere");
+addGalaxySphere(0, 0, "Central Sphere", 250, 100);
 
 
 // TWO CLEAN SPIRAL ARMS
@@ -70,7 +75,9 @@ for (let arm = 0; arm < 2; arm++) {
         addGalaxySphere(
             x,
             z,
-            `Arm ${arm + 1} / Sphere ${i}`
+            `Arm ${arm + 1} / Sphere ${i}`,
+            100,
+            100
         );
 
         // Approximate equal distance along the spiral.
