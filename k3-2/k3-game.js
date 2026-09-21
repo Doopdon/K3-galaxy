@@ -204,6 +204,7 @@ class K3Game {
         window.addEventListener("keydown", (event) => {
 
             this.keys[event.code] = true;
+            if (this.shuttleSystem) this.shuttleSystem.handleKey(event);
 
             // Increase speed
             if (event.code === "KeyF") {
@@ -627,6 +628,7 @@ class K3Game {
     }
 
     renderLayers() {
+        if (this.shuttleSystem) this.shuttleSystem.syncLayers();
         for (const layer of this.layers) {
             layer.scene.traverse((object) => {
                 const node = object.userData.k3Scene;
@@ -671,7 +673,7 @@ class K3Game {
 
 
         const delta =
-            this.clock.getDelta();
+            Math.min(this.clock.getDelta(), 0.05);
 
 
         this.updateControls(
@@ -681,6 +683,7 @@ class K3Game {
 
         // Move logical objects before checking their current collision positions.
         this.updateSceneAnimation(delta);
+        if (this.shuttleSystem) this.shuttleSystem.update(delta);
 
         // Check scene boundaries
         this.updateSceneTransitions();

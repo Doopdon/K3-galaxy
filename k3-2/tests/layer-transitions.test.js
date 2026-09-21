@@ -13,11 +13,15 @@ class Vector3 {
     add(v) { return this.set(this.x + v.x, this.y + v.y, this.z + v.z); }
     sub(v) { return this.set(this.x - v.x, this.y - v.y, this.z - v.z); }
     multiplyScalar(s) { return this.set(this.x * s, this.y * s, this.z * s); }
+    setScalar(s) { return this.set(s, s, s); }
+    normalize() { return this.multiplyScalar(1 / (this.length() || 1)); }
+    addScaledVector(v, s) { return this.add(v.clone().multiplyScalar(s)); }
+    lerp(v, t) { return this.add(v.clone().sub(this).multiplyScalar(t)); }
     length() { return Math.hypot(this.x, this.y, this.z); }
     distanceTo(v) { return this.clone().sub(v).length(); }
 }
 class Group {
-    constructor() { this.children = []; this.position = new Vector3(); this.rotation = { y: 0 }; this.userData = {}; }
+    constructor() { this.children = []; this.position = new Vector3(); this.scale = new Vector3(1, 1, 1); this.rotation = { y: 0 }; this.userData = {}; }
     add(o) { this.children.push(o); }
     remove(o) { this.children.splice(this.children.indexOf(o), 1); }
     traverse(fn) { fn(this); for (const child of this.children) child.traverse(fn); }
@@ -27,17 +31,24 @@ class Mesh extends Group {
 }
 class Resource { dispose() {} }
 class Camera {
-    constructor() { this.position = new Vector3(); this.quaternion = { copy() {} }; this.aspect = 1; this.fov = 60; }
+    constructor() { this.position = new Vector3(); this.rotation = { x: 0, y: 0, z: 0 }; this.quaternion = { copy() {} }; this.aspect = 1; this.fov = 60; }
     clone() { return new Camera(); }
     updateProjectionMatrix() {}
+    lookAt() {}
+    rotateX() {}
+    rotateY() {}
+    rotateZ() {}
 }
 const context = vm.createContext({
-    THREE: { Vector3, Group, Scene: Group, Mesh, SphereGeometry: Resource, MeshBasicMaterial: Resource },
+    THREE: { Vector3, Group, Scene: Group, Mesh, SphereGeometry: Resource, MeshBasicMaterial: Resource,
+        BoxGeometry: Resource, EdgesGeometry: Resource, LineSegments: Mesh,
+        LineBasicMaterial: Resource, PlaneGeometry: Resource, DoubleSide: 2 },
+    document: { getElementById() { return null; } },
     console: { log() {} }
 });
-const source = ["k3-scene.js", "planet-scenes.js", "main-scene.js", "k3-game.js"]
+const source = ["k3-scene.js", "planet-scenes.js", "main-scene.js", "k3-game.js", "shuttles.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
-const { K3Game, mainScene } = vm.runInContext(source + ";({ K3Game, mainScene });", context);
+const { K3Game, mainScene, K3ShuttleSystem } = vm.runInContext(source + ";({ K3Game, mainScene, K3ShuttleSystem });", context);
 const game = Object.create(K3Game.prototype);
 Object.assign(game, { camera: new Camera(), layers: [], worldRoot: new Group(), threeScene: new Group(), mode: "outside", activeScene: null });
 const calls = [];
@@ -133,3 +144,56 @@ game.updateSceneTransitions();
 assert.equal(game.activeScene, galaxy);
 assert.ok(game.camera.position.distanceTo(planet.position.clone().add(new Vector3(0, 0, 101))) < 1e-9);
 console.log("PASS: layers, transitions, render order, spinning galaxies, group orbits, moving collisions, and moving-parent camera mapping.");
+
+game.shuttleSystem = new K3ShuttleSystem(game, mainScene.children);
+const rides = game.shuttleSystem;
+assert.equal(rides.shuttles.length, 4);
+for (let route = 0; route < 4; route++) {
+    rides.startRide(route);
+    const shuttle = rides.shuttles[route];
+    const visited = new Set();
+    let pauses = 0;
+    let returnsToMain = 0;
+    for (let frame = 0; frame < 2400; frame++) {
+        const previous = game.activeScene;
+        const previousWait = shuttle.wait;
+        game.updateSceneAnimation(0.025);
+        rides.update(0.025);
+        game.updateSceneTransitions();
+        rides.syncLayers();
+        visited.add(game.activeScene);
+        if (previousWait === 0 && shuttle.wait > 0) pauses++;
+        if (previous !== mainScene && game.activeScene === mainScene) returnsToMain++;
+        assert.ok(game.activeScene === mainScene || game.activeScene === shuttle.start || game.activeScene === shuttle.end);
+        // Reconstruct the chase camera in the route frame after every transition.
+        const rootCamera = game.camera.position.clone();
+        if (game.activeScene !== mainScene) {
+            rootCamera.multiplyScalar(game.activeScene.size / game.activeScene.insideSize)
+                .add(game.activeScene.position);
+        }
+        assert.ok(rootCamera.distanceTo(shuttle.position.clone().add(rides.followOffset)) < 1e-8);
+        // Each shuttle must appear in exactly one layer, at the matching scale.
+        for (let index = 0; index < rides.shuttles.length; index++) {
+            const visibleLayers = game.layers.filter(layer => layer.shuttleObjects[index].visible);
+            assert.equal(visibleLayers.length, 1);
+            const layer = visibleLayers[0];
+            const cube = layer.shuttleObjects[index];
+            const rootPosition = cube.position.clone().multiplyScalar(1 / cube.scale.x);
+            if (layer.node !== mainScene) rootPosition.add(layer.node.position);
+            assert.ok(rootPosition.distanceTo(rides.shuttles[index].position) < 1e-8);
+            assert.equal(cube.children.length, 2);
+        }
+    }
+    assert.ok(visited.has(shuttle.start) && visited.has(shuttle.end) && visited.has(mainScene));
+    assert.ok(pauses >= 2 && returnsToMain >= 2);
+}
+const beforeDetach = game.camera.position.clone();
+rides.handleKey({ code: "KeyW", repeat: false });
+assert.equal(rides.rideIndex, -1);
+rides.update(0.025);
+assert.equal(game.camera.position.distanceTo(beforeDetach), 0);
+rides.handleKey({ code: "KeyB", repeat: false });
+assert.equal(rides.rideIndex, 0);
+rides.handleKey({ code: "KeyN", repeat: false });
+assert.equal(rides.rideIndex, 1);
+console.log("PASS: four shuttle round trips, galaxy visits, reversals, local camera mapping, cube visibility/scaling, and ride controls.");

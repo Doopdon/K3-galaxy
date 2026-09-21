@@ -20,10 +20,27 @@
         canvas {
             display: block;
         }
+        #ride-help {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            color: #d7eaff;
+            background: rgba(0, 10, 25, 0.8);
+            padding: 12px 16px;
+            border: 1px solid #254c75;
+            border-radius: 6px;
+            font: 14px/1.6 system-ui, sans-serif;
+            pointer-events: none;
+        }
     </style>
 </head>
 
 <body>
+    <div id="ride-help">
+        <div id="ride-status">Cube ride</div>
+        B: ride / leave cube · N: next cube<br>
+        Click + mouse: look around · WASD: leave ride and fly
+    </div>
 
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -31,6 +48,7 @@
     <!-- Engine -->
     <script src="./k3-scene.js"></script>
     <script src="./k3-game.js"></script>
+    <script src="./shuttles.js"></script>
 
     <!-- Child scenes -->
     <script src="./planet-scenes.js"></script>
