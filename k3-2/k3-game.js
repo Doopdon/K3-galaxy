@@ -118,6 +118,69 @@ class K3Game {
         this.animate();
     }
 
+    updateSceneTransitions() {
+
+        if (!this.activeScene) {
+            return;
+        }
+
+
+        // --------------------------------------------------
+        // OUTSIDE A SCENE
+        //
+        // If we cross its boundary, enter it.
+        // --------------------------------------------------
+
+        if (this.mode === "outside") {
+
+            const distance =
+                this.camera.position.length();
+
+            if (
+                distance <=
+                this.activeScene.getSize()
+            ) {
+
+                console.log(
+                    "Crossed boundary of",
+                    this.activeScene.name
+                );
+
+                this.enter(
+                    this.activeScene
+                );
+
+            }
+
+            return;
+        }
+
+
+        // --------------------------------------------------
+        // INSIDE A SCENE
+        //
+        // Check only this scene's children.
+        // --------------------------------------------------
+
+        const child =
+            this.checkChildCollision(
+                this.camera.position
+            );
+
+
+        if (child) {
+
+            console.log(
+                "Entered child:",
+                child.name
+            );
+
+            this.enter(child);
+
+        }
+
+    }
+
 
 
     load(rootScene) {
@@ -500,6 +563,10 @@ class K3Game {
         this.updateControls(
             delta
         );
+
+
+        // Check scene boundaries
+        this.updateSceneTransitions();
 
 
         this.renderer.render(
