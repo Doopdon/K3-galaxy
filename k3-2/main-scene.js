@@ -9,11 +9,11 @@ for (const x of [-galaxySpacing, galaxySpacing]) {
 
             galaxyScenes.push(new K3Scene({
                 name,
-                info: "A galaxy containing eight planets with eight smaller spheres each.",
+                info: "A galaxy containing eight planets.",
                 size: galaxySize,
                 position: [x, y, z],
                 // Each galaxy owns its own scene tree and parent links.
-                children: createSphereScenes(galaxySize, 2, name + " / Planet"),
+                children: createPlanetScenes(galaxySize, name + " / Planet"),
 
                 makeOutside(scene) {
                     return new THREE.Mesh(

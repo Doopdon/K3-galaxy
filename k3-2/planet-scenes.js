@@ -9,9 +9,8 @@ const colors = [
     0xffffff
 ];
 
-// Place eight spheres at cube corners, entirely inside their parent.
-// Two levels gives eight planets, each containing eight smaller spheres.
-function createSphereScenes(parentSize, levels, namePrefix) {
+// Place eight planets at cube corners, entirely inside their galaxy.
+function createPlanetScenes(parentSize, namePrefix) {
     const scenes = [];
     const distance = parentSize * 0.45;
     const size = parentSize * 0.1;
@@ -24,14 +23,9 @@ function createSphereScenes(parentSize, levels, namePrefix) {
 
                 scenes.push(new K3Scene({
                     name,
-                    info: levels > 1
-                        ? "Contains eight smaller spheres."
-                        : "A small sphere inside its parent planet.",
+                    info: "A planet inside its galaxy.",
                     size,
                     position: [x, y, z],
-                    children: levels > 1
-                        ? createSphereScenes(size, levels - 1, name + " / Sphere")
-                        : [],
 
                     makeOutside(scene) {
                         return new THREE.Mesh(
