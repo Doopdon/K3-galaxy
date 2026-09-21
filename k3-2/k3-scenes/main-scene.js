@@ -22,7 +22,7 @@ for (const x of [-galaxySpacing, galaxySpacing]) {
                     return new THREE.Mesh(
                         new THREE.SphereGeometry(scene.size, 32, 32),
                         new THREE.MeshBasicMaterial({
-                            color: 0xaa2222,
+                            color: 0x22ddbb,
                             wireframe: true
                         })
                     );
@@ -34,7 +34,7 @@ for (const x of [-galaxySpacing, galaxySpacing]) {
 
 const mainScene = new K3Scene({
     name: "K3 Universe",
-    info: "Main scene containing eight red galaxies.",
+    info: "Main scene containing eight teal galaxies.",
     size: 5000,
     children: galaxyScenes
 });

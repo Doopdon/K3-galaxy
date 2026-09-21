@@ -5,7 +5,7 @@ class ShuttleMini {
         const box = new THREE.BoxGeometry(size * 2, size * 2, size * 2);
         cube.add(new THREE.LineSegments(
             new THREE.EdgesGeometry(box),
-            new THREE.LineBasicMaterial({ color: 0x3399ff })
+            new THREE.LineBasicMaterial({ color: 0xffbb33 })
         ));
         box.dispose();
         return cube;
@@ -22,7 +22,7 @@ class Shuttle extends K3Scene {
             makeOutside: scene => mini.create(scene.size),
             makeInside: () => new THREE.Mesh(
                 new THREE.PlaneGeometry(500, 500),
-                new THREE.MeshBasicMaterial({ color: 0x0066ff, side: THREE.DoubleSide })
+                new THREE.MeshBasicMaterial({ color: 0xff6600, side: THREE.DoubleSide })
             )
         });
     }
@@ -36,4 +36,3 @@ class Shuttle extends K3Scene {
         return Math.max(Math.abs(position.x), Math.abs(position.y), Math.abs(position.z)) <= this.insideSize;
     }
 }
-

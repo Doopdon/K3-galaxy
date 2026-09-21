@@ -18,7 +18,7 @@ const starScene = new K3Scene({
             ),
 
             new THREE.MeshBasicMaterial({
-                color: 0xffff88
+                color: 0x99ccff
             })
         );
 

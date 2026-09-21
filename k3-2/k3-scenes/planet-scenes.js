@@ -1,12 +1,12 @@
 const colors = [
-    0xff5555,
-    0x55ff55,
-    0x5555ff,
-    0xffff55,
-    0xff55ff,
-    0x55ffff,
-    0xff9955,
-    0xffffff
+    0xffb3c6,
+    0xcdb4ff,
+    0xa2d2ff,
+    0xb9fbc0,
+    0xfde4a6,
+    0xffc8a2,
+    0x98f5e1,
+    0xe4c1f9
 ];
 
 // Place eight planets at cube corners, entirely inside their galaxy.
