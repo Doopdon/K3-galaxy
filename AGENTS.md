@@ -4,12 +4,13 @@ This is a Three.js K3 galaxy prototype.
 
 ## Architecture
 
-- Use one real THREE.Scene.
+- In k3-2, use separate THREE.Scene render layers for the active scene and its ancestors. Render ancestors first and clear depth between layers so the active scene draws on top.
 - K3Scene objects are logical nested scene nodes.
 - Each K3Scene has an outside representation.
 - A K3Scene may contain child K3Scenes.
-- Entering a K3Scene hides its outside representation and shows the outside representations of its children.
+- Entering a K3Scene hides its outside representation and shows the outside representations of its children. Ancestor layers retain the siblings of the entered scene.
 - Positions and sizes are local to the parent scene.
+- In k3-2, insideSize defines the interior radius in independent local units; size defines the outside radius in parent units. Convert camera positions across one boundary at a time instead of accumulating a global scale.
 - Collision checks should only operate on the currently active scene and its immediate children.
 
 ## Project constraints

@@ -25,6 +25,7 @@ function createPlanetScenes(parentSize, namePrefix) {
                     name,
                     info: "A planet inside its galaxy.",
                     size,
+                    insideSize: 1000,
                     position: [x, y, z],
 
                     makeOutside(scene) {

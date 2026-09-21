@@ -25,8 +25,8 @@ class K3Game {
 
         this.threeScene = new THREE.Scene();
 
-        this.threeScene.background =
-            new THREE.Color(0x000000);
+        // Each logical level gets a separate render layer with no background.
+        this.layers = [];
 
 
         // --------------------------------------------------
@@ -62,6 +62,9 @@ class K3Game {
             new THREE.WebGLRenderer({
                 antialias: true
             });
+
+        this.renderer.autoClear = false;
+        this.renderer.setClearColor(0x000000);
 
         this.renderer.setSize(
             window.innerWidth,
@@ -162,7 +165,7 @@ class K3Game {
         // Leave this scene before checking its immediate children.
         // --------------------------------------------------
 
-        if (this.camera.position.length() > this.activeScene.getSize()) {
+        if (this.camera.position.length() > this.activeScene.insideSize) {
             this.exit();
             return;
         }
@@ -407,6 +410,19 @@ class K3Game {
 
     clearWorld() {
 
+        // These representations are generated afresh for each transition.
+        for (const layer of this.layers) {
+            layer.scene.traverse((object) => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) {
+                    const materials = Array.isArray(object.material)
+                        ? object.material : [object.material];
+                    for (const material of materials) material.dispose();
+                }
+            });
+        }
+        this.layers = [];
+
         while (
             this.worldRoot.children.length > 0
         ) {
@@ -442,6 +458,8 @@ class K3Game {
 
         this.mode = "outside";
 
+        this.layers = [{ node: scene, scene: this.threeScene, camera: this.camera }];
+
         console.log(
             "Showing outside of",
             scene.name
@@ -453,19 +471,32 @@ class K3Game {
 
     enter(scene) {
 
-        // Child positions are local to the scene we are leaving.
+        // Convert only across the immediate boundary; never build a global scale.
         if (this.mode === "inside" && scene.parent === this.activeScene) {
-            this.camera.position.sub(scene.position);
+            this.camera.position.sub(scene.position)
+                .multiplyScalar(scene.insideSize / scene.size);
+        } else if (this.mode === "outside" && this.activeScene === scene) {
+            this.camera.position.multiplyScalar(scene.insideSize / scene.size);
         }
 
         this.clearWorld();
 
-        const inside =
-            scene.createInside();
+        const path = [];
+        for (let node = scene; node; node = node.parent) path.unshift(node);
 
-        this.worldRoot.add(
-            inside
-        );
+        for (let index = 0; index < path.length; index++) {
+            const node = path[index];
+            const renderScene = new THREE.Scene();
+            const inside = node.createInside(path[index + 1]);
+            renderScene.add(inside);
+            this.layers.push({
+                node,
+                scene: renderScene,
+                camera: index === path.length - 1 ? this.camera : this.camera.clone()
+            });
+        }
+        this.threeScene = this.layers[this.layers.length - 1].scene;
+        this.worldRoot = this.threeScene.children[0];
 
         this.activeScene = scene;
 
@@ -492,11 +523,17 @@ class K3Game {
         if (parent) {
 
             // Restore the camera's position in the parent's coordinates.
-            this.camera.position.add(this.activeScene.position);
+            this.camera.position.multiplyScalar(
+                this.activeScene.size / this.activeScene.insideSize
+            ).add(this.activeScene.position);
 
             this.enter(parent);
 
         } else {
+
+            this.camera.position.multiplyScalar(
+                this.activeScene.size / this.activeScene.insideSize
+            );
 
             this.showOutside(
                 this.activeScene
@@ -560,6 +597,32 @@ class K3Game {
 
     }
 
+    renderLayers() {
+        // Map the active camera back through each parent's local coordinates.
+        // Distant layers may lose tiny movements, but active geometry stays local.
+        const position = this.camera.position.clone();
+        for (let index = this.layers.length - 1; index >= 0; index--) {
+            const layer = this.layers[index];
+            if (layer.camera !== this.camera) {
+                layer.camera.position.copy(position);
+                layer.camera.quaternion.copy(this.camera.quaternion);
+                layer.camera.aspect = this.camera.aspect;
+                layer.camera.fov = this.camera.fov;
+                layer.camera.updateProjectionMatrix();
+            }
+            if (index > 0) {
+                position.multiplyScalar(layer.node.size / layer.node.insideSize)
+                    .add(layer.node.position);
+            }
+        }
+
+        this.renderer.clear();
+        // Ancestors first; clear only depth so local objects draw on top.
+        for (const layer of this.layers) {
+            this.renderer.clearDepth();
+            this.renderer.render(layer.scene, layer.camera);
+        }
+    }
 
 
     animate() {
@@ -582,10 +645,7 @@ class K3Game {
         this.updateSceneTransitions();
 
 
-        this.renderer.render(
-            this.threeScene,
-            this.camera
-        );
+        this.renderLayers();
 
     }
 

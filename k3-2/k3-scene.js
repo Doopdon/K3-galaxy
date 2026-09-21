@@ -3,6 +3,7 @@ class K3Scene {
         name = "Unnamed Scene",
         info = "",
         size = 1,
+        insideSize = size,
         position = [0, 0, 0],
 
         // Creates what this scene looks like from OUTSIDE.
@@ -19,6 +20,8 @@ class K3Scene {
 
         // Size/position are in the PARENT'S coordinate system.
         this.size = size;
+        // Interior units are independent of the radius seen by the parent.
+        this.insideSize = insideSize;
 
         this.position = new THREE.Vector3(
             position[0],
@@ -83,7 +86,7 @@ class K3Scene {
         return object;
     }
 
-    createInside() {
+    createInside(excludedChild = null) {
 
         const root = new THREE.Group();
 
@@ -100,6 +103,8 @@ class K3Scene {
 
         // Add OUTSIDE representations of children
         for (const child of this.children) {
+
+            if (child === excludedChild) continue;
 
             const outside = child.createOutside();
 

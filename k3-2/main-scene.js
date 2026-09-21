@@ -11,9 +11,10 @@ for (const x of [-galaxySpacing, galaxySpacing]) {
                 name,
                 info: "A galaxy containing eight planets.",
                 size: galaxySize,
+                insideSize: 1000,
                 position: [x, y, z],
                 // Each galaxy owns its own scene tree and parent links.
-                children: createPlanetScenes(galaxySize, name + " / Planet"),
+                children: createPlanetScenes(1000, name + " / Planet"),
 
                 makeOutside(scene) {
                     return new THREE.Mesh(
