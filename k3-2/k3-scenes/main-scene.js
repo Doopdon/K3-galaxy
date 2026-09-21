@@ -50,6 +50,14 @@ addGalaxySphere(
     800     // stars
 );
 
+addGalaxySphere(
+    0,
+    0,
+    "Haze",
+    1000,    // size
+    800     // stars
+);
+
 
 // ============================================================
 // TWO SPIRAL ARMS
