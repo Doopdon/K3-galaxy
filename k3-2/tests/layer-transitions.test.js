@@ -46,7 +46,10 @@ const context = vm.createContext({
     document: { getElementById() { return null; } },
     console: { log() {} }
 });
-const source = ["k3-scene.js", "planet-scenes.js", "main-scene.js", "k3-game.js", "shuttles.js"]
+// Run either scene set: node k3-2/tests/layer-transitions.test.js k3-scenes
+const sceneFolder = process.argv[2] || "test-scenes";
+const source = ["k3-scene.js", sceneFolder + "/planet-scenes.js", sceneFolder + "/main-scene.js",
+    sceneFolder + "/shuttle-scene.js", "k3-game.js", "shuttles.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const { K3Game, mainScene, K3ShuttleSystem } = vm.runInContext(source + ";({ K3Game, mainScene, K3ShuttleSystem });", context);
 const game = Object.create(K3Game.prototype);
