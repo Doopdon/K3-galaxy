@@ -10,11 +10,12 @@ class K3Scene {
         spinSpeed = 0,
         childrenOrbitSpeed = 0,
 
-        // Creates what this scene looks like from OUTSIDE.
         makeOutside = null,
-
-        // Creates background/environment geometry seen while INSIDE.
         makeInside = null,
+
+        // Optional custom renderer for all child objects.
+        // Useful for batching thousands of children into one object.
+        makeChildren = null,
 
         children = []
     } = {}) {
@@ -44,6 +45,7 @@ class K3Scene {
 
         this.makeOutside = makeOutside;
         this.makeInside = makeInside;
+        this.makeChildren = makeChildren;
 
         this.children = [];
         this.parent = null;
@@ -141,15 +143,32 @@ class K3Scene {
         }
 
         // Add OUTSIDE representations of children
-        for (const child of this.children) {
+        // Custom batched child renderer
+        if (this.makeChildren) {
 
-            if (child === excludedChild) continue;
+            const childrenObject = this.makeChildren(
+                this,
+                excludedChild
+            );
 
-            const outside = child.createOutside();
+            if (childrenObject) {
+                root.add(childrenObject);
+            }
 
-            outside.position.copy(child.position);
+        } else {
 
-            root.add(outside);
+            // Default behavior:
+            // create one THREE object per child
+            for (const child of this.children) {
+
+                if (child === excludedChild) continue;
+
+                const outside = child.createOutside();
+
+                outside.position.copy(child.position);
+
+                root.add(outside);
+            }
         }
 
         return root;

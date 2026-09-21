@@ -18,16 +18,25 @@ function addGalaxySphere(x, z, name, size, starCount) {
             name + " / Star"
         ),
 
+        // When we're INSIDE this galaxy region,
+        // render all its stars as one Points object.
+        makeChildren(scene, excludedChild) {
+            return createInsideStars(
+                scene,
+                excludedChild
+            );
+        },
+
         makeOutside(scene) {
             const outside = new THREE.Group();
 
-            // outside.add(new THREE.Mesh(
-            //     new THREE.SphereGeometry(scene.size, 32, 32),
-            //     new THREE.MeshBasicMaterial({
-            //         color: 0x22ddbb,
-            //         wireframe: true
-            //     })
-            // ));
+            outside.add(new THREE.Mesh(
+                new THREE.SphereGeometry(scene.size, 32, 32),
+                new THREE.MeshBasicMaterial({
+                    color: 0x22ddbb,
+                    wireframe: true
+                })
+            ));
 
             outside.add(createOutsideStars(scene));
 
@@ -47,7 +56,7 @@ addGalaxySphere(
     0,
     "Galactic Core",
     300,    // size
-    800     // stars
+    100     // stars
 );
 
 addGalaxySphere(
@@ -55,7 +64,7 @@ addGalaxySphere(
     0,
     "Haze",
     1000,    // size
-    800     // stars
+    100     // stars
 );
 
 
@@ -73,11 +82,11 @@ const sphereSpacing = 260;
 
 // Arm spheres start large/dense...
 const innerSphereSize = 240;
-const innerStarCount = 350;
+const innerStarCount = 100;
 
 // ...and end small/sparse
 const outerSphereSize = 360;
-const outerStarCount = 40;
+const outerStarCount = 10;
 
 
 for (let arm = 0; arm < 2; arm++) {
