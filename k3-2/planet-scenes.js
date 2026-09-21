@@ -1,8 +1,3 @@
-const planetScenes = [];
-
-const d = 45;       // distance from center on each axis
-const planetSize = 10;
-
 const colors = [
     0xff5555,
     0x55ff55,
@@ -14,66 +9,42 @@ const colors = [
     0xffffff
 ];
 
-let index = 0;
+// Place eight spheres at cube corners, entirely inside their parent.
+// Two levels gives eight planets, each containing eight smaller spheres.
+function createSphereScenes(parentSize, levels, namePrefix) {
+    const scenes = [];
+    const distance = parentSize * 0.45;
+    const size = parentSize * 0.1;
 
+    for (const x of [-distance, distance]) {
+        for (const y of [-distance, distance]) {
+            for (const z of [-distance, distance]) {
+                const color = colors[scenes.length];
+                const name = namePrefix + " " + (scenes.length + 1);
 
-// Every combination of:
-//
-// x = -45 or +45
-// y = -45 or +45
-// z = -45 or +45
-//
-// gives us the 8 corners of a cube.
+                scenes.push(new K3Scene({
+                    name,
+                    info: levels > 1
+                        ? "Contains eight smaller spheres."
+                        : "A small sphere inside its parent planet.",
+                    size,
+                    position: [x, y, z],
+                    children: levels > 1
+                        ? createSphereScenes(size, levels - 1, name + " / Sphere")
+                        : [],
 
-for (const x of [-d, d]) {
-
-    for (const y of [-d, d]) {
-
-        for (const z of [-d, d]) {
-
-            const color = colors[index];
-
-            const planet = new K3Scene({
-
-                name: "Planet " + (index + 1),
-
-                info:
-                    "Test planet at one corner of the cube.",
-
-                size: planetSize,
-
-                position: [
-                    x,
-                    y,
-                    z
-                ],
-
-                makeOutside(scene) {
-
-                    return new THREE.Mesh(
-
-                        new THREE.SphereGeometry(
-                            scene.size,
-                            32,
-                            32
-                        ),
-
-                        new THREE.MeshBasicMaterial({
-                            color: color
-                        })
-
-                    );
-
-                }
-
-            });
-
-
-            planetScenes.push(
-                planet
-            );
-
-            index++;
+                    makeOutside(scene) {
+                        return new THREE.Mesh(
+                            new THREE.SphereGeometry(scene.size, 32, 32),
+                            new THREE.MeshBasicMaterial({ color })
+                        );
+                    }
+                }));
+            }
         }
     }
+
+    return scenes;
 }
+
+const planetScenes = createSphereScenes(100, 2, "Planet");

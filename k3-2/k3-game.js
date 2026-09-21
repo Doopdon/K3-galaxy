@@ -159,8 +159,13 @@ class K3Game {
         // --------------------------------------------------
         // INSIDE A SCENE
         //
-        // Check only this scene's children.
+        // Leave this scene before checking its immediate children.
         // --------------------------------------------------
+
+        if (this.camera.position.length() > this.activeScene.getSize()) {
+            this.exit();
+            return;
+        }
 
         const child =
             this.checkChildCollision(
@@ -448,6 +453,11 @@ class K3Game {
 
     enter(scene) {
 
+        // Child positions are local to the scene we are leaving.
+        if (this.mode === "inside" && scene.parent === this.activeScene) {
+            this.camera.position.sub(scene.position);
+        }
+
         this.clearWorld();
 
         const inside =
@@ -472,7 +482,7 @@ class K3Game {
 
     exit() {
 
-        if (!this.activeScene) {
+        if (!this.activeScene || this.mode !== "inside") {
             return;
         }
 
@@ -480,6 +490,9 @@ class K3Game {
             this.activeScene.parent;
 
         if (parent) {
+
+            // Restore the camera's position in the parent's coordinates.
+            this.camera.position.add(this.activeScene.position);
 
             this.enter(parent);
 
