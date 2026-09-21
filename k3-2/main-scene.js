@@ -13,6 +13,8 @@ for (const x of [-galaxySpacing, galaxySpacing]) {
                 size: galaxySize,
                 insideSize: 1000,
                 position: [x, y, z],
+                spinSpeed: 0.25,
+                childrenOrbitSpeed: 0.08,
                 // Each galaxy owns its own scene tree and parent links.
                 children: createPlanetScenes(1000, name + " / Planet"),
 

@@ -17,7 +17,7 @@ class Vector3 {
     distanceTo(v) { return this.clone().sub(v).length(); }
 }
 class Group {
-    constructor() { this.children = []; this.position = new Vector3(); this.userData = {}; }
+    constructor() { this.children = []; this.position = new Vector3(); this.rotation = { y: 0 }; this.userData = {}; }
     add(o) { this.children.push(o); }
     remove(o) { this.children.splice(this.children.indexOf(o), 1); }
     traverse(fn) { fn(this); for (const child of this.children) child.traverse(fn); }
@@ -96,4 +96,40 @@ game.camera.position.set(0, 0, 4999);
 game.updateSceneTransitions();
 assert.equal(game.mode, "inside");
 assert.equal(game.worldRoot.children.length, 8);
-console.log("PASS: layers, sibling visibility, render order, local scaling, nested exits, and root reentry.");
+// A quarter orbit preserves the group layout and updates collision positions.
+const galaxy = mainScene.children[0];
+const planet = galaxy.children[0];
+const originalGalaxyPosition = galaxy.position.clone();
+const initial = planet.position.clone();
+const separation = planet.position.distanceTo(galaxy.children[1].position);
+const elapsed = Math.PI / (2 * galaxy.childrenOrbitSpeed);
+game.updateSceneAnimation(elapsed);
+assert.ok(planet.position.distanceTo(new Vector3(initial.z, initial.y, -initial.x)) < 1e-9);
+assert.ok(Math.abs(planet.position.distanceTo(galaxy.children[1].position) - separation) < 1e-9);
+assert.equal(galaxy.position.distanceTo(originalGalaxyPosition), 0);
+game.renderLayers();
+assert.equal(game.worldRoot.children[0].rotation.y, galaxy.spinAngle);
+assert.ok(galaxy.spinAngle > 0);
+game.camera.position.copy(galaxy.position).add(new Vector3(0, 0, 99));
+game.updateSceneTransitions();
+game.renderLayers();
+assert.equal(game.checkChildCollision(planet.position), planet);
+assert.equal(game.worldRoot.children[0].position.distanceTo(planet.position), 0);
+// Time subdivision must produce the same orbit, independent of frame rate.
+const afterQuarter = planet.position.clone();
+game.updateSceneAnimation(elapsed / 2);
+game.updateSceneAnimation(elapsed / 2);
+assert.ok(planet.position.distanceTo(new Vector3(-initial.x, initial.y, -initial.z)) < 1e-9);
+assert.ok(planet.position.distanceTo(afterQuarter) > 1);
+// While inside a moving planet, the parent camera follows its current center.
+game.camera.position.copy(planet.position).add(new Vector3(0, 0, 99));
+game.updateSceneTransitions();
+assert.equal(game.activeScene, planet);
+game.updateSceneAnimation(1);
+game.renderLayers();
+assert.ok(game.layers[1].camera.position.distanceTo(planet.position.clone().add(new Vector3(0, 0, 99))) < 1e-9);
+game.camera.position.set(0, 0, 1010);
+game.updateSceneTransitions();
+assert.equal(game.activeScene, galaxy);
+assert.ok(game.camera.position.distanceTo(planet.position.clone().add(new Vector3(0, 0, 101))) < 1e-9);
+console.log("PASS: layers, transitions, render order, spinning galaxies, group orbits, moving collisions, and moving-parent camera mapping.");

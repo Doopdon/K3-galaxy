@@ -597,7 +597,45 @@ class K3Game {
 
     }
 
+    updateSceneAnimation(delta) {
+        if (!this.rootScene) return;
+
+        const pending = [this.rootScene];
+        const fullTurn = Math.PI * 2;
+        while (pending.length > 0) {
+            const node = pending.pop();
+            node.spinAngle = (node.spinAngle + node.spinSpeed * delta) % fullTurn;
+            node.childrenOrbitAngle =
+                (node.childrenOrbitAngle + node.childrenOrbitSpeed * delta) % fullTurn;
+
+            if (node.childrenOrbitSpeed !== 0) {
+                const cosine = Math.cos(node.childrenOrbitAngle);
+                const sine = Math.sin(node.childrenOrbitAngle);
+                for (const child of node.children) {
+                    const start = child.orbitPosition;
+                    // Rotate the whole arrangement together, without accumulating drift.
+                    // The logical position also drives collisions and parent camera mapping.
+                    child.position.set(
+                        start.x * cosine + start.z * sine,
+                        start.y,
+                        -start.x * sine + start.z * cosine
+                    );
+                }
+            }
+            pending.push(...node.children);
+        }
+    }
+
     renderLayers() {
+        for (const layer of this.layers) {
+            layer.scene.traverse((object) => {
+                const node = object.userData.k3Scene;
+                if (!node) return;
+                object.rotation.y = node.spinAngle;
+                if (this.mode === "inside") object.position.copy(node.position);
+            });
+        }
+
         // Map the active camera back through each parent's local coordinates.
         // Distant layers may lose tiny movements, but active geometry stays local.
         const position = this.camera.position.clone();
@@ -640,6 +678,9 @@ class K3Game {
             delta
         );
 
+
+        // Move logical objects before checking their current collision positions.
+        this.updateSceneAnimation(delta);
 
         // Check scene boundaries
         this.updateSceneTransitions();

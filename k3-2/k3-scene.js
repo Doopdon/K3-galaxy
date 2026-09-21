@@ -5,6 +5,8 @@ class K3Scene {
         size = 1,
         insideSize = size,
         position = [0, 0, 0],
+        spinSpeed = 0,
+        childrenOrbitSpeed = 0,
 
         // Creates what this scene looks like from OUTSIDE.
         makeOutside = null,
@@ -28,6 +30,12 @@ class K3Scene {
             position[1],
             position[2]
         );
+        this.orbitPosition = this.position.clone();
+        // Angular speeds are radians per second around the local Y axis.
+        this.spinSpeed = spinSpeed;
+        this.childrenOrbitSpeed = childrenOrbitSpeed;
+        this.spinAngle = 0;
+        this.childrenOrbitAngle = 0;
 
         this.makeOutside = makeOutside;
         this.makeInside = makeInside;
@@ -82,6 +90,7 @@ class K3Scene {
         }
 
         object.userData.k3Scene = this;
+        object.rotation.y = this.spinAngle;
 
         return object;
     }
