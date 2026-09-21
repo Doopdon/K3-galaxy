@@ -206,8 +206,9 @@ class K3Game {
 
             this.keys[event.code] = true;
             if (this.shuttleSystem) this.shuttleSystem.handleKey(event);
-            if (!event.repeat && event.code === "KeyF") this.adjustTimeScale(1.1);
-            if (!event.repeat && event.code === "KeyR") this.adjustTimeScale(1 / 1.1);
+            // Key repeat applies more steps while F or R is held down.
+            if (event.code === "KeyF") this.adjustTimeScale(1.1);
+            if (event.code === "KeyR") this.adjustTimeScale(1 / 1.1);
 
         });
 
