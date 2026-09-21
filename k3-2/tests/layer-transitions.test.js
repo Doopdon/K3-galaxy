@@ -46,8 +46,8 @@ const context = vm.createContext({
     document: { getElementById() { return null; } },
     console: { log() {} }
 });
-// Run either scene set: node k3-2/tests/layer-transitions.test.js k3-scenes
-const sceneFolder = process.argv[2] || "test-scenes";
+// The test demo retains the eight-galaxy shuttle fixtures used below.
+const sceneFolder = "test-scenes";
 const source = ["k3-scene.js", sceneFolder + "/planet-scenes.js", sceneFolder + "/main-scene.js",
     sceneFolder + "/shuttle-scene.js", "k3-game.js", "shuttles.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");

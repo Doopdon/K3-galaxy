@@ -640,6 +640,13 @@ class K3Game {
     }
 
     renderLayers() {
+        if (!this.shuttleSystem) {
+            const status = document.getElementById("ride-status");
+            if (status && this.activeScene) {
+                status.textContent = this.activeScene.name + " | Speed: " +
+                    this.moveSpeed.toPrecision(4) + " | Time: " + this.timeScale.toFixed(2) + "x";
+            }
+        }
         if (this.shuttleSystem) this.shuttleSystem.syncLayers();
         for (const layer of this.layers) {
             layer.scene.traverse((object) => {

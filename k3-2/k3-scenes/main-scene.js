@@ -1,40 +1,39 @@
 const galaxyScenes = [];
 const galaxySize = 100;
-const galaxySpacing = 180;
+const orbitRadius = 350;
 
-for (const x of [-galaxySpacing, galaxySpacing]) {
-    for (const y of [-galaxySpacing, galaxySpacing]) {
-        for (const z of [-galaxySpacing, galaxySpacing]) {
-            const name = "Galaxy " + (galaxyScenes.length + 1);
-
-            galaxyScenes.push(new K3Scene({
-                name,
-                info: "A galaxy containing eight planets.",
-                size: galaxySize,
-                insideSize: 1000,
-                position: [x, y, z],
-                spinSpeed: 0.25,
-                childrenOrbitSpeed: 0.08,
-                // Each galaxy owns its own scene tree and parent links.
-                children: createPlanetScenes(1000, name + " / Planet"),
-
-                makeOutside(scene) {
-                    return new THREE.Mesh(
-                        new THREE.SphereGeometry(scene.size, 32, 32),
-                        new THREE.MeshBasicMaterial({
-                            color: 0x22ddbb,
-                            wireframe: true
-                        })
-                    );
-                }
-            }));
+// One stationary center and six evenly spaced spheres on a circular orbit.
+for (let index = 0; index < 7; index++) {
+    const angle = (index - 1) * Math.PI / 3;
+    const name = index === 0 ? "Central Sphere" : "Orbiting Sphere " + index;
+    galaxyScenes.push(new K3Scene({
+        name,
+        size: galaxySize,
+        insideSize: 1000,
+        position: index === 0 ? [0, 0, 0]
+            : [Math.cos(angle) * orbitRadius, 0, Math.sin(angle) * orbitRadius],
+        spinSpeed: 0.25,
+        childrenOrbitSpeed: 0.08,
+        children: createPlanetScenes(1000, name + " / Planet"),
+        makeOutside(scene) {
+            return new THREE.Mesh(
+                new THREE.SphereGeometry(scene.size, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0x22ddbb, wireframe: true })
+            );
         }
-    }
+    }));
 }
 
 const mainScene = new K3Scene({
-    name: "K3 Universe",
-    info: "Main scene containing eight teal galaxies.",
+    name: "Galaxy",
+    info: "Six spheres slowly orbit a central sphere; each contains eight planets.",
     size: 5000,
+    childrenOrbitSpeed: 0.025,
     children: galaxyScenes
 });
+
+const sceneSetup = {
+    startPosition: [0, 700, 1100],
+    startPitch: -Math.atan2(700, 1100),
+    shuttles: false
+};

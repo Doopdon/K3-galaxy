@@ -38,3 +38,9 @@ const mainScene = new K3Scene({
     size: 5000,
     children: galaxyScenes
 });
+
+const sceneSetup = {
+    startPosition: [0, 0, 900],
+    startPitch: 0,
+    shuttles: true
+};
