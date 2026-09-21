@@ -1,32 +1,85 @@
 const galaxyScenes = [];
-// Neighboring centers are 350 units apart; radius 250 gives 150 units of overlap.
+
 const galaxySize = 250;
-const orbitRadius = 350;
+const spacing = 350;
 const orbitSpeed = 0.025;
 
-// One stationary center and six evenly spaced spheres on a circular orbit.
-for (let index = 0; index < 7; index++) {
-    const angle = (index - 1) * Math.PI / 3;
-    const name = index === 0 ? "Central Sphere" : "Orbiting Sphere " + index;
+// How many rings around the center?
+const ringCount = 2;
+
+function addGalaxySphere(x, z, name) {
     galaxyScenes.push(new K3Scene({
         name,
         size: galaxySize,
         insideSize: 1000,
-        position: index === 0 ? [0, 0, 0]
-            : [Math.cos(angle) * orbitRadius, 0, Math.sin(angle) * orbitRadius],
-        // Each sphere carries its contents and any camera inside it.
+        position: [x, 0, z],
+
         rotationSpeed: orbitSpeed,
         children: createStarScenes(1000, name + " / Star"),
+
         makeOutside(scene) {
             const outside = new THREE.Group();
-            outside.add(new THREE.Mesh(
-                new THREE.SphereGeometry(scene.size, 32, 32),
-                new THREE.MeshBasicMaterial({ color: 0x22ddbb, wireframe: true })
-            ));
+
+            // outside.add(new THREE.Mesh(
+            //     new THREE.SphereGeometry(scene.size, 32, 32),
+            //     new THREE.MeshBasicMaterial({
+            //         color: 0x22ddbb,
+            //         wireframe: true
+            //     })
+            // ));
+
             outside.add(createOutsideStars(scene));
+
             return outside;
         }
     }));
+}
+
+
+// CENTER
+addGalaxySphere(0, 0, "Central Sphere");
+
+
+// TWO CLEAN SPIRAL ARMS
+const spheresPerArm = 20;
+
+// Distance between neighboring spheres
+const sphereSpacing = 350;
+
+// Controls how tightly the arms curl.
+// Bigger = more open spiral
+const spiralGrowth = 180;
+
+
+// Create each arm
+for (let arm = 0; arm < 2; arm++) {
+
+    let theta = 0;
+
+    for (let i = 1; i <= spheresPerArm; i++) {
+
+        // Radius grows as we travel outward
+        const radius = spiralGrowth * theta + sphereSpacing;
+
+        // Opposite arm is rotated exactly 180 degrees
+        const angle = theta + arm * Math.PI;
+
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+
+        addGalaxySphere(
+            x,
+            z,
+            `Arm ${arm + 1} / Sphere ${i}`
+        );
+
+        // Approximate equal distance along the spiral.
+        // At larger radius, angular steps get smaller.
+        theta += sphereSpacing / Math.sqrt(
+            radius * radius +
+            spiralGrowth * spiralGrowth
+        );
+    }
 }
 
 const mainScene = new K3Scene({
