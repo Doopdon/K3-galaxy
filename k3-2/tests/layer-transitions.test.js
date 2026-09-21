@@ -155,33 +155,38 @@ for (let route = 0; route < 4; route++) {
     let pauses = 0;
     let returnsToMain = 0;
     for (let frame = 0; frame < 2400; frame++) {
-        const previous = game.activeScene;
+        const previous = shuttle.scene.parent;
         const previousWait = shuttle.wait;
         game.updateSceneAnimation(0.025);
         rides.update(0.025);
         game.updateSceneTransitions();
         rides.syncLayers();
-        visited.add(game.activeScene);
+        visited.add(shuttle.scene.parent);
         if (previousWait === 0 && shuttle.wait > 0) pauses++;
-        if (previous !== mainScene && game.activeScene === mainScene) returnsToMain++;
-        assert.ok(game.activeScene === mainScene || game.activeScene === shuttle.start || game.activeScene === shuttle.end);
+        if (previous !== mainScene && shuttle.scene.parent === mainScene) returnsToMain++;
+        assert.equal(game.activeScene, shuttle.scene);
         // Reconstruct the chase camera in the route frame after every transition.
         const rootCamera = game.camera.position.clone();
-        if (game.activeScene !== mainScene) {
-            rootCamera.multiplyScalar(game.activeScene.size / game.activeScene.insideSize)
-                .add(game.activeScene.position);
+        for (let node = game.activeScene; node.parent; node = node.parent) {
+            rootCamera.multiplyScalar(node.size / node.insideSize).add(node.position);
         }
         assert.ok(rootCamera.distanceTo(shuttle.position.clone().add(rides.followOffset)) < 1e-8);
         // Each shuttle must appear in exactly one layer, at the matching scale.
         for (let index = 0; index < rides.shuttles.length; index++) {
             const visibleLayers = game.layers.filter(layer => layer.shuttleObjects[index].visible);
+            if (rides.shuttles[index].scene === game.activeScene) {
+                assert.equal(visibleLayers.length, 0);
+                // Only the entered shuttle has an interior square in its own layer.
+                assert.equal(game.worldRoot.children.length, 1);
+                continue;
+            }
             assert.equal(visibleLayers.length, 1);
             const layer = visibleLayers[0];
             const cube = layer.shuttleObjects[index];
             const rootPosition = cube.position.clone().multiplyScalar(1 / cube.scale.x);
             if (layer.node !== mainScene) rootPosition.add(layer.node.position);
             assert.ok(rootPosition.distanceTo(rides.shuttles[index].position) < 1e-8);
-            assert.equal(cube.children.length, 2);
+            assert.equal(cube.children.length, 1);
         }
     }
     assert.ok(visited.has(shuttle.start) && visited.has(shuttle.end) && visited.has(mainScene));
@@ -197,3 +202,19 @@ assert.equal(rides.rideIndex, 0);
 rides.handleKey({ code: "KeyN", repeat: false });
 assert.equal(rides.rideIndex, 1);
 console.log("PASS: four shuttle round trips, galaxy visits, reversals, local camera mapping, cube visibility/scaling, and ride controls.");
+
+// Flying out hides the square and restores the mini; flying back in restores it.
+rides.stopRide();
+const occupied = game.activeScene;
+game.camera.position.set(0, 0, occupied.insideSize + 10);
+game.updateSceneTransitions();
+assert.equal(game.activeScene, occupied.parent);
+rides.syncLayers();
+assert.ok(game.layers.every(layer => layer.node !== occupied));
+game.camera.position.copy(occupied.position);
+game.updateSceneTransitions();
+assert.equal(game.activeScene, occupied);
+rides.syncLayers();
+assert.ok(game.layers.every(layer => !layer.shuttleObjects[1].visible));
+assert.equal(game.worldRoot.children.length, 1);
+console.log("PASS: occupied shuttle hides mini; manual exit/reentry swaps outside cube and inside square.");

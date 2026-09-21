@@ -1,16 +1,58 @@
+// The mini is the outside model only. Its interior is never drawn here.
+class ShuttleMini {
+    create(size) {
+        const cube = new THREE.Group();
+        const box = new THREE.BoxGeometry(size * 2, size * 2, size * 2);
+        cube.add(new THREE.LineSegments(
+            new THREE.EdgesGeometry(box),
+            new THREE.LineBasicMaterial({ color: 0x3399ff })
+        ));
+        box.dispose();
+        return cube;
+    }
+}
+
+class Shuttle extends K3Scene {
+    constructor(name) {
+        const mini = new ShuttleMini();
+        super({
+            name,
+            size: 6,
+            insideSize: 1000,
+            makeOutside: scene => mini.create(scene.size),
+            makeInside: () => new THREE.Mesh(
+                new THREE.PlaneGeometry(500, 500),
+                new THREE.MeshBasicMaterial({ color: 0x0066ff, side: THREE.DoubleSide })
+            )
+        });
+    }
+
+    containsPosition(position) {
+        const local = position.clone().sub(this.position);
+        return Math.max(Math.abs(local.x), Math.abs(local.y), Math.abs(local.z)) <= this.size;
+    }
+
+    containsInsidePosition(position) {
+        return Math.max(Math.abs(position.x), Math.abs(position.y), Math.abs(position.z)) <= this.insideSize;
+    }
+}
+
 // Four test shuttles, each traveling between one pair of galaxies.
 class K3ShuttleSystem {
     constructor(game, galaxies) {
         this.game = game;
         this.shuttles = [];
         this.rideIndex = -1;
-        this.followOffset = new THREE.Vector3(0, 6, 22);
+        this.followOffset = new THREE.Vector3(0, 1, 4);
         this.status = document.getElementById("ride-status");
 
         for (let index = 0; index + 1 < galaxies.length; index += 2) {
             const start = galaxies[index + 1];
             const end = galaxies[index];
+            const scene = new Shuttle("Shuttle " + (this.shuttles.length + 1));
+            scene.bind(game);
             this.shuttles.push({
+                scene,
                 start,
                 end,
                 position: start.position.clone().add(end.position).multiplyScalar(0.5),
@@ -20,22 +62,7 @@ class K3ShuttleSystem {
                 speed: 40
             });
         }
-    }
-
-    createCube() {
-        const cube = new THREE.Group();
-        const box = new THREE.BoxGeometry(12, 12, 12);
-        cube.add(new THREE.LineSegments(
-            new THREE.EdgesGeometry(box),
-            new THREE.LineBasicMaterial({ color: 0x3399ff })
-        ));
-        box.dispose();
-        // The square is deliberately flat, solid, and visible from either side.
-        cube.add(new THREE.Mesh(
-            new THREE.PlaneGeometry(5, 5),
-            new THREE.MeshBasicMaterial({ color: 0x0066ff, side: THREE.DoubleSide })
-        ));
-        return cube;
+        this.updateOwners();
     }
 
     startRide(index = 0) {
@@ -47,12 +74,14 @@ class K3ShuttleSystem {
         if (this.game.mode === "outside") this.game.enter(this.game.rootScene);
         this.rideIndex = index % this.shuttles.length;
         const shuttle = this.shuttles[this.rideIndex];
-        this.followOffset.copy(shuttle.direction).multiplyScalar(-22);
-        this.followOffset.y += 6;
+        this.followOffset.copy(shuttle.direction).multiplyScalar(-4);
+        this.followOffset.y += 1;
         this.game.pitch = 0;
         this.game.yaw = 0;
         this.game.roll = 0;
         this.updateRideCamera(0);
+        this.game.updateSceneTransitions();
+        // A shuttle inside a galaxy requires crossing both logical boundaries.
         this.game.updateSceneTransitions();
         this.updateStatus();
     }
@@ -96,6 +125,7 @@ class K3ShuttleSystem {
                 shuttle.position.addScaledVector(shuttle.direction, step);
             }
         }
+        this.updateOwners();
         if (this.rideIndex >= 0) this.updateRideCamera(delta);
         this.updateStatus();
     }
@@ -114,8 +144,8 @@ class K3ShuttleSystem {
 
     updateRideCamera(delta) {
         const shuttle = this.shuttles[this.rideIndex];
-        const desiredOffset = shuttle.direction.clone().multiplyScalar(-22);
-        desiredOffset.y += 6;
+        const desiredOffset = shuttle.direction.clone().multiplyScalar(-4);
+        desiredOffset.y += 1;
         // Ease the chase camera around the cube when it reverses.
         this.followOffset.lerp(desiredOffset, 1 - Math.exp(-2 * delta));
         this.game.camera.position.copy(this.toActivePosition(
@@ -132,7 +162,7 @@ class K3ShuttleSystem {
         for (const layer of this.game.layers) {
             if (!layer.shuttleObjects) {
                 layer.shuttleObjects = this.shuttles.map(() => {
-                    const cube = this.createCube();
+                    const cube = new ShuttleMini().create(6);
                     layer.scene.add(cube);
                     return cube;
                 });
@@ -147,7 +177,8 @@ class K3ShuttleSystem {
                 // universe layer. Otherwise move it into the galaxy's local layer.
                 const ownerIsOpen = this.game.layers.some(entry => entry.node === owner);
                 const renderOwner = ownerIsOpen ? owner : this.game.rootScene;
-                cube.visible = this.game.mode === "inside" && layer.node === renderOwner;
+                const entered = this.game.layers.some(entry => entry.node === shuttle.scene);
+                cube.visible = !entered && this.game.mode === "inside" && layer.node === renderOwner;
                 if (!cube.visible) return;
                 const scale = renderOwner === this.game.rootScene ? 1 : owner.insideSize / owner.size;
                 cube.position.copy(shuttle.position);
@@ -156,6 +187,33 @@ class K3ShuttleSystem {
                 cube.scale.setScalar(scale);
             });
         }
+    }
+
+    updateOwners() {
+        let rebuild = false;
+        for (const shuttle of this.shuttles) {
+            const owner = [shuttle.start, shuttle.end].find(galaxy =>
+                shuttle.position.distanceTo(galaxy.position) <= galaxy.size
+            ) || this.game.rootScene;
+            const scene = shuttle.scene;
+            if (scene.parent !== owner && this.game.activeScene === scene) rebuild = true;
+            scene.parent = owner;
+            const scale = owner === this.game.rootScene ? 1 : owner.insideSize / owner.size;
+            scene.size = 6 * scale;
+            scene.position.copy(shuttle.position);
+            if (owner !== this.game.rootScene) scene.position.sub(owner.position);
+            scene.position.multiplyScalar(scale);
+        }
+        // An occupied shuttle keeps its interior coordinates while its parent changes.
+        if (rebuild) this.game.enter(this.game.activeScene);
+    }
+
+    checkCollision(position) {
+        // Moving shuttles are managed here, separately from the orbiting planets.
+        return this.shuttles.find(shuttle =>
+            shuttle.scene.parent === this.game.activeScene &&
+            shuttle.scene.containsPosition(position)
+        )?.scene || null;
     }
 
     updateStatus() {

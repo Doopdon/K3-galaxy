@@ -165,7 +165,7 @@ class K3Game {
         // Leave this scene before checking its immediate children.
         // --------------------------------------------------
 
-        if (this.camera.position.length() > this.activeScene.insideSize) {
+        if (!this.activeScene.containsInsidePosition(this.camera.position)) {
             this.exit();
             return;
         }
@@ -555,6 +555,11 @@ class K3Game {
             return null;
         }
 
+
+        if (this.shuttleSystem) {
+            const shuttle = this.shuttleSystem.checkCollision(position);
+            if (shuttle) return shuttle;
+        }
 
         for (
             const child

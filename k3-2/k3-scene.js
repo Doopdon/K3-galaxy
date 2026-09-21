@@ -73,6 +73,10 @@ class K3Scene {
         return this.size;
     }
 
+    containsInsidePosition(position) {
+        return position.length() <= this.insideSize;
+    }
+
     createOutside() {
 
         let object;
