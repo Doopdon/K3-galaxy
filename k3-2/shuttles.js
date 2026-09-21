@@ -227,5 +227,6 @@ class K3ShuttleSystem {
             : "Free flight · " + this.game.activeScene.name;
         this.status.textContent += " | Speed: " +
             (shuttle ? shuttle.speed : this.game.moveSpeed).toPrecision(4);
+        this.status.textContent += " | Time: " + this.game.timeScale.toFixed(2) + "x";
     }
 }

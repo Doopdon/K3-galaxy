@@ -7,6 +7,7 @@ class K3Game {
         // --------------------------------------------------
 
         this.moveSpeed = 50;
+        this.timeScale = 1;
 
         this.keys = {};
 
@@ -205,6 +206,8 @@ class K3Game {
 
             this.keys[event.code] = true;
             if (this.shuttleSystem) this.shuttleSystem.handleKey(event);
+            if (!event.repeat && event.code === "KeyF") this.adjustTimeScale(1.1);
+            if (!event.repeat && event.code === "KeyR") this.adjustTimeScale(1 / 1.1);
 
         });
 
@@ -266,6 +269,11 @@ class K3Game {
 
         });
 
+    }
+
+    adjustTimeScale(factor) {
+        this.timeScale = Math.max(0.01, Math.min(100, this.timeScale * factor));
+        if (this.shuttleSystem) this.shuttleSystem.updateStatus();
     }
 
     adjustSpeed(factor) {
@@ -668,6 +676,18 @@ class K3Game {
     }
 
 
+    updateSimulation(delta) {
+        // Small simulation steps keep boundary crossings reliable at fast time.
+        let remaining = delta * this.timeScale;
+        while (remaining > 0) {
+            const step = Math.min(remaining, 0.05);
+            this.updateSceneAnimation(step);
+            if (this.shuttleSystem) this.shuttleSystem.update(step);
+            this.updateSceneTransitions();
+            remaining = Math.max(0, remaining - step);
+        }
+    }
+
     animate() {
 
         requestAnimationFrame(
@@ -684,12 +704,8 @@ class K3Game {
         );
 
 
-        // Move logical objects before checking their current collision positions.
-        this.updateSceneAnimation(delta);
-        if (this.shuttleSystem) this.shuttleSystem.update(delta);
-
-        // Check scene boundaries
-        this.updateSceneTransitions();
+        // Flight controls use real time; moving objects use simulation time.
+        this.updateSimulation(delta);
 
 
         this.renderLayers();
