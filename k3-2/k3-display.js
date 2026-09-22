@@ -32,8 +32,8 @@ class K3Display {
     }
 
     static style(description) {
-        if (!description || !["sphere", "point", "lines"].includes(description.type)) {
-            throw new Error("Outside appearance must be an Object3D or a sphere, point, or lines description.");
+        if (!description || !["sphere", "box", "point", "lines"].includes(description.type)) {
+            throw new Error("Outside appearance must be an Object3D or a sphere, box, point, or lines description.");
         }
         const style = {
             type: description.type,
@@ -45,6 +45,8 @@ class K3Display {
         if (style.type === "sphere") {
             style.widthSegments = description.widthSegments ?? 16;
             style.heightSegments = description.heightSegments ?? 12;
+            style.wireframe = description.wireframe ?? false;
+        } else if (style.type === "box") {
             style.wireframe = description.wireframe ?? false;
         } else if (style.type === "point") {
             style.size = description.size ?? 3;
@@ -70,8 +72,10 @@ class K3Display {
             opacity: style.opacity, transparent: style.transparent,
             depthTest: style.depthTest, depthWrite: style.depthWrite
         };
-        if (style.type === "sphere") {
-            const geometry = new THREE.SphereGeometry(1, style.widthSegments, style.heightSegments);
+        if (style.type === "sphere" || style.type === "box") {
+            const geometry = style.type === "sphere"
+                ? new THREE.SphereGeometry(1, style.widthSegments, style.heightSegments)
+                : new THREE.BoxGeometry(2, 2, 2);
             const material = new THREE.MeshBasicMaterial({ ...materialOptions, wireframe: style.wireframe });
             batch.object = new THREE.InstancedMesh(geometry, material, batch.entries.length);
             batch.transform = new THREE.Object3D();
@@ -141,7 +145,7 @@ class K3Display {
                 const position = !this.centered && node ? node.position : { x: 0, y: 0, z: 0 };
                 const angle = node ? node.rotation + node.spinAngle : 0;
                 batch.color.set(appearance.color ?? 0xffffff);
-                if (batch.style.type === "sphere") {
+                if (batch.style.type === "sphere" || batch.style.type === "box") {
                     const transform = batch.transform;
                     transform.position.copy(position);
                     transform.rotation.y = angle;
@@ -171,7 +175,7 @@ class K3Display {
                 }
             }
             object.visible = count > 0;
-            if (batch.style.type === "sphere") {
+            if (batch.style.type === "sphere" || batch.style.type === "box") {
                 object.count = count;
                 object.instanceMatrix.needsUpdate = true;
                 if (object.instanceColor) object.instanceColor.needsUpdate = true;

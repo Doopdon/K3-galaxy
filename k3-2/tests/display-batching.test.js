@@ -52,13 +52,16 @@ class Color {
     set(value) { this.r = ((value >> 16) & 255) / 255; this.g = ((value >> 8) & 255) / 255; this.b = (value & 255) / 255; return this; }
 }
 const THREE = { Vector3, Object3D, Group: Object3D, Scene: Object3D, BufferGeometry: Geometry,
-    SphereGeometry: Geometry, BufferAttribute, Mesh, InstancedMesh, Points: Mesh,
+    SphereGeometry: Geometry, BoxGeometry: Geometry, PlaneGeometry: Geometry, DoubleSide: 2,
+    BufferAttribute, Mesh, InstancedMesh, Points: Mesh,
     LineSegments: Mesh, MeshBasicMaterial: Material, PointsMaterial: Material,
     LineBasicMaterial: Material, Color, DynamicDrawUsage: 35048 };
 const context = vm.createContext({ THREE, console, document: { getElementById() { return null; } } });
-const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-scenes/star-scenes.js", "k3-scenes/main-scene.js"]
+const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-scenes/star-scenes.js",
+    "k3-scenes/shuttle-scene.js", "k3-scenes/shuttle-network.js", "k3-scenes/main-scene.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
-const { K3Scene, K3Display, K3Game, mainScene } = vm.runInContext(source + ";({ K3Scene, K3Display, K3Game, mainScene });", context);
+const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, ShuttleNetwork } =
+    vm.runInContext(source + ";({ K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, ShuttleNetwork });", context);
 const children = Array.from({ length: 5000 }, (_, i) => new K3Scene({
     name: (i % 2 ? "Ship " : "Star ") + i, position: [i, 0, 0], size: 1 + i % 3,
     makeOutside(s) { return { type: "sphere", radius: s.size, color: i % 2 ? 0xff0000 : 0x00ff00 }; }
@@ -128,14 +131,17 @@ assert.equal(g.checkChildCollision(children[1].position), children[1]);
 assert.equal(mainScene.children.length, 50);
 let total = 0;
 for (const region of mainScene.children) {
-    total += region.children.length;
+    total += region.stars.length;
     const inside = region.createInside();
-    assert.equal(inside.children.length, 1);
-    assert.equal(inside.children[0].count, region.children.length);
+    assert.equal(inside.children.length, 2);
+    assert.equal(inside.children[0].count, region.stars.length);
+    assert.equal(inside.children[1].count, region.connections.length);
+    assert.equal(region.routeNetwork.connections, region.connections);
+    assert.ok(region.routeNetwork.routes.every(route => route.shuttle.parent === region));
     const outside = region.createOutside();
     const preview = outside.children[1];
     assert.equal(preview.children.length, 2);
-    assert.equal(preview.children[0].geometry.drawRange.count, region.children.length);
+    assert.equal(preview.children[0].geometry.drawRange.count, region.stars.length);
     const positions = preview.children[0].geometry.attributes.position.array;
     assert.ok(Math.abs(positions[0] * preview.scale.x - region.children[0].position.x * region.size / region.insideSize) < 1e-4);
 }
@@ -183,3 +189,86 @@ overlapGame.renderLayers();
 assert.equal(overlapGame.layers[0].scene.children[0].children[0].count, 1);
 assert.equal(overlapGame.worldRoot.children[0].count, 800);
 console.log("PASS: 5000 logical children in one sphere batch; points, lines, compatibility splits, exclusions, updates, fallback, disposal, and full galaxy counts.");
+
+// Preserve exactly the previous red-line edge rule, including its index filter.
+const routeStars = [[0,0,0],[100,0,0],[200,0,0],[100,0,100],[400,0,400]]
+    .map((position, i) => new K3Scene({name:"Route star " + i, size:8, position}));
+const connections = createNeighborConnections(routeStars);
+const expectedEdges = [];
+for (let i = 0; i < routeStars.length; i++) {
+    const nearest = routeStars.map((star,j) => ({j, d:star.position.distanceTo(routeStars[i].position)}))
+        .filter(item => item.j !== i).sort((a,b) => a.d-b.d).slice(0,2);
+    for (const item of nearest) if (item.j > i) expectedEdges.push([routeStars[i],routeStars[item.j]]);
+}
+assert.equal(connections.length, expectedEdges.length);
+connections.forEach((pair,i) => { assert.equal(pair[0],expectedEdges[i][0]); assert.equal(pair[1],expectedEdges[i][1]); });
+assert.equal(connectionPositions(connections).length, connections.length * 6);
+const region = new K3Scene({size:500,insideSize:500,children:routeStars});
+const edges = [[routeStars[0],routeStars[1]], [routeStars[1],routeStars[2]], [routeStars[1],routeStars[3]]];
+const traffic = new ShuttleNetwork(region, edges);
+region.onUpdate = (scene, delta) => traffic.update(delta);
+assert.equal(traffic.routes.length, edges.length);
+assert.ok(!traffic.neighbors.has(routeStars[4]));
+const route = traffic.routes[0];
+route.from = routeStars[0]; route.to = routeStars[1]; route.progress = 0.99;
+traffic.update(0.1);
+assert.equal(route.from, routeStars[1]);
+assert.ok(route.to !== routeStars[0]);
+assert.ok(traffic.neighbors.get(route.from).includes(route.to));
+// A dead end reverses along the same valid edge.
+route.from = routeStars[1]; route.to = routeStars[0]; route.progress = 0.99;
+traffic.update(0.1);
+assert.equal(route.from, routeStars[0]); assert.equal(route.to,routeStars[1]);
+for (let tick = 0; tick < 1000; tick++) {
+    traffic.update(0.05);
+    for (const r of traffic.routes) {
+        assert.ok(traffic.neighbors.get(r.from).includes(r.to));
+        assert.ok(r.progress >= 0 && r.progress <= 1);
+        const a = r.from.position, b = r.to.position;
+        const expected = new Vector3(a.x+(b.x-a.x)*r.progress,a.y+(b.y-a.y)*r.progress,a.z+(b.z-a.z)*r.progress);
+        assert.ok(r.shuttle.position.distanceTo(expected) < 1e-9);
+    }
+}
+// Simulation updates logical positions; the display reuses its existing buffers.
+route.from = routeStars[0]; route.to = routeStars[1]; route.progress = 0.5; traffic.place(route);
+const regionDisplay = region.createInside();
+const boxes = regionDisplay.children[1];
+assert.equal(boxes.count, edges.length);
+const boxesGeometry = boxes.geometry;
+const boxesMaterial = boxes.material;
+const resourceCount = geometryCount;
+traffic.update(0.1);
+regionDisplay.userData.k3Display.update();
+assert.equal(boxes.geometry, boxesGeometry); assert.equal(boxes.material, boxesMaterial);
+assert.equal(geometryCount, resourceCount);
+assert.equal(boxes.matrices[0].position.x, route.shuttle.position.x);
+// Board through the normal containment/entry path and move with the local frame.
+const routeRoot = new K3Scene({size:5000,children:[region]});
+const rideGame = Object.create(K3Game.prototype);
+Object.assign(rideGame, {layers:[],worldRoot:new Object3D(),threeScene:new Object3D(),camera:new Camera(),
+    activeScene:null,mode:"outside",moveSpeed:50,timeScale:1,renderer:{clear(){},clearDepth(){},render(){}}});
+rideGame.load(routeRoot); rideGame.enter(routeRoot);
+rideGame.camera.position.copy(route.shuttle.position);
+rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,region);
+rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,route.shuttle);
+assert.equal(rideGame.worldRoot.children[0].material.color,0xff6600);
+rideGame.updateSceneAnimation(0.2);
+rideGame.renderLayers();
+assert.ok(rideGame.layers[1].camera.position.distanceTo(route.shuttle.position) < 1e-9);
+rideGame.camera.position.set(0,0,1010);
+rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,region);
+assert.ok(Math.abs(rideGame.camera.position.z-route.shuttle.position.z-3.03) < 1e-8);
+// Lines are independently switchable; outside previews contain no shuttle entries.
+const realRegion = mainScene.children[0];
+realRegion.showRouteLines = true;
+assert.equal(realRegion.createInside().children.length,3);
+realRegion.showRouteLines = false;
+assert.equal(realRegion.createInside().children.length,2);
+assert.equal(realRegion.createOutside().children[1].children[0].geometry.drawRange.count,realRegion.stars.length);
+// Empty and zero-length graphs do not hang the animation loop.
+assert.equal(new ShuttleNetwork(new K3Scene(),[]).routes.length,0);
+const coincident = [new K3Scene(),new K3Scene()];
+const zero = new ShuttleNetwork(new K3Scene({children:coincident}),[[coincident[0],coincident[1]]]);
+zero.update(100);
+assert.equal(zero.routes[0].shuttle.position.length(),0);
+console.log("PASS: original edge preservation, valid route walks, dead-end reversal, box batching, resource reuse, normal moving-shuttle entry/exit, and independent line visualization.");

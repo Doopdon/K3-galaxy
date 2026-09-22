@@ -9,6 +9,7 @@ class K3Scene {
         rotationSpeed = 0,
         spinSpeed = 0,
         childrenOrbitSpeed = 0,
+        onUpdate = null,
 
         makeOutside = null,
         makeInside = null,
@@ -36,6 +37,7 @@ class K3Scene {
         // Angular speeds are radians per second around the local Y axis.
         this.spinSpeed = spinSpeed;
         this.childrenOrbitSpeed = childrenOrbitSpeed;
+        this.onUpdate = onUpdate;
         this.spinAngle = 0;
         this.childrenOrbitAngle = 0;
 
@@ -107,6 +109,10 @@ class K3Scene {
             return { type: "sphere", radius: this.size, color: 0xffffff,
                 widthSegments: 16, heightSegments: 16, wireframe: true };
         }
+    }
+
+    containsPosition(position) {
+        return position.distanceTo(this.position) <= this.size;
     }
 
     createOutside() {

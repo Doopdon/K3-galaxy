@@ -28,7 +28,7 @@ function createStarScenes(parentSize, starCount, namePrefix) {
 // Scene-specific decoration, not a separate child-rendering path.
 // Preserve the existing nearest-neighbor links, computing them once per region.
 function createNeighborConnections(children) {
-    const positions = [];
+    const connections = [];
     for (let i = 0; i < children.length; i++) {
         let first = -1;
         let second = -1;
@@ -49,10 +49,17 @@ function createNeighborConnections(children) {
         }
         for (const j of [first, second]) {
             if (j <= i) continue;
-            const a = children[i].position;
-            const b = children[j].position;
-            positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
+            connections.push([children[i], children[j]]);
         }
+    }
+    return connections;
+}
+
+function connectionPositions(connections) {
+    const positions = [];
+    for (const [a, b] of connections) {
+        positions.push(a.position.x, a.position.y, a.position.z,
+            b.position.x, b.position.y, b.position.z);
     }
     return positions;
 }
@@ -60,10 +67,10 @@ function createNeighborConnections(children) {
 // A region's chosen outside model: a white point preview plus red links.
 // Both decorations use the same generic batcher as ordinary child displays.
 function createRegionPreview(scene, connections) {
-    const entries = scene.children.map(node => ({
+    const entries = scene.stars.map(node => ({
         node, appearance: { type: "point", color: 0xffffff, size: 3 }
     }));
-    entries.push({ node: null, appearance: { type: "lines", color: 0xff0000, positions: connections } });
+    entries.push({ node: null, appearance: { type: "lines", color: 0xff0000, positions: connectionPositions(connections) } });
     const preview = K3Display.create(entries);
     preview.scale.setScalar(scene.size / scene.insideSize);
     return preview;

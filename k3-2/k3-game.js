@@ -637,14 +637,7 @@ class K3Game {
             of this.activeScene.children
         ) {
 
-            const distance =
-                position.distanceTo(
-                    child.position
-                );
-
-            if (
-                distance <= child.getSize()
-            ) {
+            if (child.containsPosition(position)) {
 
                 return child;
 
@@ -663,7 +656,7 @@ class K3Game {
                 if (sibling === branch || parentPosition.distanceTo(sibling.position) > sibling.size) continue;
                 const local = sibling.parentToLocal(parentPosition.clone());
                 for (const child of sibling.children) {
-                    if (local.distanceTo(child.position) <= child.size) return child;
+                    if (child.containsPosition(local)) return child;
                 }
             }
         }
@@ -715,6 +708,7 @@ class K3Game {
                     );
                 }
             }
+            if (node.onUpdate) node.onUpdate(node, delta);
             pending.push(...node.children);
         }
     }

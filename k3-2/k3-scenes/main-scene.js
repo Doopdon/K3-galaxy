@@ -6,7 +6,7 @@ const orbitSpeed = 0.025;
 function addGalaxySphere(x, z, name, size, starCount) {
     const stars = createStarScenes(size, starCount, name + " / Star");
     const connections = createNeighborConnections(stars);
-    galaxyScenes.push(new K3Scene({
+    const region = new K3Scene({
         name,
         size: size,
         insideSize: size,
@@ -15,6 +15,17 @@ function addGalaxySphere(x, z, name, size, starCount) {
         rotationSpeed: orbitSpeed,
 
         children: stars,
+
+        onUpdate(scene, delta) {
+            scene.routeNetwork.update(delta);
+        },
+
+        makeInside(scene) {
+            if (!scene.showRouteLines) return null;
+            return K3Display.create([{ node: null, appearance: {
+                type: "lines", color: 0xff0000, positions: connectionPositions(scene.connections)
+            } }]);
+        },
 
         makeOutside(scene) {
             const outside = new THREE.Group();
@@ -31,7 +42,13 @@ function addGalaxySphere(x, z, name, size, starCount) {
 
             return outside;
         }
-    }));
+    });
+    // Keep route data and stars independent of the mixed logical child list.
+    region.stars = stars;
+    region.connections = connections;
+    region.showRouteLines = false;
+    region.routeNetwork = new ShuttleNetwork(region, connections);
+    galaxyScenes.push(region);
 }
 
 
@@ -178,5 +195,5 @@ const mainScene = new K3Scene({
 const sceneSetup = {
     startPosition: [0, 700, 1100],
     startPitch: -Math.atan2(700, 1100),
-    shuttles: false
+    shuttles: false // Disable the old automatic ride demo; region traffic is independent.
 };

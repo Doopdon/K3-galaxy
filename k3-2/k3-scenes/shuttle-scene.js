@@ -1,14 +1,7 @@
 // The mini is the outside model only. Its interior is never drawn here.
 class ShuttleMini {
     create(size) {
-        const cube = new THREE.Group();
-        const box = new THREE.BoxGeometry(size * 2, size * 2, size * 2);
-        cube.add(new THREE.LineSegments(
-            new THREE.EdgesGeometry(box),
-            new THREE.LineBasicMaterial({ color: 0xffbb33 })
-        ));
-        box.dispose();
-        return cube;
+        return { type: "box", radius: size, color: 0xffbb33, wireframe: true };
     }
 }
 
@@ -17,7 +10,7 @@ class Shuttle extends K3Scene {
         const mini = new ShuttleMini();
         super({
             name,
-            size: 6,
+            size: 3,
             insideSize: 1000,
             makeOutside: scene => mini.create(scene.size),
             makeInside: () => new THREE.Mesh(
@@ -29,6 +22,7 @@ class Shuttle extends K3Scene {
 
     containsPosition(position) {
         const local = position.clone().sub(this.position);
+        this.rotatePosition(local, -this.rotation);
         return Math.max(Math.abs(local.x), Math.abs(local.y), Math.abs(local.z)) <= this.size;
     }
 
