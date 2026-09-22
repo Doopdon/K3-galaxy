@@ -156,7 +156,7 @@ class K3Game {
         const outerCamera = this.layers.length ? this.layers[0].camera : this.camera;
         this.starCamera.rotation.copy(outerCamera.rotation);
         if (this.mode === "inside" && this.rootScene) {
-            this.starCamera.rotation.y += this.rootScene.rotation;
+            this.applyCameraFrame(this.starCamera, this.rootScene);
         }
         // Ignore translation and scale: these stars remain at infinity.
         this.starCamera.aspect = this.camera.aspect;
@@ -180,12 +180,10 @@ class K3Game {
 
         if (this.mode === "outside") {
 
-            const distance =
-                this.camera.position.length();
-
             if (
-                distance <=
-                this.activeScene.getSize()
+                this.activeScene.containsInsidePosition(
+                    this.activeScene.parentToLocal(this.camera.position.clone(), true)
+                )
             ) {
 
                 console.log(
@@ -526,11 +524,11 @@ class K3Game {
         if (this.mode === "inside" && scene.parent === this.activeScene) {
             this.moveSpeed *= scene.insideSize / scene.size;
             scene.parentToLocal(this.camera.position);
-            this.rotateCameraFrame(-scene.rotation);
+            this.rotateCameraFrame(scene, true);
         } else if (this.mode === "outside" && this.activeScene === scene) {
             this.moveSpeed *= scene.insideSize / scene.size;
             scene.parentToLocal(this.camera.position, true);
-            this.rotateCameraFrame(-scene.rotation);
+            this.rotateCameraFrame(scene, true);
         }
 
         this.clearWorld();
@@ -579,7 +577,7 @@ class K3Game {
             // Restore the camera's position in the parent's coordinates.
             this.moveSpeed *= this.activeScene.size / this.activeScene.insideSize;
             this.activeScene.localToParent(this.camera.position);
-            this.rotateCameraFrame(this.activeScene.rotation);
+            this.rotateCameraFrame(this.activeScene);
 
             this.enter(parent);
 
@@ -587,7 +585,7 @@ class K3Game {
 
             this.moveSpeed *= this.activeScene.size / this.activeScene.insideSize;
             this.activeScene.localToParent(this.camera.position, true);
-            this.rotateCameraFrame(this.activeScene.rotation);
+            this.rotateCameraFrame(this.activeScene);
 
             this.showOutside(
                 this.activeScene
@@ -599,9 +597,19 @@ class K3Game {
 
 
 
-    rotateCameraFrame(angle) {
-        this.camera.rotation.order = "YXZ";
-        this.camera.rotation.y += angle;
+    applyCameraFrame(camera, scene, inverse = false) {
+        camera.rotation.order = "YXZ";
+        if (scene.pitch === 0 && scene.roll === 0) {
+            camera.rotation.y += inverse ? -scene.rotation : scene.rotation;
+        } else {
+            const orientation = scene.frameQuaternion();
+            if (inverse) orientation.invert();
+            camera.quaternion.premultiply(orientation);
+        }
+    }
+
+    rotateCameraFrame(scene, inverse = false) {
+        this.applyCameraFrame(this.camera, scene, inverse);
         this.pitch = this.camera.rotation.x;
         this.yaw = this.camera.rotation.y;
         this.roll = this.camera.rotation.z;
@@ -653,7 +661,7 @@ class K3Game {
         if (branch.parent) {
             branch.localToParent(parentPosition);
             for (const sibling of branch.parent.children) {
-                if (sibling === branch || parentPosition.distanceTo(sibling.position) > sibling.size) continue;
+                if (sibling === branch || !sibling.revealOnOverlap || !sibling.containsPosition(parentPosition)) continue;
                 const local = sibling.parentToLocal(parentPosition.clone());
                 for (const child of sibling.children) {
                     if (child.containsPosition(local)) return child;
@@ -732,7 +740,7 @@ class K3Game {
             const visible = new Set();
 
             for (const sibling of parentLayer.node.children) {
-                if (sibling === anchor || parentPosition.distanceTo(sibling.position) > sibling.size) continue;
+                if (sibling === anchor || !sibling.revealOnOverlap || !sibling.containsPosition(parentPosition)) continue;
                 visible.add(sibling);
                 let inside = foreground.overlapInteriors.get(sibling);
                 if (!inside) {
@@ -744,7 +752,11 @@ class K3Game {
                 // the active interior, so a single depth buffer orders their planets.
                 const parentToAnchor = anchor.insideSize / anchor.size;
                 anchor.parentToLocal(inside.position.copy(sibling.position));
-                inside.rotation.y = sibling.rotation - anchor.rotation;
+                if (anchor.pitch || anchor.roll || sibling.pitch || sibling.roll) {
+                    inside.quaternion.copy(anchor.frameQuaternion().invert().multiply(sibling.frameQuaternion()));
+                } else {
+                    inside.rotation.y = sibling.rotation - anchor.rotation;
+                }
                 inside.scale.setScalar(parentToAnchor * sibling.size / sibling.insideSize);
             }
 
@@ -779,11 +791,11 @@ class K3Game {
         if (this.shuttleSystem) this.shuttleSystem.syncLayers();
         for (const layer of this.layers) {
             layer.scene.traverse((object) => {
-                if (object.userData.k3Display) object.userData.k3Display.update();
+                if (object.userData.k3Display) object.userData.k3Display.update(this.simulationTime || 0);
                 if (object.userData.k3DisplayManaged) return;
                 const node = object.userData.k3Scene;
                 if (!node) return;
-                object.rotation.y = node.rotation + node.spinAngle;
+                node.applyOutsideRotation(object);
                 if (this.mode === "inside") object.position.copy(node.position);
             });
         }
@@ -791,20 +803,19 @@ class K3Game {
         // Map the active camera back through each parent's local coordinates.
         // Distant layers may lose tiny movements, but active geometry stays local.
         const position = this.camera.position.clone();
-        let parentRotation = 0;
         for (let index = this.layers.length - 1; index >= 0; index--) {
             const layer = this.layers[index];
             if (layer.camera !== this.camera) {
                 layer.camera.position.copy(position);
-                layer.camera.rotation.copy(this.camera.rotation);
-                layer.camera.rotation.y += parentRotation;
+                const childLayer = this.layers[index + 1];
+                layer.camera.rotation.copy(childLayer.camera.rotation);
+                this.applyCameraFrame(layer.camera, childLayer.node);
                 layer.camera.aspect = this.camera.aspect;
                 layer.camera.fov = this.camera.fov;
                 layer.camera.updateProjectionMatrix();
             }
             if (index > 0) {
                 layer.node.localToParent(position);
-                parentRotation += layer.node.rotation;
             }
         }
 
@@ -823,6 +834,7 @@ class K3Game {
         let remaining = delta * this.timeScale;
         while (remaining > 0) {
             const step = Math.min(remaining, 0.05);
+            this.simulationTime = (this.simulationTime || 0) + step;
             this.updateSceneAnimation(step);
             if (this.shuttleSystem) this.shuttleSystem.update(step);
             this.updateSceneTransitions();

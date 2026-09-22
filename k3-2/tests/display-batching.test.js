@@ -19,11 +19,46 @@ class Vector3 {
     length() { return Math.hypot(this.x, this.y, this.z); }
 }
 class Object3D {
-    constructor() { this.children = []; this.userData = {}; this.position = new Vector3(); this.scale = new Vector3(1,1,1); this.rotation = { y: 0 }; }
+    constructor() { this.children = []; this.userData = {}; this.position = new Vector3(); this.scale = new Vector3(1,1,1); this.rotation = { x: 0, y: 0, z: 0 }; }
+    get quaternion() { return new Quaternion(this).setFromEuler(this.rotation); }
     add(v) { this.children.push(v); }
     remove(v) { this.children.splice(this.children.indexOf(v), 1); }
     traverse(fn) { fn(this); for (const c of this.children) c.traverse(fn); }
     updateMatrix() { this.matrix = { position: this.position.clone(), scale: this.scale.clone(), yaw: this.rotation.y }; }
+}
+class Euler {
+    constructor(x, y, z, order) { Object.assign(this, {x,y,z,order}); }
+}
+class Quaternion {
+    constructor(owner = null) { Object.assign(this, {x:0,y:0,z:0,w:1,owner}); }
+    setFromEuler(e) {
+        const c1=Math.cos(e.x/2),c2=Math.cos(e.y/2),c3=Math.cos(e.z/2);
+        const s1=Math.sin(e.x/2),s2=Math.sin(e.y/2),s3=Math.sin(e.z/2);
+        Object.assign(this,{x:s1*c2*c3+c1*s2*s3,y:c1*s2*c3-s1*c2*s3,
+            z:c1*c2*s3-s1*s2*c3,w:c1*c2*c3+s1*s2*s3});
+        return this;
+    }
+    copy(q) { Object.assign(this,{x:q.x,y:q.y,z:q.z,w:q.w}); return this.commit(); }
+    invert() { this.x=-this.x;this.y=-this.y;this.z=-this.z;return this.commit(); }
+    multiply(q) { return this.product(this,q); }
+    premultiply(q) { return this.product(q,this); }
+    product(a,b) {
+        const {x:ax,y:ay,z:az,w:aw}=a,{x:bx,y:by,z:bz,w:bw}=b;
+        Object.assign(this,{x:ax*bw+aw*bx+ay*bz-az*by,y:ay*bw+aw*by+az*bx-ax*bz,
+            z:az*bw+aw*bz+ax*by-ay*bx,w:aw*bw-ax*bx-ay*by-az*bz});
+        return this.commit();
+    }
+    commit() {
+        if (this.owner) {
+            const {x,y,z,w}=this;
+            const m23=2*(y*z-x*w);
+            const pitch=Math.asin(-Math.max(-1,Math.min(1,m23)));
+            const yaw=Math.abs(m23)<0.9999999 ? Math.atan2(2*(x*z+y*w),1-2*(x*x+y*y)) : Math.atan2(-2*(x*z-y*w),1-2*(y*y+z*z));
+            const roll=Math.abs(m23)<0.9999999 ? Math.atan2(2*(x*y+z*w),1-2*(x*x+z*z)) : 0;
+            Object.assign(this.owner.rotation,{x:pitch,y:yaw,z:roll});
+        }
+        return this;
+    }
 }
 class BufferAttribute {
     constructor(array, itemSize) { Object.assign(this, { array, itemSize }); }
@@ -51,17 +86,17 @@ class InstancedMesh extends Mesh {
 class Color {
     set(value) { this.r = ((value >> 16) & 255) / 255; this.g = ((value >> 8) & 255) / 255; this.b = (value & 255) / 255; return this; }
 }
-const THREE = { Vector3, Object3D, Group: Object3D, Scene: Object3D, BufferGeometry: Geometry,
+const THREE = { Vector3, Object3D, Euler, Quaternion, Group: Object3D, Scene: Object3D, BufferGeometry: Geometry,
     SphereGeometry: Geometry, BoxGeometry: Geometry, PlaneGeometry: Geometry, DoubleSide: 2,
     BufferAttribute, Mesh, InstancedMesh, Points: Mesh,
     LineSegments: Mesh, MeshBasicMaterial: Material, PointsMaterial: Material,
     LineBasicMaterial: Material, Color, DynamicDrawUsage: 35048 };
 const context = vm.createContext({ THREE, console, document: { getElementById() { return null; } } });
 const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-scenes/star-scenes.js",
-    "k3-scenes/shuttle-scene.js", "k3-scenes/shuttle-network.js", "k3-scenes/main-scene.js"]
+    "k3-scenes/shuttle-scene.js", "k3-scenes/route-corridor.js", "k3-scenes/main-scene.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
-const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, ShuttleNetwork } =
-    vm.runInContext(source + ";({ K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, ShuttleNetwork });", context);
+const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor } =
+    vm.runInContext(source + ";({ K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor });", context);
 const children = Array.from({ length: 5000 }, (_, i) => new K3Scene({
     name: (i % 2 ? "Ship " : "Star ") + i, position: [i, 0, 0], size: 1 + i % 3,
     makeOutside(s) { return { type: "sphere", radius: s.size, color: i % 2 ? 0xff0000 : 0x00ff00 }; }
@@ -133,11 +168,11 @@ let total = 0;
 for (const region of mainScene.children) {
     total += region.stars.length;
     const inside = region.createInside();
-    assert.equal(inside.children.length, 2);
+    assert.equal(inside.children.length, 3);
     assert.equal(inside.children[0].count, region.stars.length);
     assert.equal(inside.children[1].count, region.connections.length);
-    assert.equal(region.routeNetwork.connections, region.connections);
-    assert.ok(region.routeNetwork.routes.every(route => route.shuttle.parent === region));
+    assert.equal(region.corridors.length, region.connections.length);
+    assert.ok(region.corridors.every(corridor => corridor.parent === region && corridor.children.length === 3));
     const outside = region.createOutside();
     const preview = outside.children[1];
     assert.equal(preview.children.length, 2);
@@ -203,72 +238,98 @@ for (let i = 0; i < routeStars.length; i++) {
 assert.equal(connections.length, expectedEdges.length);
 connections.forEach((pair,i) => { assert.equal(pair[0],expectedEdges[i][0]); assert.equal(pair[1],expectedEdges[i][1]); });
 assert.equal(connectionPositions(connections).length, connections.length * 6);
-const region = new K3Scene({size:500,insideSize:500,children:routeStars});
-const edges = [[routeStars[0],routeStars[1]], [routeStars[1],routeStars[2]], [routeStars[1],routeStars[3]]];
-const traffic = new ShuttleNetwork(region, edges);
-region.onUpdate = (scene, delta) => traffic.update(delta);
-assert.equal(traffic.routes.length, edges.length);
-assert.ok(!traffic.neighbors.has(routeStars[4]));
-const route = traffic.routes[0];
-route.from = routeStars[0]; route.to = routeStars[1]; route.progress = 0.99;
-traffic.update(0.1);
-assert.equal(route.from, routeStars[1]);
-assert.ok(route.to !== routeStars[0]);
-assert.ok(traffic.neighbors.get(route.from).includes(route.to));
-// A dead end reverses along the same valid edge.
-route.from = routeStars[1]; route.to = routeStars[0]; route.progress = 0.99;
-traffic.update(0.1);
-assert.equal(route.from, routeStars[0]); assert.equal(route.to,routeStars[1]);
-for (let tick = 0; tick < 1000; tick++) {
-    traffic.update(0.05);
-    for (const r of traffic.routes) {
-        assert.ok(traffic.neighbors.get(r.from).includes(r.to));
-        assert.ok(r.progress >= 0 && r.progress <= 1);
-        const a = r.from.position, b = r.to.position;
-        const expected = new Vector3(a.x+(b.x-a.x)*r.progress,a.y+(b.y-a.y)*r.progress,a.z+(b.z-a.z)*r.progress);
-        assert.ok(r.shuttle.position.distanceTo(expected) < 1e-9);
-    }
+{
+// Diagonal, vertical and horizontal connections all map to corridor-local Z.
+for (const endpoint of [[100,80,160],[0,100,0],[100,0,0]]) {
+    const a = new K3Scene({position:[0,0,0],size:8});
+    const b = new K3Scene({position:endpoint,size:8});
+    const corridor = new RouteCorridor(a,b,"Corridor");
+    assert.ok(corridor.localToParent(new Vector3(0,0,-corridor.length/2)).distanceTo(a.position)<1e-9);
+    assert.ok(corridor.localToParent(new Vector3(0,0,corridor.length/2)).distanceTo(b.position)<1e-9);
+    const local = new Vector3(2,3,4);
+    assert.ok(corridor.parentToLocal(corridor.localToParent(local.clone())).distanceTo(local)<1e-9);
+    assert.ok(corridor.containsPosition(corridor.localToParent(new Vector3(9,9,0))));
+    assert.ok(!corridor.containsPosition(corridor.localToParent(new Vector3(11,0,0))));
+    assert.equal(corridor.children.length,3);
+    assert.ok(corridor.children.every(child=>child.parent===corridor));
+    const before = corridor.children[0].position.clone();
+    corridor.updateTraffic(0.2);
+    assert.ok(before.distanceTo(corridor.children[0].position)>0);
+    corridor.updateTraffic(10000);
+    assert.ok(corridor.traffic.every(craft=>Math.abs(craft.shuttle.position.z)<=craft.limit+1e-9));
 }
-// Simulation updates logical positions; the display reuses its existing buffers.
-route.from = routeStars[0]; route.to = routeStars[1]; route.progress = 0.5; traffic.place(route);
-const regionDisplay = region.createInside();
-const boxes = regionDisplay.children[1];
-assert.equal(boxes.count, edges.length);
-const boxesGeometry = boxes.geometry;
-const boxesMaterial = boxes.material;
-const resourceCount = geometryCount;
-traffic.update(0.1);
-regionDisplay.userData.k3Display.update();
-assert.equal(boxes.geometry, boxesGeometry); assert.equal(boxes.material, boxesMaterial);
-assert.equal(geometryCount, resourceCount);
-assert.equal(boxes.matrices[0].position.x, route.shuttle.position.x);
-// Board through the normal containment/entry path and move with the local frame.
+const a = new K3Scene({size:8,position:[0,0,0]});
+const b = new K3Scene({size:8,position:[100,80,160]});
+const corridor = new RouteCorridor(a,b,"Boarding corridor");
+const region = new K3Scene({size:500,insideSize:500,children:[a,b,corridor]});
 const routeRoot = new K3Scene({size:5000,children:[region]});
 const rideGame = Object.create(K3Game.prototype);
-Object.assign(rideGame, {layers:[],worldRoot:new Object3D(),threeScene:new Object3D(),camera:new Camera(),
+Object.assign(rideGame,{layers:[],worldRoot:new Object3D(),threeScene:new Object3D(),camera:new Camera(),
     activeScene:null,mode:"outside",moveSpeed:50,timeScale:1,renderer:{clear(){},clearDepth(){},render(){}}});
 rideGame.load(routeRoot); rideGame.enter(routeRoot);
-rideGame.camera.position.copy(route.shuttle.position);
+// A point inside the box but away from all three shuttles and endpoint stars.
+const localCamera = new Vector3(8,7,0);
+rideGame.camera.position.copy(corridor.localToParent(localCamera.clone()));
 rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,region);
-rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,route.shuttle);
-assert.equal(rideGame.worldRoot.children[0].material.color,0xff6600);
-rideGame.updateSceneAnimation(0.2);
+const originalHeading = rideGame.camera.quaternion;
+rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,corridor);
+assert.ok(rideGame.camera.position.distanceTo(localCamera)<1e-9);
 rideGame.renderLayers();
-assert.ok(rideGame.layers[1].camera.position.distanceTo(route.shuttle.position) < 1e-9);
+assert.ok(rideGame.layers[1].camera.position.distanceTo(corridor.localToParent(localCamera.clone()))<1e-9);
+const parentHeading = rideGame.layers[1].camera.quaternion;
+assert.ok(Math.abs(parentHeading.x-originalHeading.x)+Math.abs(parentHeading.y-originalHeading.y)+Math.abs(parentHeading.z-originalHeading.z)<1e-8);
+assert.equal(rideGame.worldRoot.children.length,1); // Only this corridor's craft batch.
+assert.equal(rideGame.worldRoot.children[0].count,3);
+const shuttle = corridor.children[0];
+rideGame.camera.position.copy(shuttle.position);
+rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,shuttle);
+assert.equal(rideGame.worldRoot.children[0].material.color,0xff6600);
+rideGame.updateSceneAnimation(0.1);
+rideGame.renderLayers();
+assert.ok(rideGame.layers[2].camera.position.distanceTo(shuttle.position)<1e-9);
 rideGame.camera.position.set(0,0,1010);
+rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,corridor);
+rideGame.camera.position.set(11,0,0);
+const expectedExit = corridor.localToParent(rideGame.camera.position.clone());
 rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,region);
-assert.ok(Math.abs(rideGame.camera.position.z-route.shuttle.position.z-3.03) < 1e-8);
-// Lines are independently switchable; outside previews contain no shuttle entries.
-const realRegion = mainScene.children[0];
-realRegion.showRouteLines = true;
-assert.equal(realRegion.createInside().children.length,3);
-realRegion.showRouteLines = false;
-assert.equal(realRegion.createInside().children.length,2);
-assert.equal(realRegion.createOutside().children[1].children[0].geometry.drawRange.count,realRegion.stars.length);
-// Empty and zero-length graphs do not hang the animation loop.
-assert.equal(new ShuttleNetwork(new K3Scene(),[]).routes.length,0);
-const coincident = [new K3Scene(),new K3Scene()];
-const zero = new ShuttleNetwork(new K3Scene({children:coincident}),[[coincident[0],coincident[1]]]);
-zero.update(100);
-assert.equal(zero.routes[0].shuttle.position.length(),0);
-console.log("PASS: original edge preservation, valid route walks, dead-end reversal, box batching, resource reuse, normal moving-shuttle entry/exit, and independent line visualization.");
+assert.ok(rideGame.camera.position.distanceTo(expectedExit)<1e-8);
+// Animated appearance reuses geometry and remains unrelated to traffic movement.
+const outside = corridor.createOutside();
+assert.equal(outside.children.length,2);
+const dashMesh = outside.children[1];
+const dashGeometry = dashMesh.geometry;
+const oldPositions = Array.from(dashGeometry.attributes.position.array);
+const oldShuttle = shuttle.position.clone();
+const resourceCount = geometryCount;
+outside.userData.k3Display.update(0.1);
+assert.equal(dashMesh.geometry,dashGeometry);
+assert.equal(geometryCount,resourceCount);
+assert.ok(oldPositions.some((value,index)=>value!==dashGeometry.attributes.position.array[index]));
+assert.equal(shuttle.position.distanceTo(oldShuttle),0);
+// Many corridor descriptions share two batches, irrespective of their orientation/length.
+const regionOutside = region.createInside();
+assert.equal(regionOutside.children.length,3); // Stars, boxes, dashes; no shuttles.
+const starBatch = regionOutside.children[0];
+assert.equal(starBatch.count,2);
+assert.equal(regionOutside.children[1].count,1);
+assert.ok(regionOutside.children[1].userData.k3Scenes.every(node=>node===corridor));
+// A crossing corridor must not expose its fleet while another corridor is active.
+const crossing = new RouteCorridor(a,b,"Crossing corridor");
+region.add(crossing);
+rideGame.camera.position.copy(corridor.localToParent(new Vector3(8,7,0)));
+rideGame.updateSceneTransitions();
+assert.equal(rideGame.activeScene,corridor);
+rideGame.renderLayers();
+assert.ok(!rideGame.layers[2].overlapInteriors || !rideGame.layers[2].overlapInteriors.has(crossing));
+// Arbitrary box aspect ratio and scale, including roll, use the same core conversion.
+const scaledBox = new K3Scene({size:2,insideSize:20,rotation:0.3,pitch:0.4,roll:0.2,
+    boundary:{type:"box",halfExtents:[2,3,9]}});
+const p = new Vector3(10,20,80);
+assert.ok(scaledBox.parentToLocal(scaledBox.localToParent(p.clone())).distanceTo(p)<1e-9);
+assert.ok(scaledBox.containsPosition(scaledBox.localToParent(p.clone())));
+assert.ok(!scaledBox.containsPosition(scaledBox.localToParent(new Vector3(21,0,0))));
+const coincident = new RouteCorridor(a,a,"Coincident endpoints");
+coincident.updateTraffic(1000);
+assert.ok(coincident.children.every(child=>Number.isFinite(child.position.z)));
+console.log("PASS: graph-to-corridor ownership, diagonal/vertical box transforms, normal nested entry/exit, local shuttle motion, dashed animation and unchanged buffers.");
+}

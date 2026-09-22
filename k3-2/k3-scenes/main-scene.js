@@ -16,17 +16,6 @@ function addGalaxySphere(x, z, name, size, starCount) {
 
         children: stars,
 
-        onUpdate(scene, delta) {
-            scene.routeNetwork.update(delta);
-        },
-
-        makeInside(scene) {
-            if (!scene.showRouteLines) return null;
-            return K3Display.create([{ node: null, appearance: {
-                type: "lines", color: 0xff0000, positions: connectionPositions(scene.connections)
-            } }]);
-        },
-
         makeOutside(scene) {
             const outside = new THREE.Group();
 
@@ -38,7 +27,7 @@ function addGalaxySphere(x, z, name, size, starCount) {
                 })
             ));
 
-            outside.add(createRegionPreview(scene, connections));
+            outside.add(createRegionPreview(scene));
 
             return outside;
         }
@@ -46,8 +35,9 @@ function addGalaxySphere(x, z, name, size, starCount) {
     // Keep route data and stars independent of the mixed logical child list.
     region.stars = stars;
     region.connections = connections;
-    region.showRouteLines = false;
-    region.routeNetwork = new ShuttleNetwork(region, connections);
+    region.corridors = connections.map(([a, b], index) => region.add(
+        new RouteCorridor(a, b, name + " / Corridor " + (index + 1))
+    ));
     galaxyScenes.push(region);
 }
 

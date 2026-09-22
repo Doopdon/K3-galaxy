@@ -6,6 +6,10 @@ class K3Scene {
         insideSize = size,
         position = [0, 0, 0],
         rotation = 0,
+        pitch = 0,
+        roll = 0,
+        boundary = null,
+        revealOnOverlap = true,
         rotationSpeed = 0,
         spinSpeed = 0,
         childrenOrbitSpeed = 0,
@@ -33,6 +37,12 @@ class K3Scene {
         this.orbitPosition = this.position.clone();
         // Scene-frame yaw in radians, independent of visual spin and child orbits.
         this.rotation = rotation;
+        this.pitch = pitch;
+        this.roll = roll;
+        // Box half-extents are in parent units; size/insideSize still define
+        // the uniform unit conversion, independently of the boundary shape.
+        this.boundary = boundary || { type: "sphere" };
+        this.revealOnOverlap = revealOnOverlap;
         this.rotationSpeed = rotationSpeed;
         // Angular speeds are radians per second around the local Y axis.
         this.spinSpeed = spinSpeed;
@@ -87,31 +97,79 @@ class K3Scene {
 
     parentToLocal(position, centered = false) {
         if (!centered) position.sub(this.position);
-        this.rotatePosition(position, -this.rotation);
+        this.rotateFramePosition(position, true);
         return position.multiplyScalar(this.insideSize / this.size);
     }
 
     localToParent(position, centered = false) {
         position.multiplyScalar(this.size / this.insideSize);
-        this.rotatePosition(position, this.rotation);
+        this.rotateFramePosition(position);
         if (!centered) position.add(this.position);
         return position;
     }
 
     containsInsidePosition(position) {
+        if (this.boundary.type === "box") {
+            const scale = this.insideSize / this.size;
+            const half = this.boundary.halfExtents;
+            return Math.abs(position.x) <= half[0] * scale &&
+                Math.abs(position.y) <= half[1] * scale &&
+                Math.abs(position.z) <= half[2] * scale;
+        }
         return position.length() <= this.insideSize;
+    }
+
+    rotateFramePosition(position, inverse = false, visualSpin = 0) {
+        const rotateX = angle => {
+            const y = position.y, z = position.z;
+            position.y = y * Math.cos(angle) - z * Math.sin(angle);
+            position.z = y * Math.sin(angle) + z * Math.cos(angle);
+        };
+        const rotateZ = angle => {
+            const x = position.x, y = position.y;
+            position.x = x * Math.cos(angle) - y * Math.sin(angle);
+            position.y = x * Math.sin(angle) + y * Math.cos(angle);
+        };
+        if (inverse) {
+            this.rotatePosition(position, -this.rotation - visualSpin);
+            rotateX(-this.pitch);
+            rotateZ(-this.roll);
+        } else {
+            rotateZ(this.roll);
+            rotateX(this.pitch);
+            this.rotatePosition(position, this.rotation + visualSpin);
+        }
+        return position;
+    }
+
+    frameQuaternion() {
+        return new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(this.pitch, this.rotation, this.roll, "YXZ")
+        );
+    }
+
+    applyOutsideRotation(object) {
+        object.rotation.order = "YXZ";
+        object.rotation.x = this.pitch;
+        object.rotation.y = this.rotation + this.spinAngle;
+        object.rotation.z = this.roll;
     }
 
     describeOutside() {
         if (this.makeOutside) {
             return this.makeOutside(this);
         } else {
+            if (this.boundary.type === "box") {
+                return { type: "box", halfExtents: this.boundary.halfExtents,
+                    color: 0xffffff, wireframe: true };
+            }
             return { type: "sphere", radius: this.size, color: 0xffffff,
                 widthSegments: 16, heightSegments: 16, wireframe: true };
         }
     }
 
     containsPosition(position) {
+        if (this.boundary.type === "box") return this.containsInsidePosition(this.parentToLocal(position.clone()));
         return position.distanceTo(this.position) <= this.size;
     }
 
@@ -124,7 +182,7 @@ class K3Scene {
         const object = appearance;
 
         object.userData.k3Scene = this;
-        object.rotation.y = this.rotation + this.spinAngle;
+        this.applyOutsideRotation(object);
 
         return object;
     }

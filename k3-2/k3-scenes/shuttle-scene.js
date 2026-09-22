@@ -12,6 +12,7 @@ class Shuttle extends K3Scene {
             name,
             size: 3,
             insideSize: 1000,
+            boundary: { type: "box", halfExtents: [3, 3, 3] },
             makeOutside: scene => mini.create(scene.size),
             makeInside: () => new THREE.Mesh(
                 new THREE.PlaneGeometry(500, 500),
@@ -20,13 +21,4 @@ class Shuttle extends K3Scene {
         });
     }
 
-    containsPosition(position) {
-        const local = position.clone().sub(this.position);
-        this.rotatePosition(local, -this.rotation);
-        return Math.max(Math.abs(local.x), Math.abs(local.y), Math.abs(local.z)) <= this.size;
-    }
-
-    containsInsidePosition(position) {
-        return Math.max(Math.abs(position.x), Math.abs(position.y), Math.abs(position.z)) <= this.insideSize;
-    }
 }
