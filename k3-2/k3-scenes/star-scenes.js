@@ -13,11 +13,27 @@ function createStarScenes(parentSize, starCount, namePrefix) {
             size: starSize,
             insideSize: 1000,
             position: [Math.cos(angle) * ring * radius, y * radius,
-                Math.sin(angle) * ring * radius],
+            Math.sin(angle) * ring * radius],
             makeOutside(scene) {
                 return {
-                    type: "sphere", radius: scene.size, color: 0x3388ff,
-                    widthSegments: 8, heightSegments: 6, wireframe: true
+                    type: "group",
+                    parts: [
+                        {
+                            type: "sphere",
+                            radius: scene.size,
+                            color: 0x3388ff,
+                            widthSegments: 8,
+                            heightSegments: 6,
+                            wireframe: true
+                        },
+                        {
+                            type: "sphere",
+                            radius: scene.size * 0.25,
+                            color: 0xffff66,
+                            widthSegments: 12,
+                            heightSegments: 8
+                        }
+                    ]
                 };
             }
         }));
