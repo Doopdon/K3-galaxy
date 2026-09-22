@@ -15,10 +15,19 @@ class RouteCorridor extends K3Scene {
             boundary: { type: "box", halfExtents: half },
             revealOnOverlap: false,
             makeOutside() {
-                return { type: "group", parts: [
-                    { type: "box", halfExtents: half, wireframe: true, color: 0xcc4455 },
-                    { type: "dashes", length, dashSize: 4, gapSize: 4, speed: 8, color: 0xff5555 }
-                ] };
+                return {
+                    type: "group", parts: [
+                        { type: "box", halfExtents: half, wireframe: true, color: 0xcc4455 },
+                        {
+                            type: "lines",
+                            positions: [
+                                0, 0, -length / 2,
+                                0, 0, length / 2
+                            ],
+                            color: 0x00ff00
+                        }
+                    ]
+                };
             },
             onUpdate(scene, delta) { scene.updateTraffic(delta); }
         });
