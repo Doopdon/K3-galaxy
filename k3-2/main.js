@@ -1,3 +1,5 @@
+const showWireFrames = false;
+
 function main() {
 
     const game = new K3Game();

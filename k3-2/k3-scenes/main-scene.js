@@ -19,7 +19,7 @@ function addGalaxySphere(x, z, name, size, starCount) {
         makeOutside(scene) {
             const outside = new THREE.Group();
 
-            outside.add(new THREE.Mesh(
+            showWireFrames && outside.add(new THREE.Mesh(
                 new THREE.SphereGeometry(scene.size, 32, 32),
                 new THREE.MeshBasicMaterial({
                     color: 0x22ddbb,
