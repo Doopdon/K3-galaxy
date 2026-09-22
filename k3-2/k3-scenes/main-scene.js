@@ -4,6 +4,8 @@ const orbitSpeed = 0.025;
 
 
 function addGalaxySphere(x, z, name, size, starCount) {
+    const stars = createStarScenes(size, starCount, name + " / Star");
+    const connections = createNeighborConnections(stars);
     galaxyScenes.push(new K3Scene({
         name,
         size: size,
@@ -12,20 +14,7 @@ function addGalaxySphere(x, z, name, size, starCount) {
 
         rotationSpeed: orbitSpeed,
 
-        children: createStarScenes(
-            size,
-            starCount,
-            name + " / Star"
-        ),
-
-        // When we're INSIDE this galaxy region,
-        // render all its stars as one Points object.
-        makeChildren(scene, excludedChild) {
-            return createInsideStars(
-                scene,
-                excludedChild
-            );
-        },
+        children: stars,
 
         makeOutside(scene) {
             const outside = new THREE.Group();
@@ -38,7 +27,7 @@ function addGalaxySphere(x, z, name, size, starCount) {
                 })
             ));
 
-            outside.add(createOutsideStars(scene));
+            outside.add(createRegionPreview(scene, connections));
 
             return outside;
         }

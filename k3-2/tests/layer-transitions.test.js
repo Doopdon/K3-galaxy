@@ -25,11 +25,17 @@ class Group {
     add(o) { this.children.push(o); }
     remove(o) { this.children.splice(this.children.indexOf(o), 1); }
     traverse(fn) { fn(this); for (const child of this.children) child.traverse(fn); }
+    updateMatrix() { this.matrix = { position: this.position.clone(), scale: this.scale.clone(), yaw: this.rotation.y }; }
 }
 class Mesh extends Group {
     constructor(geometry, material) { super(); Object.assign(this, { geometry, material }); }
 }
 class Resource { dispose() {} }
+class InstancedMesh extends Mesh {
+    constructor(g, m, count) { super(g, m); this.count = count; this.instanceMatrix = { setUsage() {} }; }
+    setMatrixAt() {}
+    setColorAt() { this.instanceColor = {}; }
+}
 class Camera {
     constructor() { this.position = new Vector3(); this.rotation = { x: 0, y: 0, z: 0, copy(v) { this.x = v.x; this.y = v.y; this.z = v.z; this.order = v.order; return this; } }; this.quaternion = { copy() {} }; this.aspect = 1; this.fov = 60; }
     clone() { return new Camera(); }
@@ -40,7 +46,8 @@ class Camera {
     rotateZ() {}
 }
 const context = vm.createContext({
-    THREE: { Vector3, Group, Scene: Group, Mesh, SphereGeometry: Resource, MeshBasicMaterial: Resource,
+    THREE: { Vector3, Group, Object3D: Group, Scene: Group, Mesh, InstancedMesh,
+        Color: class { set() { return this; } }, SphereGeometry: Resource, MeshBasicMaterial: Resource,
         BoxGeometry: Resource, EdgesGeometry: Resource, LineSegments: Mesh,
         LineBasicMaterial: Resource, PlaneGeometry: Resource, DoubleSide: 2 },
     document: { getElementById() { return null; } },
@@ -48,7 +55,7 @@ const context = vm.createContext({
 });
 // The test demo retains the eight-galaxy shuttle fixtures used below.
 const sceneFolder = "test-scenes";
-const source = ["k3-scene.js", sceneFolder + "/planet-scenes.js", sceneFolder + "/main-scene.js",
+const source = ["k3-display.js", "k3-scene.js", sceneFolder + "/planet-scenes.js", sceneFolder + "/main-scene.js",
     sceneFolder + "/shuttle-scene.js", "k3-game.js", "shuttles.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const { K3Scene, K3Game, mainScene, K3ShuttleSystem } = vm.runInContext(source + ";({ K3Scene, K3Game, mainScene, K3ShuttleSystem });", context);
@@ -275,16 +282,18 @@ console.log("PASS: shared animation time scaling, slower time, inverse adjustmen
 
 // Overlapping interiors share one depth-tested scene, including different scales.
 function makeOverlapSphere(name, x, insideSize) {
+    // This fixture also verifies compatibility with existing Object3D callbacks.
+    const makeOutside = () => new Mesh(new Resource(), new Resource());
     const children = [];
     for (const px of [-0.45, 0.45]) {
         for (const py of [-0.45, 0.45]) {
             for (const pz of [-0.45, 0.45]) {
-                children.push(new K3Scene({ size: insideSize * 0.1, insideSize: 1000,
+                children.push(new K3Scene({ makeOutside, size: insideSize * 0.1, insideSize: 1000,
                     position: [px * insideSize, py * insideSize, pz * insideSize] }));
             }
         }
     }
-    return new K3Scene({ name, size: 250, insideSize, position: [x, 0, 0], children });
+    return new K3Scene({ makeOutside, name, size: 250, insideSize, position: [x, 0, 0], children });
 }
 const left = makeOverlapSphere("Left", 0, 1000);
 const right = makeOverlapSphere("Right", 350, 2000);

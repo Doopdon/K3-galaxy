@@ -6,6 +6,7 @@ This is a Three.js K3 galaxy prototype.
 
 - In k3-2, use separate THREE.Scene render layers for the active scene and its ancestors. Render ancestors first and clear depth between layers so the active scene draws on top.
 - K3Scene objects are logical nested scene nodes.
+- In k3-2, K3Display batches outside descriptions by visual compatibility, never by semantic scene type. createInside always displays its environment plus generic child representations; do not add star-specific child renderers.
 - Each K3Scene has an outside representation.
 - A K3Scene may contain child K3Scenes.
 - Entering a K3Scene hides its outside representation and shows the outside representations of its children. Ancestor layers retain the siblings of the entered scene.

@@ -463,6 +463,7 @@ class K3Game {
         // These representations are generated afresh for each transition.
         for (const layer of this.layers) {
             layer.scene.traverse((object) => {
+                if (object.isInstancedMesh) object.dispose();
                 if (object.geometry) object.geometry.dispose();
                 if (object.material) {
                     const materials = Array.isArray(object.material)
@@ -757,6 +758,7 @@ class K3Game {
                 if (visible.has(sibling)) continue;
                 foreground.scene.remove(inside);
                 inside.traverse(object => {
+                    if (object.isInstancedMesh) object.dispose();
                     if (object.geometry) object.geometry.dispose();
                     if (object.material) {
                         const materials = Array.isArray(object.material) ? object.material : [object.material];
@@ -766,11 +768,8 @@ class K3Game {
                 foreground.overlapInteriors.delete(sibling);
             }
 
-            // Only the parent's own child shells are affected, not nested models.
-            for (const object of parentLayer.scene.children[0].children) {
-                const node = object.userData.k3Scene;
-                if (node && node.parent === parentLayer.node) object.visible = !visible.has(node);
-            }
+            // The display handles individual objects and compacted batch slots.
+            parentLayer.scene.children[0].userData.k3Display.hidden = visible;
         }
     }
 
@@ -786,6 +785,8 @@ class K3Game {
         if (this.shuttleSystem) this.shuttleSystem.syncLayers();
         for (const layer of this.layers) {
             layer.scene.traverse((object) => {
+                if (object.userData.k3Display) object.userData.k3Display.update();
+                if (object.userData.k3DisplayManaged) return;
                 const node = object.userData.k3Scene;
                 if (!node) return;
                 object.rotation.y = node.rotation + node.spinAngle;

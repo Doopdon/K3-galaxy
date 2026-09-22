@@ -13,10 +13,6 @@ class K3Scene {
         makeOutside = null,
         makeInside = null,
 
-        // Optional custom renderer for all child objects.
-        // Useful for batching thousands of children into one object.
-        makeChildren = null,
-
         children = []
     } = {}) {
 
@@ -45,7 +41,6 @@ class K3Scene {
 
         this.makeOutside = makeOutside;
         this.makeInside = makeInside;
-        this.makeChildren = makeChildren;
 
         this.children = [];
         this.parent = null;
@@ -105,21 +100,22 @@ class K3Scene {
         return position.length() <= this.insideSize;
     }
 
-    createOutside() {
-
-        let object;
-
+    describeOutside() {
         if (this.makeOutside) {
-            object = this.makeOutside(this);
+            return this.makeOutside(this);
         } else {
-            // Default placeholder
-            object = new THREE.Mesh(
-                new THREE.SphereGeometry(this.size, 16, 16),
-                new THREE.MeshBasicMaterial({
-                    wireframe: true
-                })
-            );
+            return { type: "sphere", radius: this.size, color: 0xffffff,
+                widthSegments: 16, heightSegments: 16, wireframe: true };
         }
+    }
+
+    createOutside() {
+        const appearance = this.describeOutside();
+        // Preserve existing Object3D callbacks, including their resource ownership.
+        if (!appearance || typeof appearance.traverse !== "function") {
+            return K3Display.create([{ node: this, appearance }], true);
+        }
+        const object = appearance;
 
         object.userData.k3Scene = this;
         object.rotation.y = this.rotation + this.spinAngle;
@@ -142,34 +138,10 @@ class K3Scene {
             }
         }
 
-        // Add OUTSIDE representations of children
-        // Custom batched child renderer
-        if (this.makeChildren) {
-
-            const childrenObject = this.makeChildren(
-                this,
-                excludedChild
-            );
-
-            if (childrenObject) {
-                root.add(childrenObject);
-            }
-
-        } else {
-
-            // Default behavior:
-            // create one THREE object per child
-            for (const child of this.children) {
-
-                if (child === excludedChild) continue;
-
-                const outside = child.createOutside();
-
-                outside.position.copy(child.position);
-
-                root.add(outside);
-            }
-        }
+        // Every child uses the same description-to-display path.
+        new K3Display(root, this.children
+            .filter(child => child !== excludedChild)
+            .map(child => ({ node: child, appearance: child.describeOutside() })));
 
         return root;
     }
