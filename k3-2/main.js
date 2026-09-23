@@ -1,4 +1,4 @@
-const showWireFrames = false;
+const showWireFrames = true;
 
 function main() {
 

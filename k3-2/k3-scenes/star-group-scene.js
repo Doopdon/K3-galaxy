@@ -84,13 +84,19 @@ function connectionPositions(connections) {
 // Both decorations use the same generic batcher as ordinary child displays.
 function createRegionPreview(scene) {
     const entries = scene.stars.map(node => ({
-        node, appearance: { type: "point", color: 0xffffff, size: 3 }
+        node,
+        appearance: {
+            type: "point",
+            color: 0xffffff,
+            size: 3
+        }
     }));
-    for (const node of scene.corridors) {
-        // Reuse the corridor's line description, without its box or children.
-        entries.push({ node, appearance: node.describeOutside().parts[1] });
-    }
+
     const preview = K3Display.create(entries);
-    preview.scale.setScalar(scene.size / scene.insideSize);
+
+    preview.scale.setScalar(
+        scene.size / scene.insideSize
+    );
+
     return preview;
 }

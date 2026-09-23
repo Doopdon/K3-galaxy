@@ -789,15 +789,21 @@ class K3Game {
             }
         }
         if (this.shuttleSystem) this.shuttleSystem.syncLayers();
-        for (const layer of this.layers) {
-            layer.scene.traverse((object) => {
-                if (object.userData.k3Display) object.userData.k3Display.update(this.simulationTime || 0);
-                if (object.userData.k3DisplayManaged) return;
-                const node = object.userData.k3Scene;
-                if (!node) return;
-                node.applyOutsideRotation(object);
-                if (this.mode === "inside") object.position.copy(node.position);
-            });
+        for (let i = 0; i < this.layers.length; i++) {
+
+            // TEMP TEST:
+            // When inside a child scene, don't render its parent's layer.
+            if (
+                this.layers.length > 1 &&
+                i === this.layers.length - 2
+            ) {
+                continue;
+            }
+
+            const layer = this.layers[i];
+
+            this.renderer.clearDepth();
+            this.renderer.render(layer.scene, layer.camera);
         }
 
         // Map the active camera back through each parent's local coordinates.
