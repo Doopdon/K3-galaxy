@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coriolass GLB Test</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #status {
+      position: fixed;
+      left: 12px;
+      top: 12px;
+      color: white;
+      font: 14px monospace;
+      z-index: 10;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="status">Loading coriolass.glb...</div>
+
+  <!-- Three.js r128 + matching GLTFLoader -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+  <script>
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      10000000
+    );
+
+    camera.position.set(0, 0, 10);
+    camera.rotation.order = 'YXZ';
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    document.body.appendChild(renderer.domElement);
+
+    // --------------------------------------------------
+    // LIGHTS
+    // --------------------------------------------------
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 1.5));
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+    directionalLight.position.set(5, 10, 7);
+    scene.add(directionalLight);
+
+    // --------------------------------------------------
+    // CAMERA CONTROLS
+    // --------------------------------------------------
+
+    const keys = {};
+
+    let moveSpeed = 50;
+    const mouseSensitivity = 0.002;
+    const rollSpeed = 1.5;
+
+    document.addEventListener('keydown', function (event) {
+      keys[event.code] = true;
+    });
+
+    document.addEventListener('keyup', function (event) {
+      keys[event.code] = false;
+    });
+
+    // Click the screen to capture the mouse.
+    renderer.domElement.addEventListener('click', function () {
+      renderer.domElement.requestPointerLock();
+    });
+
+    document.addEventListener('mousemove', function (event) {
+      if (document.pointerLockElement !== renderer.domElement) return;
+
+      camera.rotateY(-event.movementX * mouseSensitivity);
+      camera.rotateX(-event.movementY * mouseSensitivity);
+    });
+
+    function updateCamera(delta) {
+
+      let speed = moveSpeed;
+
+      // Hold Shift for turbo.
+      if (keys['ShiftLeft'] || keys['ShiftRight']) {
+        speed *= 10;
+      }
+
+      const amount = speed * delta;
+
+      // Forward / backward
+      if (keys['KeyW']) {
+        camera.translateZ(-amount);
+      }
+
+      if (keys['KeyS']) {
+        camera.translateZ(amount);
+      }
+
+      // Left / right
+      if (keys['KeyA']) {
+        camera.translateX(-amount);
+      }
+
+      if (keys['KeyD']) {
+        camera.translateX(amount);
+      }
+
+      // Up / down
+      if (keys['KeyF']) {
+        camera.translateY(amount);
+      }
+
+      if (keys['KeyR']) {
+        camera.translateY(-amount);
+      }
+
+      // Roll
+      if (keys['KeyQ']) {
+        camera.rotateZ(rollSpeed * delta);
+      }
+
+      if (keys['KeyE']) {
+        camera.rotateZ(-rollSpeed * delta);
+      }
+    }
+
+    // --------------------------------------------------
+    // LOAD CORIOLASS
+    // --------------------------------------------------
+
+    const status = document.getElementById('status');
+    const loader = new THREE.GLTFLoader();
+
+    loader.load(
+      './coriolass.glb',
+
+      function (gltf) {
+
+        const model = gltf.scene;
+        scene.add(model);
+
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+
+        const maxDim = Math.max(
+          size.x,
+          size.y,
+          size.z
+        );
+
+        if (Number.isFinite(maxDim) && maxDim > 0) {
+
+          const fov =
+            camera.fov *
+            Math.PI /
+            180;
+
+          let distance =
+            (maxDim / 2) /
+            Math.tan(fov / 2);
+
+          distance *= 1.5;
+
+          camera.position.set(
+            center.x,
+            center.y,
+            center.z + distance
+          );
+
+          camera.near =
+            Math.max(
+              distance / 100000,
+              0.001
+            );
+
+          camera.far =
+            Math.max(
+              distance * 100,
+              maxDim * 100
+            );
+
+          camera.lookAt(center);
+          camera.updateProjectionMatrix();
+
+          // Scale movement speed automatically to Coriolass.
+          moveSpeed = maxDim * 0.1;
+        }
+
+        status.innerHTML =
+          'Loaded coriolass.glb<br>' +
+          'Click screen for mouse look<br>' +
+          'WASD = move | F/R = up/down | Q/E = roll | Shift = fast';
+
+        console.log('GLB loaded:', gltf);
+      },
+
+      function (xhr) {
+
+        if (xhr.total) {
+
+          const percent =
+            Math.round(
+              (xhr.loaded / xhr.total) * 100
+            );
+
+          status.textContent =
+            'Loading coriolass.glb... ' +
+            percent +
+            '%';
+        }
+      },
+
+      function (error) {
+
+        console.error(
+          'GLB load error:',
+          error
+        );
+
+        status.innerHTML =
+          'Could not load coriolass.glb.';
+      }
+    );
+
+    // --------------------------------------------------
+    // ANIMATION LOOP
+    // --------------------------------------------------
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+
+      updateCamera(delta);
+
+      renderer.render(
+        scene,
+        camera
+      );
+    }
+
+    animate();
+
+    // --------------------------------------------------
+    // WINDOW RESIZE
+    // --------------------------------------------------
+
+    window.addEventListener(
+      'resize',
+      function () {
+
+        camera.aspect =
+          window.innerWidth /
+          window.innerHeight;
+
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(
+          window.innerWidth,
+          window.innerHeight
+        );
+      }
+    );
+  </script>
+</body>
+
+</html>
