@@ -451,6 +451,9 @@ class K3Game {
             this.yaw,
             this.roll
         );
+        if (this.controlFrame) {
+            this.camera.quaternion.premultiply(this.controlFrame);
+        }
 
     }
 
@@ -609,7 +612,23 @@ class K3Game {
     }
 
     rotateCameraFrame(scene, inverse = false) {
+        // Keep boundary rotations out of the Euler angles used by input. Once
+        // a tilted frame is crossed, the view is frame * user look, rather than
+        // an Euler decomposition of the combined orientation.
+        if (!this.controlFrame && (scene.pitch !== 0 || scene.roll !== 0)) {
+            this.pitch = this.camera.rotation.x;
+            this.yaw = this.camera.rotation.y;
+            this.roll = this.camera.rotation.z;
+            this.controlFrame = new THREE.Quaternion();
+        }
         this.applyCameraFrame(this.camera, scene, inverse);
+        if (this.controlFrame) {
+            const look = new THREE.Quaternion().setFromEuler(
+                new THREE.Euler(this.pitch, this.yaw, this.roll, "YXZ")
+            );
+            this.controlFrame.copy(this.camera.quaternion).multiply(look.invert());
+            return;
+        }
         this.pitch = this.camera.rotation.x;
         this.yaw = this.camera.rotation.y;
         this.roll = this.camera.rotation.z;

@@ -363,4 +363,54 @@ const coincident = new RouteCorridor(a,a,"Coincident endpoints");
 coincident.updateTraffic(1000);
 assert.ok(coincident.children.every(child=>Number.isFinite(child.position.z)));
 console.log("PASS: graph-to-corridor ownership, diagonal/vertical box transforms, normal nested entry/exit, local shuttle motion, dashed animation and unchanged buffers.");
+
+// Boundary rotations must never become mouse-look or user-roll angles.
+{
+    const game = Object.create(K3Game.prototype);
+    const camera = new Camera();
+    camera.rotation.set = function(x, y, z) { Object.assign(this, {x, y, z}); };
+    Object.assign(game, {camera, pitch:0.25, yaw:-0.4, roll:0.15, keys:{}, moveSpeed:50});
+    game.updateControls(0);
+    const original = camera.quaternion;
+    const frames = [
+        new K3Scene({rotation:0.8, pitch:0.7, roll:-0.5}),
+        new K3Scene({rotation:-1.2, pitch:-0.9, roll:0.6}),
+        new K3Scene({rotation:0.3}),
+        new K3Scene({rotation:1.8, pitch:1.4, roll:0.9})
+    ];
+    function sameOrientation(actual, expected) {
+        const dot = actual.x*expected.x + actual.y*expected.y +
+            actual.z*expected.z + actual.w*expected.w;
+        assert.ok(Math.abs(Math.abs(dot)-1)<1e-9);
+    }
+    for (let pass=0; pass<20; pass++) {
+        let expected = new Quaternion().copy(original);
+        for (const frame of frames) {
+            game.rotateCameraFrame(frame, true);
+            expected.premultiply(frame.frameQuaternion().invert());
+            game.updateControls(0);
+            sameOrientation(camera.quaternion, expected);
+            [game.pitch, game.yaw, game.roll].forEach((angle, i) =>
+                assert.ok(Math.abs(angle-[0.25,-0.4,0.15][i])<1e-12));
+        }
+        // Vertical/horizontal look and explicit roll use the original control
+        // basis even when the camera's scene-local Euler angles are tilted.
+        const basis = new Quaternion().copy(game.controlFrame);
+        for (const axis of ["pitch", "yaw", "roll"]) {
+            game[axis] += 0.1;
+            game.updateControls(0);
+            sameOrientation(camera.quaternion, new Quaternion().copy(basis).multiply(
+                new Quaternion().setFromEuler(new Euler(game.pitch,game.yaw,game.roll,"YXZ"))
+            ));
+            game[axis] -= 0.1;
+        }
+        game.updateControls(0);
+        for (const frame of frames.slice().reverse()) {
+            game.rotateCameraFrame(frame);
+            game.updateControls(0);
+        }
+        sameOrientation(camera.quaternion, original);
+    }
+    console.log("PASS: repeated tilted nested frame crossings preserve look axes, user roll, and heading.");
+}
 }

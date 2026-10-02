@@ -40,6 +40,7 @@ class K3ShuttleSystem {
         this.game.pitch = 0;
         this.game.yaw = 0;
         this.game.roll = 0;
+        this.game.controlFrame = null;
         this.updateRideCamera(0);
         this.game.updateSceneTransitions();
         // A shuttle inside a galaxy requires crossing both logical boundaries.
@@ -54,6 +55,7 @@ class K3ShuttleSystem {
         this.game.pitch = this.game.camera.rotation.x;
         this.game.yaw = this.game.camera.rotation.y;
         this.game.roll = this.game.camera.rotation.z;
+        this.game.controlFrame = null;
         this.updateStatus();
     }
 
