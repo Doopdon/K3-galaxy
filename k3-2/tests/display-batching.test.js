@@ -17,6 +17,11 @@ class Vector3 {
     multiplyScalar(v) { this.x *= v; this.y *= v; this.z *= v; return this; }
     distanceTo(v) { return Math.hypot(this.x-v.x, this.y-v.y, this.z-v.z); }
     length() { return Math.hypot(this.x, this.y, this.z); }
+    normalize() { return this.multiplyScalar(1 / this.length()); }
+    getComponent(i) { return [this.x, this.y, this.z][i]; }
+    crossVectors(a, b) {
+        return this.set(a.y*b.z-a.z*b.y, a.z*b.x-a.x*b.z, a.x*b.y-a.y*b.x);
+    }
 }
 class Object3D {
     constructor() { this.children = []; this.userData = {}; this.position = new Vector3(); this.scale = new Vector3(1,1,1); this.rotation = { x: 0, y: 0, z: 0 }; }
@@ -90,9 +95,12 @@ const THREE = { Vector3, Object3D, Euler, Quaternion, Group: Object3D, Scene: Ob
     SphereGeometry: Geometry, BoxGeometry: Geometry, PlaneGeometry: Geometry, DoubleSide: 2,
     BufferAttribute, Mesh, InstancedMesh, Points: Mesh,
     LineSegments: Mesh, MeshBasicMaterial: Material, PointsMaterial: Material,
-    LineBasicMaterial: Material, Color, DynamicDrawUsage: 35048 };
-const context = vm.createContext({ THREE, console, document: { getElementById() { return null; } } });
-const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-scenes/star-scenes.js",
+    LineBasicMaterial: Material, Color, DynamicDrawUsage: 35048,
+    Sphere: class { constructor(center, radius) { Object.assign(this, { center, radius }); } },
+    MathUtils: { lerp: (a, b, t) => a + (b - a) * t } };
+const context = vm.createContext({ THREE, console, showWireFrames: false,
+    document: { getElementById() { return null; } } });
+const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
     "k3-scenes/shuttle-scene.js", "k3-scenes/route-corridor.js", "k3-scenes/main-scene.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor } =
@@ -168,19 +176,42 @@ let total = 0;
 for (const region of mainScene.children) {
     total += region.stars.length;
     const inside = region.createInside();
-    assert.equal(inside.children.length, 3);
+    assert.equal(inside.children.length, 4);
     assert.equal(inside.children[0].count, region.stars.length);
-    assert.equal(inside.children[1].count, region.connections.length);
+    assert.equal(inside.children[1].count, region.stars.length);
+    assert.equal(inside.children[2].count, region.connections.length);
     assert.equal(region.corridors.length, region.connections.length);
     assert.ok(region.corridors.every(corridor => corridor.parent === region && corridor.children.length === 3));
     const outside = region.createOutside();
-    const preview = outside.children[1];
+    const preview = outside.children[0];
     assert.equal(preview.children.length, 2);
     assert.equal(preview.children[0].geometry.drawRange.count, region.stars.length);
     const positions = preview.children[0].geometry.attributes.position.array;
     assert.ok(Math.abs(positions[0] * preview.scale.x - region.children[0].position.x * region.size / region.insideSize) < 1e-4);
 }
 assert.ok(total > 3000);
+// Entering a blue shell replaces its yellow core with an equally sized swarm.
+const star = mainScene.children[0].stars[0];
+star.game = { simulationTime: 12 };
+const starInside = star.createInside();
+assert.equal(starInside.children.length, 1);
+const cloud = starInside.children[0].children[1];
+const outsideRadius = star.describeOutside().parts[1].radius;
+assert.equal(cloud.geometry.boundingSphere.radius * star.size / star.insideSize, outsideRadius);
+assert.equal(cloud.geometry.attributes.position.array.length, 100000 * 3);
+for (let i = 0; i < 100000; i++) {
+    const p = cloud.geometry.attributes.position.array;
+    const radius = Math.hypot(p[i*3], p[i*3+1], p[i*3+2]);
+    assert.ok(radius <= star.insideSize * 0.25 + 0.001);
+}
+const shader = { uniforms: {}, vertexShader: "#include <begin_vertex>" };
+cloud.material.onBeforeCompile(shader);
+cloud.onBeforeRender();
+assert.equal(shader.uniforms.orbitTime.value, 12);
+star.game.simulationTime = 24;
+cloud.onBeforeRender();
+assert.equal(shader.uniforms.orbitTime.value, 24);
+assert.ok(shader.vertexShader.includes("orbitAxisA * cos(angle)"));
 // Existing disposal traversal releases batch resources as well.
 g.layers = [{ scene: display }]; g.worldRoot = display;
 g.clearWorld();
@@ -293,7 +324,7 @@ rideGame.camera.position.set(11,0,0);
 const expectedExit = corridor.localToParent(rideGame.camera.position.clone());
 rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,region);
 assert.ok(rideGame.camera.position.distanceTo(expectedExit)<1e-8);
-// Animated appearance reuses geometry and remains unrelated to traffic movement.
+// Static corridor lines reuse geometry and remain unrelated to traffic movement.
 const outside = corridor.createOutside();
 assert.equal(outside.children.length,2);
 const dashMesh = outside.children[1];
@@ -304,7 +335,7 @@ const resourceCount = geometryCount;
 outside.userData.k3Display.update(0.1);
 assert.equal(dashMesh.geometry,dashGeometry);
 assert.equal(geometryCount,resourceCount);
-assert.ok(oldPositions.some((value,index)=>value!==dashGeometry.attributes.position.array[index]));
+assert.deepEqual(Array.from(dashGeometry.attributes.position.array), oldPositions);
 assert.equal(shuttle.position.distanceTo(oldShuttle),0);
 // Many corridor descriptions share two batches, irrespective of their orientation/length.
 const regionOutside = region.createInside();

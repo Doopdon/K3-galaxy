@@ -9,11 +9,12 @@ function createStarScenes(parentSize, starCount, namePrefix) {
         const ring = Math.sqrt(1 - y * y);
         stars.push(new K3Scene({
             name: namePrefix + " " + (index + 1),
-            info: "An enterable star scene. Its interior is empty for now.",
+            info: "A white star surrounded by a glowing red orbital swarm.",
             size: starSize,
             insideSize: 1000,
             position: [Math.cos(angle) * ring * radius, y * radius,
             Math.sin(angle) * ring * radius],
+            makeInside: createGlowingStarInterior,
             makeOutside(scene) {
                 return {
                     type: "group",
@@ -28,7 +29,7 @@ function createStarScenes(parentSize, starCount, namePrefix) {
                         },
                         {
                             type: "sphere",
-                            radius: scene.size * 0.25,
+                            radius: scene.size * STAR_VISUAL_RADIUS_RATIO,
                             color: 0xffff66,
                             widthSegments: 12,
                             heightSegments: 8
