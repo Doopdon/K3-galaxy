@@ -204,7 +204,7 @@ for (let i = 0; i < 100000; i++) {
     const radius = Math.hypot(p[i*3], p[i*3+1], p[i*3+2]);
     assert.ok(radius <= star.insideSize * 0.25 + 0.001);
 }
-const shader = { uniforms: {}, vertexShader: "#include <begin_vertex>" };
+const shader = { uniforms: {}, vertexShader: "#include <begin_vertex>\ngl_PointSize = size;" };
 cloud.material.onBeforeCompile(shader);
 cloud.onBeforeRender();
 assert.equal(shader.uniforms.orbitTime.value, 12);
@@ -212,6 +212,8 @@ star.game.simulationTime = 24;
 cloud.onBeforeRender();
 assert.equal(shader.uniforms.orbitTime.value, 24);
 assert.ok(shader.vertexShader.includes("orbitAxisA * cos(angle)"));
+assert.ok(shader.vertexShader.includes("gl_PointSize = size * length(modelMatrix[0].xyz);"));
+assert.ok(!shader.vertexShader.includes("gl_PointSize = size;"));
 // Existing disposal traversal releases batch resources as well.
 g.layers = [{ scene: display }]; g.worldRoot = display;
 g.clearWorld();
@@ -255,6 +257,102 @@ overlapGame.renderLayers();
 assert.equal(overlapGame.layers[0].scene.children[0].children[0].count, 1);
 assert.equal(overlapGame.worldRoot.children[0].count, 800);
 console.log("PASS: 5000 logical children in one sphere batch; points, lines, compatibility splits, exclusions, updates, fallback, disposal, and full galaxy counts.");
+
+// Diagnostic: count actual swarm submissions, rather than calls to enter().
+// Use the production star shader/geometry and production corridor/ship classes.
+{
+    const makeStar = vm.runInContext("createGlowingStarInterior", context);
+    let loads = 0;
+    const diagnosticStar = new K3Scene({ name: "Diagnostic star", size: 8, insideSize: 1000,
+        makeInside(scene) { loads++; return makeStar(scene); } });
+    const endpoint = new K3Scene({ size: 8, position: [100, 0, 0] });
+    const corridor = new RouteCorridor(diagnosticStar, endpoint, "Diagnostic corridor");
+    const region = new K3Scene({ size: 500, children: [diagnosticStar, endpoint, corridor] });
+    const root = new K3Scene({ size: 5000, children: [region] });
+    const frames = [];
+    let submissions;
+    const renderer = {
+        clear() { submissions = []; },
+        clearDepth() {},
+        render(scene) {
+            const visit = (object, scale = 1) => {
+                if (object.visible === false) return;
+                scale *= object.scale.x;
+                if (object.geometry?.attributes.orbit) {
+                    const pointShader = { uniforms: {},
+                        vertexShader: "#include <begin_vertex>\ngl_PointSize = size;" };
+                    object.material.onBeforeCompile(pointShader);
+                    assert.ok(pointShader.vertexShader.includes(
+                        "gl_PointSize = size * length(modelMatrix[0].xyz);"));
+                    submissions.push({ cloud: object,
+                        points: object.geometry.attributes.position.array.length / 3,
+                        // Evaluate the shader's model-scale factor for these
+                        // uniformly scaled scene frames, before perspective.
+                        pointSize: object.material.size * Math.abs(scale),
+                        swarmRadius: object.geometry.boundingSphere.radius * scale });
+                }
+                for (const child of object.children) visit(child, scale);
+            };
+            visit(scene);
+        }
+    };
+    const diagnostic = Object.create(K3Game.prototype);
+    Object.assign(diagnostic, { layers: [], worldRoot: new Object3D(), threeScene: new Object3D(),
+        camera: new Camera(), activeScene: null, mode: "outside", moveSpeed: 50, timeScale: 1, renderer });
+    diagnostic.load(root);
+    function record(label) {
+        diagnostic.renderLayers();
+        assert.equal(submissions.length, 1, label + ": expected exactly one swarm render");
+        assert.equal(new Set(submissions.map(item => item.cloud)).size, 1);
+        assert.equal(submissions[0].points, 100000);
+        assert.ok(!submissions[0].cloud.geometry.disposed);
+        frames.push({ label, ...submissions[0] });
+    }
+    diagnostic.enter(root);
+    diagnostic.enter(region);
+    diagnostic.camera.position.set(5, 0, 0);
+    diagnostic.enter(diagnosticStar);
+    record("direct star entry");
+    diagnostic.exit();
+    diagnostic.enter(corridor);
+    record("corridor overlap");
+    const ship = corridor.children[1];
+    ship.position.copy(corridor.parentToLocal(new Vector3(5, 0, 0)));
+    diagnostic.camera.position.copy(ship.position);
+    diagnostic.updateSceneTransitions();
+    assert.equal(diagnostic.activeScene, ship);
+    record("inside ship at star");
+    const loadsBefore = loads;
+    for (let frame = 0; frame < 120; frame++) record("ship frame " + frame);
+    assert.equal(loads, loadsBefore, "stationary ship must not reload the star");
+    for (let frame = 0; frame < 120; frame++) {
+        diagnostic.updateSimulation(0.001);
+        assert.equal(diagnostic.activeScene, ship);
+        record("moving ship frame " + frame);
+    }
+    assert.equal(loads, loadsBefore, "moving ship must not reload the star");
+    // Repeatedly cross the real ship boundary and return, retaining the same
+    // physical camera location when converting between coordinate frames.
+    for (let crossing = 0; crossing < 5; crossing++) {
+        diagnostic.camera.position.set(0, 1001, 0);
+        diagnostic.updateSceneTransitions();
+        assert.equal(diagnostic.activeScene, corridor);
+        record("exit ship " + crossing);
+        diagnostic.camera.position.copy(ship.position);
+        diagnostic.updateSceneTransitions();
+        assert.equal(diagnostic.activeScene, ship);
+        record("reenter ship " + crossing);
+    }
+    const ratio = frame => frame.pointSize / frame.swarmRadius;
+    for (const frame of frames) {
+        assert.ok(Math.abs(ratio(frame) - ratio(frames[0])) < 1e-10,
+            frame.label + ": particle size must remain proportional to the swarm");
+    }
+    console.log("DIAGNOSTIC: " + frames.length + " frames, one 100000-point swarm submission per frame; " +
+        "stationary/moving ship caused zero reloads. Point-size/swarm-radius: direct=" +
+        ratio(frames[0]).toFixed(5) + ", corridor=" + ratio(frames[1]).toFixed(5) +
+        ", ship=" + ratio(frames[2]).toFixed(5) + ".");
+}
 
 // Preserve exactly the previous red-line edge rule, including its index filter.
 const routeStars = [[0,0,0],[100,0,0],[200,0,0],[100,0,100],[400,0,400]]

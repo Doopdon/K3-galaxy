@@ -76,6 +76,10 @@ function createGlowingStarInterior(scene) {
         ` + shader.vertexShader.replace("#include <begin_vertex>", `
             float angle = orbit.x + orbit.y * orbitTime;
             vec3 transformed = orbitAxisA * cos(angle) + orbitAxisB * sin(angle);
+        `).replace("gl_PointSize = size;", `
+            // PointsMaterial scales positions but not point sizes. Interiors
+            // use uniform scale, including when revealed beside a corridor.
+            gl_PointSize = size * length(modelMatrix[0].xyz);
         `);
     };
     const cloud = new THREE.Points(geometry, material);

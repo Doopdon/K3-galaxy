@@ -459,6 +459,22 @@ class K3Game {
 
 
 
+    openInterior(scene, excludedChild = null) {
+        if (!this.openInteriors) this.openInteriors = new Map();
+        // All entry paths share this ownership table. A second caller must not
+        // create or attach another copy, even in a different render layer.
+        if (this.openInteriors.has(scene)) return null;
+        this.openInteriors.set(scene, null);
+        try {
+            const inside = scene.createInside(excludedChild);
+            this.openInteriors.set(scene, inside);
+            return inside;
+        } catch (error) {
+            this.openInteriors.delete(scene);
+            throw error;
+        }
+    }
+
     clearWorld() {
 
         // These representations are generated afresh for each transition.
@@ -472,8 +488,11 @@ class K3Game {
                     for (const material of materials) material.dispose();
                 }
             });
+            // Detach disposed interiors before releasing their ownership.
+            while (layer.scene.children.length) layer.scene.remove(layer.scene.children[0]);
         }
         this.layers = [];
+        if (this.openInteriors) this.openInteriors.clear();
 
         while (
             this.worldRoot.children.length > 0
@@ -523,6 +542,14 @@ class K3Game {
 
     enter(scene) {
 
+        const path = [];
+        for (let node = scene; node; node = node.parent) path.unshift(node);
+        // An occupied ship can change parents, which requires rebuilding its
+        // path. Otherwise an already active interior cannot be entered again.
+        if (this.mode === "inside" && this.activeScene === scene &&
+            this.layers.length === path.length &&
+            this.layers.every((layer, index) => layer.node === path[index])) return;
+
         // Convert only across the immediate boundary; never build a global scale.
         if (this.mode === "inside" && scene.parent === this.activeScene) {
             this.moveSpeed *= scene.insideSize / scene.size;
@@ -536,13 +563,10 @@ class K3Game {
 
         this.clearWorld();
 
-        const path = [];
-        for (let node = scene; node; node = node.parent) path.unshift(node);
-
         for (let index = 0; index < path.length; index++) {
             const node = path[index];
             const renderScene = new THREE.Scene();
-            const inside = node.createInside(path[index + 1]);
+            const inside = this.openInterior(node, path[index + 1]);
             renderScene.add(inside);
             this.layers.push({
                 node,
@@ -763,7 +787,8 @@ class K3Game {
                 visible.add(sibling);
                 let inside = foreground.overlapInteriors.get(sibling);
                 if (!inside) {
-                    inside = sibling.createInside();
+                    inside = this.openInterior(sibling);
+                    if (!inside) continue;
                     foreground.overlapInteriors.set(sibling, inside);
                     foreground.scene.add(inside);
                 }
@@ -791,6 +816,7 @@ class K3Game {
                     }
                 });
                 foreground.overlapInteriors.delete(sibling);
+                if (this.openInteriors.get(sibling) === inside) this.openInteriors.delete(sibling);
             }
 
             // The display handles individual objects and compacted batch slots.

@@ -414,3 +414,50 @@ overlapGame.updateSceneAnimation(1);
 assert.equal(left.rotation, savedRotation);
 assert.ok(overlapGame.camera.position.distanceTo(savedLocal) < 1e-9);
 console.log("PASS: default scene rotation, rotated transforms, overlap alignment, camera carried by frame, heading continuity, and independent object animation.");
+
+// A star revealed while inside a ship has one owner across every entry path.
+let starLoads = 0;
+const singleStar = new K3Scene({ size: 20, insideSize: 1000,
+    makeInside() { starLoads++; return new Mesh(new Resource(), new Resource()); } });
+const singleShip = new K3Scene({ size: 2, insideSize: 10 });
+const singleCorridor = new K3Scene({ size: 100, revealOnOverlap: false, children: [singleShip] });
+const singleRoot = new K3Scene({ size: 500, children: [singleStar, singleCorridor] });
+const singleGame = Object.create(K3Game.prototype);
+Object.assign(singleGame, { camera: new Camera(), layers: [], worldRoot: new Group(),
+    threeScene: new Group(), mode: "outside", activeScene: null, moveSpeed: 10,
+    timeScale: 1, renderer: game.renderer });
+singleGame.load(singleRoot);
+singleGame.enter(singleRoot);
+singleGame.enter(singleCorridor);
+singleGame.enter(singleShip);
+singleGame.renderLayers();
+assert.equal(starLoads, 1);
+const revealedStar = singleGame.openInteriors.get(singleStar);
+const shipLayers = singleGame.layers;
+for (let repeat = 0; repeat < 10; repeat++) {
+    assert.equal(singleGame.openInterior(singleStar), null);
+    singleGame.enter(singleShip);
+    singleGame.renderLayers();
+}
+assert.equal(singleGame.layers, shipLayers);
+assert.equal(singleGame.openInteriors.get(singleStar), revealedStar);
+assert.equal(starLoads, 1);
+// Switching movement frames closes the overlap copy before normal entry.
+singleGame.enterVisibleScene(singleStar);
+assert.equal(singleGame.activeScene, singleStar);
+assert.equal(starLoads, 2);
+assert.ok(shipLayers.every(layer => layer.scene.children.length === 0));
+const activeStar = singleGame.worldRoot;
+for (let repeat = 0; repeat < 10; repeat++) {
+    singleGame.enter(singleStar);
+    assert.equal(singleGame.openInterior(singleStar), null);
+    singleGame.renderLayers();
+}
+assert.equal(singleGame.worldRoot, activeStar);
+assert.equal(starLoads, 2);
+singleGame.clearWorld();
+assert.equal(singleGame.openInteriors.size, 0);
+singleGame.enter(singleRoot);
+singleGame.enter(singleStar);
+assert.equal(starLoads, 3);
+console.log("PASS: single interior ownership, blocked duplicate opens from a ship, overlap-to-active transfer, and reopening after cleanup.");
