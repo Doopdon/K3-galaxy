@@ -37,16 +37,29 @@ class InstancedMesh extends Mesh {
     setColorAt() { this.instanceColor = {}; }
 }
 class Camera {
-    constructor() { this.position = new Vector3(); this.rotation = { x: 0, y: 0, z: 0, copy(v) { this.x = v.x; this.y = v.y; this.z = v.z; this.order = v.order; return this; } }; this.quaternion = { copy() {} }; this.aspect = 1; this.fov = 60; }
+    constructor() { this.position = new Vector3(); this.rotation = { x: 0, y: 0, z: 0, copy(v) { this.x = v.x; this.y = v.y; this.z = v.z; this.order = v.order; return this; } }; this.aspect = 1; this.fov = 60; }
     clone() { return new Camera(); }
     updateProjectionMatrix() {}
     lookAt() {}
     rotateX() {}
     rotateY() {}
     rotateZ() {}
+    get quaternion() { return new Quaternion().setFromEuler(this.rotation); }
+}
+// These fixtures use yaw-only frames; tilted-frame quaternion coverage lives
+// in display-batching.test.js.
+class Euler {
+    constructor(x, y, z, order) { Object.assign(this, {x, y, z, order}); }
+}
+class Quaternion {
+    constructor() { this.yaw = 0; }
+    setFromEuler(e) { this.yaw = e.y; return this; }
+    copy(q) { this.yaw = q.yaw; return this; }
+    invert() { this.yaw = -this.yaw; return this; }
+    multiply(q) { this.yaw += q.yaw; return this; }
 }
 const context = vm.createContext({
-    THREE: { Vector3, Group, Object3D: Group, Scene: Group, Mesh, InstancedMesh,
+    THREE: { Vector3, Euler, Quaternion, Group, Object3D: Group, Scene: Group, Mesh, InstancedMesh,
         Color: class { set() { return this; } }, SphereGeometry: Resource, MeshBasicMaterial: Resource,
         BoxGeometry: Resource, EdgesGeometry: Resource, LineSegments: Mesh,
         LineBasicMaterial: Resource, PlaneGeometry: Resource, DoubleSide: 2 },
@@ -387,7 +400,8 @@ const carriedPosition = left.localToParent(savedLocal.clone());
 assert.ok(overlapGame.layers[0].camera.position.distanceTo(carriedPosition) < 1e-9);
 overlapGame.exit();
 assert.ok(overlapGame.camera.position.distanceTo(carriedPosition) < 1e-9);
-assert.ok(Math.abs(overlapGame.yaw - (0.3 + left.rotation)) < 1e-9);
+assert.ok(Math.abs(overlapGame.camera.rotation.y - (0.3 + left.rotation)) < 1e-9);
+assert.ok(Math.abs(overlapGame.yaw - 0.3) < 1e-9);
 overlapGame.enter(left);
 assert.ok(overlapGame.camera.position.distanceTo(savedLocal) < 1e-9);
 assert.ok(Math.abs(overlapGame.yaw - 0.3) < 1e-9);

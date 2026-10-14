@@ -153,12 +153,29 @@
     const loader = new THREE.GLTFLoader();
 
     loader.load(
-      './coriolass.glb',
+      './Coriolis7.glb',
 
       function (gltf) {
 
         const model = gltf.scene;
         scene.add(model);
+
+        const mixer = new THREE.AnimationMixer(model);
+
+        gltf.animations.forEach((clip) => {
+          mixer.clipAction(clip).play();
+        });
+
+        window.shipMixer = mixer;
+
+        console.log("Animations found:", gltf.animations.length);
+        console.log("Lights found:");
+
+        model.traverse((object) => {
+          if (object.isLight) {
+            console.log(object.name, object.type);
+          }
+        });
 
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
@@ -256,12 +273,13 @@
 
       const delta = clock.getDelta();
 
+      if (window.shipMixer) {
+        window.shipMixer.update(delta);
+      }
+
       updateCamera(delta);
 
-      renderer.render(
-        scene,
-        camera
-      );
+      renderer.render(scene, camera);
     }
 
     animate();
