@@ -1,6 +1,7 @@
 // Edit red, then reload the page to recolor stars, swarm particles and ship disks.
 const K3_COLORS = {
     red: 0x990000,//0x7a2b1d,
+    galaxyStarColor: 0xffdd66, // Galactic-scale star markers; reload after editing.
     lineBrightness: 1.5, // Galaxy connections are brighter than the base red.
 
     particles: {

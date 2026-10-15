@@ -72,6 +72,7 @@ class K3Display {
         } else if (style.type === "point" || style.type === "pointStream") {
             style.size = description.size ?? 3;
             style.sizeAttenuation = description.sizeAttenuation ?? false;
+            style.circle = description.circle ?? false;
         } else {
             style.linewidth = description.linewidth ?? 1;
             if (style.type === "lines" && (!description.positions || description.positions.length % 6 !== 0)) {
@@ -116,6 +117,14 @@ class K3Display {
                     ...materialOptions, vertexColors: true, size: style.size,
                     sizeAttenuation: style.sizeAttenuation
                 }));
+                if (style.type === "point" && style.circle) {
+                    batch.object.material.onBeforeCompile = shader => {
+                        shader.fragmentShader = shader.fragmentShader.replace(
+                            "#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>
+                            vec2 offset = gl_PointCoord - vec2(0.5);
+                            if (dot(offset, offset) > 0.25) discard;`);
+                    };
+                }
                 if (style.type === "pointStream") {
                     geometry.setAttribute("stream", new THREE.BufferAttribute(new Float32Array(count * 4), 4));
                     geometry.setAttribute("streamAxis", new THREE.BufferAttribute(new Float32Array(count * 3), 3));

@@ -1,6 +1,6 @@
 const galaxyScenes = [];
 
-const orbitSpeed = 0.025;
+const orbitSpeed = 0.000025; // Galactic rotation: one turn in about 70 hours at 1x time.
 
 
 function addGalaxySphere(x, z, name, size, starCount) {

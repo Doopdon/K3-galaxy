@@ -104,12 +104,13 @@ function connectionPositions(connections) {
     return positions;
 }
 
-// Galactic overview: white star points and solid route lines. Entering the
+// Galactic overview: tiny yellow star points and solid route lines. Entering the
 // region reveals corridor dot streams; entering a corridor reveals shuttles.
 // Both decorations use the same generic batcher as ordinary child displays.
 function createRegionPreview(scene) {
     const entries = scene.stars.map(node => ({
-        node, appearance: { type: "point", color: 0xffffff, size: 3 }
+        node, appearance: { type: "point", color: K3_COLORS.galaxyStarColor,
+            size: 1, circle: true, sizeAttenuation: false }
     }));
     for (const node of scene.corridors) {
         entries.push({ node, appearance: {
