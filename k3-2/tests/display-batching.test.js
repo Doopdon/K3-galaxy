@@ -696,13 +696,15 @@ assert.ok(coincident.children.every(child=>Number.isFinite(child.position.z)));
 const busy = new RouteCorridor(new K3Scene({size:0.1}),
     new K3Scene({size:0.1,position:[0,0,1000]}), "Busy route");
 assert.equal(busy.children.length, 8);
-assert.equal(busy.stream.count, 128);
+assert.equal(busy.stream.count, 512);
+assert.ok(Math.abs(busy.traffic[0].shuttle.size - 0.1 * 1.25 * 0.3 / 100) < 1e-12);
+assert.ok(Math.abs(busy.stream.laneOffset - 0.1 * 1.25 * 0.04) < 1e-12);
 const forward = new Vector3(), reverse = new Vector3();
 busy.trafficPosition(5, 0, forward);
-busy.trafficPosition(69, 0, reverse);
+busy.trafficPosition(5 + busy.stream.count / 2, 0, reverse);
 const nextForward = new Vector3(), nextReverse = new Vector3();
 busy.trafficPosition(5, 0.01, nextForward);
-busy.trafficPosition(69, 0.01, nextReverse);
+busy.trafficPosition(5 + busy.stream.count / 2, 0.01, nextReverse);
 assert.ok(Math.abs(nextForward.z - forward.z - 0.2) < 1e-9);
 assert.ok(Math.abs(nextReverse.z - reverse.z + 0.2) < 1e-9);
 assert.equal(forward.x, -reverse.x);

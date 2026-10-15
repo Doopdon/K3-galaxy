@@ -2,7 +2,11 @@
 const K3_ROUTE_SHIPS = {
     maxVisible: 8,
     revealDistance: 80, // Multiples of shuttle boundary radius (previously 20).
-    modelScale: 0.4
+    modelScale: 0.4,
+    sizeScale: 0.01, // Ship model and collision radius: 100x smaller.
+    laneOffset: 0.04, // Fraction of corridor half-width (previously 0.4).
+    dotsPerLane: 256,
+    distantDotsPerLane: 32
 };
 
 class RouteCorridor extends K3Scene {
@@ -34,17 +38,18 @@ class RouteCorridor extends K3Scene {
         });
         this.endpoints = [starA, starB];
         this.length = length;
-        const shuttleSize = Math.min(halfWidth * 0.3, half[2] / 4);
+        const shuttleSize = Math.min(halfWidth * 0.3, half[2] / 4) * K3_ROUTE_SHIPS.sizeScale;
         const span = Math.max(half[2] * 2 - shuttleSize * 2, halfWidth * 0.001);
         // Keep physical vehicles separated, including on short routes. Long
-        // routes show up to 64 vehicles in each direction with a bounded pool.
-        const perLane = Math.max(1, Math.min(64, 2 ** Math.floor(Math.log2(Math.max(1, span / (shuttleSize * 6))))));
+        // routes show dense dot streams while keeping the full ship pool fixed.
+        const perLane = Math.max(1, Math.min(K3_ROUTE_SHIPS.dotsPerLane,
+            2 ** Math.floor(Math.log2(Math.max(1, span / (shuttleSize * 6))))));
         this.stream = { type: "pointStream", count: perLane * 2, size: 2,
             span,
-            laneOffset: halfWidth * 0.4, speed: 20, color: K3_COLORS.lineRed,
+            laneOffset: halfWidth * K3_ROUTE_SHIPS.laneOffset, speed: 20, color: K3_COLORS.lineRed,
             hiddenIndices: new Set(), version: 0 };
         // Distant views sample the same stream at a lower density.
-        this.outsideStream = { ...this.stream, count: Math.min(32, this.stream.count), hiddenIndices: new Set() };
+        this.outsideStream = { ...this.stream, count: Math.min(K3_ROUTE_SHIPS.distantDotsPerLane * 2, this.stream.count), hiddenIndices: new Set() };
         this.trafficTime = 0;
         this.traffic = [];
         for (let index = 0; index < K3_ROUTE_SHIPS.maxVisible; index++) {
@@ -66,7 +71,7 @@ class RouteCorridor extends K3Scene {
             shuttle.size = shuttleSize;
             shuttle.boundary.halfExtents = [shuttle.size, shuttle.size, shuttle.size];
             const limit = Math.max(0, half[2] - shuttle.size);
-            shuttle.position.set((index - 1) * halfWidth * 0.4, 0, (index - 1) * limit * 0.6);
+            shuttle.position.set(0, 0, 0);
             this.add(shuttle);
             shuttle.enabled = false;
             this.traffic.push({ shuttle, limit, speed: 20, direction: 1, particleIndex: -1 });
@@ -88,7 +93,8 @@ class RouteCorridor extends K3Scene {
         const pinned = this.traffic.find(craft => craft.shuttle === occupied);
         const nearby = [];
         const point = new THREE.Vector3();
-        const range = this.traffic[0].shuttle.size * K3_ROUTE_SHIPS.revealDistance;
+        // Preserve the reveal bubble when shrinking the physical vehicles.
+        const range = this.traffic[0].shuttle.size * K3_ROUTE_SHIPS.revealDistance / K3_ROUTE_SHIPS.sizeScale;
         if (position) for (let index = 0; index < this.stream.count; index++) {
             if (pinned && pinned.particleIndex === index) continue;
             this.trafficPosition(index, time, point);
