@@ -27,12 +27,29 @@ function installSwarmChildren(scene, data, pointSize) {
         bins[bin].push(index);
     }
     for (let slot = 0; slot < capacity; slot++) {
+        const ship = SpaceshipGenerator.generate();
+        const orientation = {
+            rotation: Math.random() * Math.PI * 2,
+            pitch: Math.asin(Math.random() * 2 - 1),
+            roll: Math.random() * Math.PI * 2
+        };
+        const shipParts = SpaceshipGenerator.describeOutside(ship, edge / 2);
         const child = new K3Scene({ name: scene.name + " / Swarm cube", size: edge / 2,
+            ...orientation,
             insideSize: 100, revealOnOverlap: false,
             boundary: { type: "box", halfExtents: [edge / 2, edge / 2, edge / 2] },
-            makeOutside: node => ({ type: "box", radius: node.size, color: 0xff0000, wireframe: true }),
+            makeOutside: node => ({ type: "group", parts: [
+                { type: "box", radius: node.size, color: 0xff0000, wireframe: true },
+                ...shipParts
+            ] }),
             makeInside: () => new THREE.Mesh(new THREE.PlaneGeometry(50, 50),
                 new THREE.MeshBasicMaterial({ color: 0xff3333, side: THREE.DoubleSide })) });
+        // Keep the full recipe on the logical scene, rather than only inside
+        // the outside renderer's closure. Descendants can use parent.shipData.
+        child.shipData = ship;
+        child.shipData.orientation = orientation;
+        child.shipData.outsideScale = SpaceshipGenerator.fitScale(ship, child.size);
+        child.shipData.insideScale = child.shipData.outsideScale * child.insideSize / child.size;
         child.enabled = false;
         child.particleIndex = -1;
         scene.add(child);

@@ -101,11 +101,33 @@ const THREE = { Vector3, Object3D, Euler, Quaternion, Group: Object3D, Scene: Ob
     MathUtils: { lerp: (a, b, t) => a + (b - a) * t } };
 const context = vm.createContext({ THREE, console, showWireFrames: false,
     document: { getElementById() { return null; } } });
-const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
+const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "../ship-generator/spaceship-generator.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
     "k3-scenes/shuttle-scene.js", "k3-scenes/route-corridor.js", "k3-scenes/main-scene.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
-const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor } =
-    vm.runInContext(source + ";({ K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor });", context);
+const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor, SpaceshipGenerator } =
+    vm.runInContext(source + ";({ K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor, SpaceshipGenerator });", context);
+// The playground and cube previews use the same recipe and centered bounds.
+const recipe = SpaceshipGenerator.generate(() => 0.5);
+const shipDescriptions = SpaceshipGenerator.describeOutside(recipe, 1);
+const restoredRecipe = JSON.parse(JSON.stringify(recipe));
+assert.equal(restoredRecipe.version, 1);
+assert.equal(restoredRecipe.spineSegments.length, recipe.parts.filter(part => part.role === "spine").length);
+assert.equal(new Set(recipe.parts.map(part => part.id)).size, recipe.parts.length);
+assert.ok(recipe.parts.every(part => ["spine", "ring", "disk"].includes(part.role)));
+assert.equal(JSON.stringify(SpaceshipGenerator.describeOutside(restoredRecipe, 1)), JSON.stringify(shipDescriptions));
+assert.ok(recipe.parts.some(part => part.type === "disk"));
+assert.ok(recipe.parts.some(part => part.type === "cylinder" && part.topRadius === 1.2));
+for (const part of shipDescriptions) {
+    assert.equal(part.positions.length % 9, 0);
+    assert.ok(part.positions.every(value => Number.isFinite(value) && Math.abs(value) <= 0.85 + 1e-9));
+}
+const shipMaterials = { gray: new Material({ color: 0x888888 }), red: new Material({ color: 0xe53935 }) };
+const playgroundShip = SpaceshipGenerator.createObject(
+    { ...THREE, CylinderGeometry: Geometry, RingGeometry: Geometry }, recipe, shipMaterials);
+assert.equal(playgroundShip.children.length, recipe.parts.length);
+assert.ok(playgroundShip.children.some(mesh => mesh.material === shipMaterials.red));
+assert.throws(() => K3Display.create([{ appearance: { type: "triangles", positions: [0, 0, 0] } }]),
+    /groups of three XYZ vertices/);
 const children = Array.from({ length: 5000 }, (_, i) => new K3Scene({
     name: (i % 2 ? "Ship " : "Star ") + i, position: [i, 0, 0], size: 1 + i % 3,
     makeOutside(s) { return { type: "sphere", radius: s.size, color: i % 2 ? 0xff0000 : 0x00ff00 }; }
@@ -195,7 +217,7 @@ assert.ok(total > 3000);
 const star = mainScene.children[0].stars[0];
 star.game = { simulationTime: 12 };
 const starInside = star.createInside();
-assert.equal(starInside.children.length, 2); // Environment plus generic cube batch.
+assert.equal(starInside.children.length, 3); // Environment, cube batch, ship surface batch.
 const cloud = starInside.children[0].children[1];
 const outsideRadius = star.describeOutside().parts[1].radius;
 assert.equal(cloud.geometry.boundingSphere.radius * star.size / star.insideSize, outsideRadius);
@@ -384,21 +406,47 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
         assert.equal(swarm.visible[child.particleIndex], 0);
         const expected = swarm.positionAt(child.particleIndex, 0, new Vector3());
         assert.ok(child.position.distanceTo(expected) < 1e-9);
+        assert.equal(child.rotation, child.shipData.orientation.rotation);
+        assert.equal(child.pitch, child.shipData.orientation.pitch);
+        assert.equal(child.roll, child.shipData.orientation.roll);
+        assert.ok(Math.abs(child.shipData.insideScale - child.shipData.outsideScale *
+            child.insideSize / child.size) < 1e-12);
+        assert.equal(JSON.stringify(SpaceshipGenerator.describeOutside(child.shipData, child.size)),
+            JSON.stringify(child.describeOutside().parts.slice(1)));
+        for (const part of child.describeOutside().parts.slice(1)) {
+            assert.equal(part.type, "triangles");
+            assert.ok(part.positions.every(value => Math.abs(value) < child.size));
+        }
     }
+    const surfaceBatch = diagnostic.worldRoot.children[2];
+    assert.equal(diagnostic.worldRoot.children.length, 3, "all ship surfaces must share one generic batch");
+    assert.ok(surfaceBatch.geometry.drawRange.count > 0);
+    assert.equal(surfaceBatch.material.side, THREE.DoubleSide);
+    assert.ok(surfaceBatch.userData.k3Scenes.includes(promoted[0]));
+    assert.ok(new Set(swarm.pool.map(child => child.rotation)).size > 1);
+    const firstShip = surfaceBatch.userData.k3Scenes[0];
+    const firstVertex = firstShip.describeOutside().parts[1].positions;
+    const rotatedVertex = new Vector3(firstVertex[0], firstVertex[1], firstVertex[2]);
+    firstShip.rotateFramePosition(rotatedVertex).add(firstShip.position);
+    const renderedPositions = surfaceBatch.geometry.attributes.position.array;
+    assert.ok(rotatedVertex.distanceTo(new Vector3(...Array.from(renderedPositions.slice(0, 3)))) < 1e-4);
     const cube = diagnostic.checkChildCollision(diagnostic.camera.position);
     assert.ok(promoted.includes(cube));
     const dotIndex = cube.particleIndex;
+    const savedShipData = cube.shipData;
+    const savedShipJSON = JSON.stringify(savedShipData);
     const dotPositions = swarm.positions;
     const expectedEdge = cloud.material.size * Math.tan(diagnostic.camera.fov * Math.PI / 360);
     assert.ok(Math.abs(cube.size * 2 - expectedEdge) < 1e-9);
-    assert.equal(cube.describeOutside().color, 0xff0000);
-    assert.equal(cube.describeOutside().wireframe, true);
+    assert.equal(cube.describeOutside().parts[0].color, 0xff0000);
+    assert.equal(cube.describeOutside().parts[0].wireframe, true);
     const beforeFrame = cube.position.clone();
     const beforeResources = geometryCount;
     diagnostic.renderLayers();
     assert.equal(geometryCount, beforeResources, "stable selection must not allocate geometry");
     diagnostic.updateSceneTransitions();
     assert.equal(diagnostic.activeScene, cube);
+    assert.equal(diagnostic.activeScene.shipData, savedShipData);
     assert.equal(diagnostic.worldRoot.children.length, 1); // Placeholder square.
     assert.equal(diagnostic.worldRoot.children[0].material.color, 0xff3333);
     diagnostic.renderLayers();
@@ -406,6 +454,8 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
     const starLayer = diagnostic.layers.find(layer => layer.node === diagnosticStar);
     const cubeBatch = starLayer.scene.children[0].children[1];
     assert.ok(!cubeBatch.userData.k3Scenes.includes(cube), "entered cube shell must be hidden");
+    const shipsBatch = starLayer.scene.children[0].children[2];
+    assert.ok(!shipsBatch.userData.k3Scenes.includes(cube), "entered cube's ship must also be hidden");
     diagnostic.simulationTime = 0.05;
     diagnostic.updateSceneAnimation(0.05);
     diagnostic.renderLayers();
@@ -417,9 +467,13 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
     assert.equal(cube.particleIndex, dotIndex);
     assert.equal(cube.enabled, true);
     diagnostic.exit();
+    assert.equal(cube.shipData, savedShipData);
+    assert.equal(JSON.stringify(cube.shipData), savedShipJSON, "entry, motion and exit must retain ship data and orientation");
     diagnostic.camera.position.set(0, 0, 900);
     diagnostic.renderLayers();
     assert.equal(swarm.pool.filter(child => child.enabled).length, 0);
+    assert.equal(diagnostic.worldRoot.children[2].geometry.drawRange.count, 0,
+        "distant cubes must hide their ships as well as their shells");
     assert.ok(swarm.visible.every(value => value === 1), "far cubes must restore their dots");
     assert.equal(cube.containsPosition(cube.position), false, "inactive pool slots cannot be entered");
     diagnostic.camera.position.copy(swarm.positionAt(dotIndex, 0.05, new Vector3()));

@@ -52,7 +52,7 @@ class K3Display {
     }
 
     static style(description) {
-        if (!description || !["sphere", "box", "point", "lines", "dashes"].includes(description.type)) {
+        if (!description || !["sphere", "box", "point", "lines", "dashes", "triangles"].includes(description.type)) {
             throw new Error("Unsupported outside appearance description.");
         }
         const style = {
@@ -75,6 +75,9 @@ class K3Display {
             style.linewidth = description.linewidth ?? 1;
             if (style.type === "lines" && (!description.positions || description.positions.length % 6 !== 0)) {
                 throw new Error("Line positions must contain pairs of XYZ endpoints.");
+            }
+            if (style.type === "triangles" && (!description.positions || description.positions.length % 9 !== 0)) {
+                throw new Error("Triangle positions must contain groups of three XYZ vertices.");
             }
         }
         return style;
@@ -111,6 +114,10 @@ class K3Display {
                 batch.object = new THREE.Points(geometry, new THREE.PointsMaterial({
                     ...materialOptions, vertexColors: true, size: style.size,
                     sizeAttenuation: style.sizeAttenuation
+                }));
+            } else if (style.type === "triangles") {
+                batch.object = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+                    ...materialOptions, vertexColors: true, side: THREE.DoubleSide
                 }));
             } else {
                 batch.object = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({
@@ -192,7 +199,9 @@ class K3Display {
                     const writeVertex = (x, y, z) => {
                         const offset = count * 3;
                         batch.vertex.set(x, y, z);
-                        if (node) node.rotateFramePosition(batch.vertex, false, node.spinAngle);
+                        if (node && (angle !== 0 || node.pitch !== 0 || node.roll !== 0)) {
+                            node.rotateFramePosition(batch.vertex, false, node.spinAngle);
+                        }
                         positions[offset] = position.x + batch.vertex.x;
                         positions[offset + 1] = position.y + batch.vertex.y;
                         positions[offset + 2] = position.z + batch.vertex.z;
