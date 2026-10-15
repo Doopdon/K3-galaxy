@@ -12,17 +12,18 @@ function createGlowingStarInterior(scene) {
     ));
 
     const count = 100000;
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const axisA = new Float32Array(count * 3);
-    const axisB = new Float32Array(count * 3);
-    const orbits = new Float32Array(count * 2);
+    const data = scene.swarmData || {
+        positions: new Float32Array(count * 3), colors: new Float32Array(count * 3),
+        axisA: new Float32Array(count * 3), axisB: new Float32Array(count * 3),
+        orbits: new Float32Array(count * 2), visible: new Float32Array(count).fill(1)
+    };
+    const { positions, colors, axisA, axisB, orbits } = data;
     const normal = new THREE.Vector3();
     const helper = new THREE.Vector3();
     const a = new THREE.Vector3();
     const b = new THREE.Vector3();
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; !scene.swarmData && i < count; i++) {
         const t = (Math.random() + Math.random()) / 2;
         const radius = 1.08 + t * (9.6 - 1.08);
         const z = Math.random() * 2 - 1;
@@ -51,12 +52,24 @@ function createGlowingStarInterior(scene) {
         }
     }
 
+    if (!scene.swarmData) {
+        scene.swarmData = data;
+        installSwarmChildren(scene, data, 0.095 * scale);
+    }
+
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     geometry.setAttribute("orbitAxisA", new THREE.BufferAttribute(axisA, 3));
     geometry.setAttribute("orbitAxisB", new THREE.BufferAttribute(axisB, 3));
     geometry.setAttribute("orbit", new THREE.BufferAttribute(orbits, 2));
+    const visibility = new THREE.BufferAttribute(data.visible, 1);
+    visibility.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute("particleVisible", visibility);
+    data.visibilityAttributes.add(visibility);
+    if (geometry.addEventListener) {
+        geometry.addEventListener("dispose", () => data.visibilityAttributes.delete(visibility));
+    }
     // Shader motion stays within this sphere, independently of initial positions.
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), swarmRadius);
     const material = new THREE.PointsMaterial({
@@ -73,14 +86,22 @@ function createGlowingStarInterior(scene) {
             attribute vec3 orbitAxisA;
             attribute vec3 orbitAxisB;
             attribute vec2 orbit;
+            attribute float particleVisible;
+            varying float swarmVisible;
         ` + shader.vertexShader.replace("#include <begin_vertex>", `
             float angle = orbit.x + orbit.y * orbitTime;
+            swarmVisible = particleVisible;
             vec3 transformed = orbitAxisA * cos(angle) + orbitAxisB * sin(angle);
         `).replace("gl_PointSize = size;", `
             // PointsMaterial scales positions but not point sizes. Interiors
             // use uniform scale, including when revealed beside a corridor.
             gl_PointSize = size * length(modelMatrix[0].xyz);
         `);
+        if (shader.fragmentShader) {
+            shader.fragmentShader = "varying float swarmVisible;\n" +
+                shader.fragmentShader.replace("#include <clipping_planes_fragment>",
+                    "#include <clipping_planes_fragment>\nif (swarmVisible < 0.5) discard;");
+        }
     };
     const cloud = new THREE.Points(geometry, material);
     // Use the game's clock so time controls and overlapping interiors stay in sync.

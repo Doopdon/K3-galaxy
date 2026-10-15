@@ -73,7 +73,8 @@ class Geometry {
     constructor() { geometryCount++; this.attributes = {}; }
     setAttribute(n, a) { this.attributes[n] = a; }
     setDrawRange(start, count) { this.drawRange = { start, count }; }
-    dispose() { this.disposed = true; }
+    addEventListener(type, callback) { this.listeners = this.listeners || {}; this.listeners[type] = callback; }
+    dispose() { this.disposed = true; if (this.listeners?.dispose) this.listeners.dispose(); }
 }
 class Material {
     constructor(options) { materialCount++; Object.assign(this, options); }
@@ -100,7 +101,7 @@ const THREE = { Vector3, Object3D, Euler, Quaternion, Group: Object3D, Scene: Ob
     MathUtils: { lerp: (a, b, t) => a + (b - a) * t } };
 const context = vm.createContext({ THREE, console, showWireFrames: false,
     document: { getElementById() { return null; } } });
-const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
+const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
     "k3-scenes/shuttle-scene.js", "k3-scenes/route-corridor.js", "k3-scenes/main-scene.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor } =
@@ -194,7 +195,7 @@ assert.ok(total > 3000);
 const star = mainScene.children[0].stars[0];
 star.game = { simulationTime: 12 };
 const starInside = star.createInside();
-assert.equal(starInside.children.length, 1);
+assert.equal(starInside.children.length, 2); // Environment plus generic cube batch.
 const cloud = starInside.children[0].children[1];
 const outsideRadius = star.describeOutside().parts[1].radius;
 assert.equal(cloud.geometry.boundingSphere.radius * star.size / star.insideSize, outsideRadius);
@@ -205,6 +206,7 @@ for (let i = 0; i < 100000; i++) {
     assert.ok(radius <= star.insideSize * 0.25 + 0.001);
 }
 const shader = { uniforms: {}, vertexShader: "#include <begin_vertex>\ngl_PointSize = size;" };
+shader.fragmentShader = "void main() {\n#include <clipping_planes_fragment>\n}";
 cloud.material.onBeforeCompile(shader);
 cloud.onBeforeRender();
 assert.equal(shader.uniforms.orbitTime.value, 12);
@@ -214,6 +216,8 @@ assert.equal(shader.uniforms.orbitTime.value, 24);
 assert.ok(shader.vertexShader.includes("orbitAxisA * cos(angle)"));
 assert.ok(shader.vertexShader.includes("gl_PointSize = size * length(modelMatrix[0].xyz);"));
 assert.ok(!shader.vertexShader.includes("gl_PointSize = size;"));
+assert.ok(shader.fragmentShader.includes("if (swarmVisible < 0.5) discard;"));
+assert.equal(cloud.geometry.attributes.particleVisible.array, star.swarmData.visible);
 // Existing disposal traversal releases batch resources as well.
 g.layers = [{ scene: display }]; g.worldRoot = display;
 g.clearWorld();
@@ -352,6 +356,77 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
         "stationary/moving ship caused zero reloads. Point-size/swarm-radius: direct=" +
         ratio(frames[0]).toFixed(5) + ", corridor=" + ratio(frames[1]).toFixed(5) +
         ", ship=" + ratio(frames[2]).toFixed(5) + ".");
+
+    // Approach an actual GPU-orbited dot, enter its promoted scene, then leave.
+    diagnostic.enterVisibleScene(diagnosticStar);
+    diagnostic.simulationTime = 0;
+    const swarm = diagnosticStar.swarmData;
+    const target = swarm.positionAt(0, 0, new Vector3());
+    diagnostic.camera.position.copy(target);
+    diagnostic.renderLayers();
+    const promoted = swarm.pool.filter(child => child.enabled);
+    assert.ok(promoted.length > 0 && promoted.length <= 64);
+    assert.ok(promoted.some(child => child.particleIndex === 0));
+    assert.equal(swarm.visibilityAttributes.size, 1, "disposed layers must release mask attributes");
+    assert.ok(swarm.lastQueryCount < 100000, "radial bins must skip distant particles");
+    const expectedNearest = [];
+    const sample = new Vector3();
+    for (let index = 0; index < swarm.orbits.length / 2; index++) {
+        const distance = swarm.positionAt(index, 0, sample).distanceTo(target);
+        if (distance <= swarm.range) expectedNearest.push({ index, distance });
+    }
+    expectedNearest.sort((a, b) => a.distance - b.distance);
+    assert.deepEqual(Array.from(promoted, child => child.particleIndex).sort((a, b) => a - b),
+        expectedNearest.slice(0, 64).map(item => item.index).sort((a, b) => a - b),
+        "radial search must find the same nearest dots as a full scan");
+    assert.equal(Array.from(swarm.visible).filter(value => value === 0).length, promoted.length);
+    for (const child of promoted) {
+        assert.equal(swarm.visible[child.particleIndex], 0);
+        const expected = swarm.positionAt(child.particleIndex, 0, new Vector3());
+        assert.ok(child.position.distanceTo(expected) < 1e-9);
+    }
+    const cube = diagnostic.checkChildCollision(diagnostic.camera.position);
+    assert.ok(promoted.includes(cube));
+    const dotIndex = cube.particleIndex;
+    const dotPositions = swarm.positions;
+    const expectedEdge = cloud.material.size * Math.tan(diagnostic.camera.fov * Math.PI / 360);
+    assert.ok(Math.abs(cube.size * 2 - expectedEdge) < 1e-9);
+    assert.equal(cube.describeOutside().color, 0xff0000);
+    assert.equal(cube.describeOutside().wireframe, true);
+    const beforeFrame = cube.position.clone();
+    const beforeResources = geometryCount;
+    diagnostic.renderLayers();
+    assert.equal(geometryCount, beforeResources, "stable selection must not allocate geometry");
+    diagnostic.updateSceneTransitions();
+    assert.equal(diagnostic.activeScene, cube);
+    assert.equal(diagnostic.worldRoot.children.length, 1); // Placeholder square.
+    assert.equal(diagnostic.worldRoot.children[0].material.color, 0xff3333);
+    diagnostic.renderLayers();
+    assert.equal(swarm.positions, dotPositions, "entry must preserve the original swarm");
+    const starLayer = diagnostic.layers.find(layer => layer.node === diagnosticStar);
+    const cubeBatch = starLayer.scene.children[0].children[1];
+    assert.ok(!cubeBatch.userData.k3Scenes.includes(cube), "entered cube shell must be hidden");
+    diagnostic.simulationTime = 0.05;
+    diagnostic.updateSceneAnimation(0.05);
+    diagnostic.renderLayers();
+    assert.ok(cube.position.distanceTo(beforeFrame) > 0);
+    assert.ok(cube.position.distanceTo(swarm.positionAt(dotIndex, 0.05, new Vector3())) < 1e-9);
+    // Occupancy pins the assignment even if its camera is beyond the LOD range.
+    diagnostic.camera.position.set(100000, 0, 0);
+    diagnostic.renderLayers();
+    assert.equal(cube.particleIndex, dotIndex);
+    assert.equal(cube.enabled, true);
+    diagnostic.exit();
+    diagnostic.camera.position.set(0, 0, 900);
+    diagnostic.renderLayers();
+    assert.equal(swarm.pool.filter(child => child.enabled).length, 0);
+    assert.ok(swarm.visible.every(value => value === 1), "far cubes must restore their dots");
+    assert.equal(cube.containsPosition(cube.position), false, "inactive pool slots cannot be entered");
+    diagnostic.camera.position.copy(swarm.positionAt(dotIndex, 0.05, new Vector3()));
+    diagnostic.renderLayers();
+    assert.ok(swarm.pool.some(child => child.enabled && child.particleIndex === dotIndex));
+    console.log("PASS: nearby swarm cube promotion, bounded radial search, particle masking, matched size, " +
+        "nested entry, moving occupied frames, stable orbits, resource reuse, and distant dot restoration.");
 }
 
 // Preserve exactly the previous red-line edge rule, including its index filter.

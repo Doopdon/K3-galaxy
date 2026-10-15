@@ -55,6 +55,7 @@ class K3Scene {
         this.makeInside = makeInside;
 
         this.children = [];
+        this.enabled = true;
         this.parent = null;
 
         this.game = null;
@@ -169,6 +170,7 @@ class K3Scene {
     }
 
     containsPosition(position) {
+        if (!this.enabled) return false;
         if (this.boundary.type === "box") return this.containsInsidePosition(this.parentToLocal(position.clone()));
         return position.distanceTo(this.position) <= this.size;
     }

@@ -835,6 +835,24 @@ class K3Game {
     }
 
     renderLayers() {
+        // Let procedural scenes choose nearby logical children in their own
+        // units, including ancestors while a moving child is occupied.
+        if (this.mode === "inside") {
+            const path = new Set(this.layers.map(layer => layer.node));
+            // A procedural interior visible only through overlap stays at its
+            // distant representation instead of retaining stale nearby cubes.
+            for (const [node] of this.openInteriors || []) {
+                if (!path.has(node) && node.refreshNearbyChildren) {
+                    node.refreshNearbyChildren(null, this.simulationTime || 0);
+                }
+            }
+            const local = this.camera.position.clone();
+            for (let index = this.layers.length - 1; index >= 0; index--) {
+                const node = this.layers[index].node;
+                if (node.refreshNearbyChildren) node.refreshNearbyChildren(local, this.simulationTime || 0);
+                if (index > 0) node.localToParent(local);
+            }
+        }
         this.syncOverlappingInteriors();
         if (!this.shuttleSystem) {
             const status = document.getElementById("ride-status");
