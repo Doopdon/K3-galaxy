@@ -229,7 +229,14 @@ for (const region of mainScene.children) {
     const positions = preview.children[0].geometry.attributes.position.array;
     assert.ok(Math.abs(positions[0] * preview.scale.x - region.children[0].position.x * region.size / region.insideSize) < 1e-4);
 }
-assert.ok(total > 3000);
+assert.ok(total > 30000);
+assert.equal(mainScene.children[0].stars.length, 1000);
+const scaledStar = mainScene.children[0].stars[0];
+assert.ok(Math.abs(scaledStar.size - 8 / (10 * Math.cbrt(10))) < 1e-12);
+assert.equal(scaledStar.insideSize, 1000);
+const scaledRoute = mainScene.children[0].corridors[0];
+assert.ok(Math.abs(scaledRoute.boundary.halfExtents[0] - scaledStar.size * 1.25) < 1e-12);
+assert.ok(scaledRoute.traffic.every(craft => craft.shuttle.size <= scaledStar.size * 0.375));
 // Entering a blue shell replaces its yellow core with an equally sized swarm.
 const star = mainScene.children[0].stars[0];
 star.game = { simulationTime: 12 };

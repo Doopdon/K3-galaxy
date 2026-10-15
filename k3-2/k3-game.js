@@ -39,7 +39,7 @@ class K3Game {
             new THREE.PerspectiveCamera(
                 60,
                 window.innerWidth / window.innerHeight,
-                0.1,
+                0.0001, // Keep close detail without an unnecessarily tiny near plane.
                 100000
             );
 
@@ -64,7 +64,8 @@ class K3Game {
 
         this.renderer =
             new THREE.WebGLRenderer({
-                antialias: true
+                antialias: true,
+                logarithmicDepthBuffer: true
             });
 
         this.renderer.autoClear = false;
@@ -351,6 +352,7 @@ class K3Game {
     updateControls(delta) {
 
         this.updateAnimationSpeed(delta);
+        const movementStart = this.camera.position.clone();
 
         let speed =
             this.moveSpeed *
@@ -433,6 +435,11 @@ class K3Game {
 
         }
 
+
+        // Stop at the first crossed child boundary rather than stepping over
+        // its entire interior in one flight frame. Continue flying next frame
+        // in the newly entered scene's local units.
+        this.enterCrossedChild(movementStart);
 
         // ----------------------------------------------
         // ROLL
@@ -684,6 +691,46 @@ class K3Game {
         while (!path.includes(this.activeScene)) this.exit();
         const start = path.indexOf(this.activeScene) + 1;
         for (let index = start; index < path.length; index++) this.enter(path[index]);
+    }
+
+    enterCrossedChild(start) {
+        if (this.mode !== "inside" || !this.activeScene) return;
+        const end = this.camera.position.clone();
+        const candidates = this.activeScene.children.map(node => ({ node, start, end }));
+        const branch = this.activeScene;
+        if (branch.parent) {
+            const parentStart = branch.localToParent(start.clone());
+            const parentEnd = branch.localToParent(end.clone());
+            for (const sibling of branch.parent.children) {
+                if (sibling === branch || !sibling.revealOnOverlap ||
+                    !sibling.containsPosition(parentStart)) continue;
+                const peerStart = sibling.parentToLocal(parentStart.clone());
+                const peerEnd = sibling.parentToLocal(parentEnd.clone());
+                for (const node of sibling.children) candidates.push({ node, start: peerStart, end: peerEnd });
+            }
+        }
+        let first = null, fraction = Infinity;
+        if (!branch.containsInsidePosition(end)) {
+            const reverseEntry = branch.movementEntry(branch.localToParent(end.clone()),
+                branch.localToParent(start.clone()));
+            if (reverseEntry !== null) fraction = 1 - reverseEntry;
+        }
+        for (const candidate of candidates) {
+            const entry = candidate.node.movementEntry(candidate.start, candidate.end);
+            if (entry !== null && entry < fraction) {
+                first = candidate.node;
+                fraction = entry;
+            }
+        }
+        if (!first) return;
+        // Move a tiny fraction of this child's radius inward, independent of
+        // the length of the flight step (which can span many tiny scenes).
+        const parentPoint = start.clone().add(end.clone().sub(start).multiplyScalar(fraction));
+        const displacement = end.clone().sub(start);
+        const step = Math.min(1 - fraction, first.size * 1e-6 / (displacement.length() || 1));
+        parentPoint.add(displacement.multiplyScalar(step));
+        this.camera.position.copy(parentPoint);
+        this.enterVisibleScene(first);
     }
 
     checkChildCollision(position) {

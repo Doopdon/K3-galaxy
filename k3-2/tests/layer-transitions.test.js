@@ -484,3 +484,34 @@ singleGame.enter(singleRoot);
 singleGame.enter(singleStar);
 assert.equal(starLoads, 3);
 console.log("PASS: single interior ownership, blocked duplicate opens from a ship, overlap-to-active transfer, and reopening after cleanup.");
+
+// A full flight step can cross a tiny boundary with both endpoints outside.
+const tinyStar = new K3Scene({ size: 0.003, insideSize: 1000 });
+assert.ok(Math.abs(tinyStar.movementEntry(new Vector3(0, 0, 1), new Vector3(0, 0, -1)) - 0.4985) < 1e-9);
+assert.equal(tinyStar.movementEntry(new Vector3(1, 0, 1), new Vector3(1, 0, -1)), null);
+const tiltedBox = new K3Scene({ size: 0.01, insideSize: 100,
+    position: [2, 0, 0], rotation: Math.PI / 4,
+    boundary: { type: "box", halfExtents: [0.002, 0.004, 0.01] } });
+const boxStart = tiltedBox.localToParent(new Vector3(0, 0, 200));
+const boxEnd = tiltedBox.localToParent(new Vector3(0, 0, -200));
+assert.ok(Math.abs(tiltedBox.movementEntry(boxStart, boxEnd) - 0.25) < 1e-9);
+tiltedBox.enabled = false;
+assert.equal(tiltedBox.movementEntry(boxStart, boxEnd), null);
+const sweepRoot = new K3Scene({ size: 10, children: [tinyStar] });
+const sweepGame = Object.create(K3Game.prototype);
+Object.assign(sweepGame, { camera: new Camera(), layers: [], worldRoot: new Group(),
+    threeScene: new Group(), mode: "outside", activeScene: null, moveSpeed: 50 });
+sweepGame.load(sweepRoot);
+sweepGame.enter(sweepRoot);
+sweepGame.camera.position.set(0, 0, -1);
+sweepGame.enterCrossedChild(new Vector3(0, 0, 1));
+assert.equal(sweepGame.activeScene, tinyStar);
+assert.ok(tinyStar.containsInsidePosition(sweepGame.camera.position));
+assert.ok(sweepGame.camera.position.z > 999);
+// A child encountered beyond the movement scene's exit must not be entered.
+sweepGame.exit();
+tinyStar.position.set(0, 0, -20);
+sweepGame.camera.position.set(0, 0, -30);
+sweepGame.enterCrossedChild(new Vector3(0, 0, 1));
+assert.equal(sweepGame.activeScene, sweepRoot);
+console.log("PASS: swept tiny sphere and rotated box entry, disabled boundaries, and active-frame exit ordering.");

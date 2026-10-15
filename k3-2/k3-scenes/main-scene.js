@@ -4,7 +4,7 @@ const orbitSpeed = 0.025;
 
 
 function addGalaxySphere(x, z, name, size, starCount) {
-    const stars = createStarScenes(size, starCount, name + " / Star");
+    const stars = createStarScenes(size, Math.round(starCount * K3_GALAXY_SCALE.starCountMultiplier), name + " / Star");
     const connections = createNeighborConnections(stars);
     const region = new K3Scene({
         name,

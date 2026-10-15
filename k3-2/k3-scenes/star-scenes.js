@@ -1,7 +1,16 @@
+// Relative separation is measured in star radii, keeping galaxy navigation units.
+const K3_GALAXY_SCALE = {
+    starCountMultiplier: 10,
+    relativeSeparation: 10
+};
+
 // Logical stars use exactly the same outside-description API as any other scene.
 function createStarScenes(parentSize, starCount, namePrefix) {
     const stars = [];
-    const starSize = 8;
+    // Ten times the density reduces typical 3D spacing by cbrt(10). Account
+    // for that as well as the desired increase in spacing relative to size.
+    const starSize = 8 / (K3_GALAXY_SCALE.relativeSeparation *
+        Math.cbrt(K3_GALAXY_SCALE.starCountMultiplier));
     for (let index = 0; index < starCount; index++) {
         const y = Math.random() * 2 - 1;
         const angle = Math.random() * Math.PI * 2;
@@ -64,7 +73,10 @@ function createNeighborConnections(children) {
         let secondDistance = Infinity;
         for (let j = 0; j < children.length; j++) {
             if (i === j) continue;
-            const distance = children[i].position.distanceTo(children[j].position);
+            // Squared distances preserve neighbor order without a square root
+            // or temporary vector for every pair in the larger population.
+            const a = children[i].position, b = children[j].position;
+            const distance = (a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2;
             if (distance < firstDistance) {
                 second = first;
                 secondDistance = firstDistance;

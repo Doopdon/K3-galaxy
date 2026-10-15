@@ -169,6 +169,39 @@ class K3Scene {
         }
     }
 
+    movementEntry(start, end) {
+        if (!this.enabled) return null;
+        const a = this.parentToLocal(start.clone());
+        const b = this.parentToLocal(end.clone());
+        if (this.containsInsidePosition(a)) return 0;
+        const direction = b.sub(a);
+        if (this.boundary.type === "box") {
+            let near = 0, far = 1;
+            const scale = this.insideSize / this.size;
+            for (const [index, axis] of ["x", "y", "z"].entries()) {
+                const half = this.boundary.halfExtents[index] * scale;
+                if (Math.abs(direction[axis]) < 1e-15) {
+                    if (Math.abs(a[axis]) > half) return null;
+                    continue;
+                }
+                const first = (-half - a[axis]) / direction[axis];
+                const last = (half - a[axis]) / direction[axis];
+                near = Math.max(near, Math.min(first, last));
+                far = Math.min(far, Math.max(first, last));
+                if (near > far) return null;
+            }
+            return near;
+        }
+        const lengthSquared = direction.x ** 2 + direction.y ** 2 + direction.z ** 2;
+        if (lengthSquared === 0) return null;
+        const projection = a.x * direction.x + a.y * direction.y + a.z * direction.z;
+        const offset = a.x ** 2 + a.y ** 2 + a.z ** 2 - this.insideSize ** 2;
+        const discriminant = projection ** 2 - lengthSquared * offset;
+        if (discriminant < 0) return null;
+        const entry = (-projection - Math.sqrt(discriminant)) / lengthSquared;
+        return entry >= 0 && entry <= 1 ? entry : null;
+    }
+
     containsPosition(position) {
         if (!this.enabled) return false;
         if (this.boundary.type === "box") return this.containsInsidePosition(this.parentToLocal(position.clone()));
