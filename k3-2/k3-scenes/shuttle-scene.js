@@ -1,7 +1,7 @@
 // The mini is the outside model only. Its interior is never drawn here.
 class ShuttleMini {
     create(size) {
-        return { type: "box", radius: size, color: 0xffbb33, wireframe: true };
+        return { type: "box", radius: size, color: 0xffbb33, wireframe: true, collisionBoundary: true };
     }
 }
 

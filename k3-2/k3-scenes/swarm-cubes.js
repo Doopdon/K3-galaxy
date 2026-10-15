@@ -39,7 +39,7 @@ function installSwarmChildren(scene, data, pointSize) {
             insideSize: 100, revealOnOverlap: false,
             boundary: { type: "box", halfExtents: [edge / 2, edge / 2, edge / 2] },
             makeOutside: node => ({ type: "group", parts: [
-                { type: "box", radius: node.size, color: 0xff0000, wireframe: true },
+                { type: "box", radius: node.size, color: 0xff0000, wireframe: true, collisionBoundary: true },
                 ...shipParts
             ] }),
             makeInside: () => new THREE.Mesh(new THREE.PlaneGeometry(50, 50),

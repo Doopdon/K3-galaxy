@@ -133,6 +133,11 @@ class K3Display {
         batch.states = batch.entries.map(() => ({}));
     }
 
+    isEntryVisible(node, appearance) {
+        return !this.hidden.has(node) && (!node || node.enabled !== false) &&
+            !(appearance.collisionBoundary && node && node.game && node.game.showCollisionWireframes === false);
+    }
+
     needsUpdate(batch) {
         let changed = batch.style.type === "dashes" && batch.time !== this.time;
         batch.time = this.time;
@@ -144,7 +149,7 @@ class K3Display {
             const angle = node ? node.rotation + node.spinAngle : 0;
             const pitch = node ? node.pitch : 0;
             const roll = node ? node.roll : 0;
-            const visible = !this.hidden.has(node) && (!node || node.enabled !== false);
+            const visible = this.isEntryVisible(node, appearance);
             const radius = appearance.radius ?? (node ? node.size : 1);
             const color = appearance.color ?? 0xffffff;
             const half = appearance.halfExtents || [radius, radius, radius];
@@ -176,7 +181,7 @@ class K3Display {
             nodes.length = 0;
             let count = 0;
             for (const { node, appearance } of batch.entries) {
-                if (this.hidden.has(node) || (node && node.enabled === false)) continue;
+                if (!this.isEntryVisible(node, appearance)) continue;
                 const position = !this.centered && node ? node.position : { x: 0, y: 0, z: 0 };
                 const angle = node ? node.rotation + node.spinAngle : 0;
                 batch.color.set(appearance.color ?? 0xffffff);

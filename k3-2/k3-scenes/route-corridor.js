@@ -17,7 +17,7 @@ class RouteCorridor extends K3Scene {
             makeOutside() {
                 return {
                     type: "group", parts: [
-                        { type: "box", halfExtents: half, wireframe: true, color: 0xcc4455 },
+                        { type: "box", halfExtents: half, wireframe: true, color: 0xcc4455, collisionBoundary: true },
                         {
                             type: "lines",
                             positions: [

@@ -8,6 +8,7 @@ class K3Game {
 
         this.moveSpeed = 50;
         this.timeScale = 1;
+        this.showCollisionWireframes = true;
 
         this.keys = {};
 
@@ -249,6 +250,7 @@ class K3Game {
         window.addEventListener("keydown", (event) => {
 
             this.keys[event.code] = true;
+            if (event.code === "KeyH" && !event.repeat) this.toggleCollisionWireframes();
             if (this.shuttleSystem) this.shuttleSystem.handleKey(event);
 
         });
@@ -315,6 +317,12 @@ class K3Game {
 
         });
 
+    }
+
+    toggleCollisionWireframes() {
+        this.showCollisionWireframes = this.showCollisionWireframes === false;
+        const status = document.getElementById("collision-wireframes-status");
+        if (status) status.textContent = this.showCollisionWireframes ? "on" : "off";
     }
 
     adjustTimeScale(factor) {

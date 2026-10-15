@@ -25,7 +25,8 @@ function createStarScenes(parentSize, starCount, namePrefix) {
                             color: 0x3388ff,
                             widthSegments: 8,
                             heightSegments: 6,
-                            wireframe: true
+                            wireframe: true,
+                            collisionBoundary: true
                         },
                         {
                             type: "sphere",

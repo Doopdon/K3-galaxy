@@ -162,10 +162,10 @@ class K3Scene {
         } else {
             if (this.boundary.type === "box") {
                 return { type: "box", halfExtents: this.boundary.halfExtents,
-                    color: 0xffffff, wireframe: true };
+                    color: 0xffffff, wireframe: true, collisionBoundary: true };
             }
             return { type: "sphere", radius: this.size, color: 0xffffff,
-                widthSegments: 16, heightSegments: 16, wireframe: true };
+                widthSegments: 16, heightSegments: 16, wireframe: true, collisionBoundary: true };
         }
     }
 
