@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js — Flying Shapes Playground</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #10141b;
+      font-family: system-ui, sans-serif;
+    }
+
+    #help {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      color: white;
+      padding: 14px 18px;
+      background: rgba(0, 0, 0, .65);
+      border-radius: 10px;
+      line-height: 1.6;
+      pointer-events: none;
+    }
+
+    #help strong {
+      font-size: 16px;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="help">
+    <strong>Flying Shapes Playground</strong><br />
+    Click anywhere to lock the mouse and look around.<br />
+    WASD = fly around · Mouse = look · Space / Shift = up / down<br />
+    Hold Ctrl = fly faster · Esc = release mouse<br />
+    Reload = new random shapes
+  </div>
+
+  <!-- Import Three.js as an ES module; no installation or build step needed. -->
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
+
+    // ============================================================
+    // 1. BASIC SCENE SETUP
+    // ============================================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x10141b);
+
+    const camera = new THREE.PerspectiveCamera(
+      75,                                    // Field of view
+      window.innerWidth / window.innerHeight,
+      0.1,                                   // Near clipping distance
+      1000                                   // Far clipping distance
+    );
+    camera.position.set(0, 3, 18);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting makes the 3D shapes easier to see.
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x303040, 2));
+    const sunlight = new THREE.DirectionalLight(0xffffff, 2.5);
+    sunlight.position.set(8, 15, 10);
+    scene.add(sunlight);
+
+    // Helpful visual reference: the X, Y, and Z axes.
+    scene.add(new THREE.AxesHelper(3));
+
+    // ============================================================
+    // 2. MATERIALS (COLORS)
+    // ============================================================
+    const grayMaterial = new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      metalness: 0.2,
+      roughness: 0.55,
+      side: THREE.DoubleSide
+    });
+
+    const redMaterial = new THREE.MeshStandardMaterial({
+      color: 0xe53935,
+      metalness: 0.1,
+      roughness: 0.55,
+      side: THREE.DoubleSide
+    });
+
+    // ============================================================
+    // 3. SHAPE FUNCTIONS — EDIT THESE TO EXPERIMENT
+    // ============================================================
+
+    /**
+     * A gray donut-shaped ring (a torus).
+     *
+     * radius      = distance from center to the middle of the tube
+     * tubeRadius  = thickness of the tube
+     * position    = [x, y, z]
+     */
+
+    function makeRing(radius, ribbonWidth, position) {
+      const segments = 48;
+
+      const geometry = new THREE.CylinderGeometry(
+        radius,       // Top radius
+        radius,       // Bottom radius
+        ribbonWidth,  // Height of ribbon
+        segments,     // Sections around circle
+        1,            // One row of polygons
+        true          // No caps
+      );
+
+      const ring = new THREE.Mesh(geometry, grayMaterial);
+
+      ring.position.set(...position);
+      scene.add(ring);
+
+      return ring;
+    }
+
+
+    /**
+     * A flat, red disk with a circular hole in the middle.
+     *
+     * innerRadius = radius of the hole
+     * outerRadius = overall radius of the disk
+     * position    = [x, y, z]
+     *
+     * This uses RingGeometry, so the disk has no thickness.
+     */
+    function makeDiskWithHole(innerRadius, outerRadius, position) {
+      const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 64);
+      const disk = new THREE.Mesh(geometry, redMaterial);
+
+      disk.position.set(position[0], position[1], position[2]);
+      scene.add(disk);
+      return disk;
+    }
+
+    /**
+     * A gray cylinder with independently adjustable top/bottom diameters.
+     * Different diameters create a tapered cylinder (or cone).
+     *
+     * topDiameter    = width across the top
+     * bottomDiameter = width across the bottom
+     * height         = cylinder height
+     * position       = [x, y, z]
+     */
+
+
+    function makeCylinder(segments, position) {
+      const group = new THREE.Group();
+
+      // Total height of all segments
+      const totalHeight = segments.reduce(
+        (sum, segment) => sum + segment.height, 0
+      );
+
+      // Start at the bottom
+      let currentY = -totalHeight / 2;
+
+      for (const segment of segments) {
+        const topRadius = segment.top / 2;
+        const bottomRadius = segment.bottom / 2;
+        const height = segment.height;
+
+        const geometry = new THREE.CylinderGeometry(
+          topRadius,
+          bottomRadius,
+          height,
+          32,
+          1,
+          true // Open ends, no caps
+        );
+
+        const mesh = new THREE.Mesh(geometry, grayMaterial);
+
+        // Stack on top of previous segment
+        mesh.position.y = currentY + height / 2;
+
+        group.add(mesh);
+        currentY += height;
+      }
+
+      group.position.set(...position);
+      scene.add(group);
+
+      return group;
+    }
+
+    // ============================================================
+    // 4. RANDOM NUMBERS — NEW SHAPES ON EVERY RELOAD
+    // ============================================================
+
+    // Random decimal number between min and max.
+    function randomBetween(min, max) {
+      return min + Math.random() * (max - min);
+    }
+
+
+    function randomSpots(count, length, randomness = 0.5) {
+      const spacing = length / (count + 1);
+      const spots = [];
+
+      for (let i = 1; i <= count; i++) {
+        const center = i * spacing;
+        const offset = (Math.random() - 0.5) * spacing * randomness;
+
+        spots.push(center + offset);
+      }
+
+      return spots;
+    }
+
+    function randomShapeTypes(count) {
+      if (count < 2) {
+        throw new Error("Need at least 2 spots");
+      }
+
+      const types = Array(count).fill("ring");
+      types[0] = "disk";
+
+      let ringCount = count - 1;
+      let diskCount = 1;
+
+      for (let i = 1; i < count - 1; i++) {
+        if (
+          Math.random() < 0.5 &&
+          ringCount - 1 > diskCount + 1
+        ) {
+          types[i] = "disk";
+          ringCount--;
+          diskCount++;
+        }
+      }
+
+      return types;
+    }
+    // Random cylinder on the right.
+    const segments = [];
+
+    for (let i = 0; i < Math.floor(randomBetween(3, 14)); i++) {
+      segments.push({
+        top: .1 + Math.random() * .1,
+        bottom: .1 + Math.random() * .1,
+        height: 1 + Math.random() * 2
+      });
+    }
+
+    const spine = makeCylinder(segments, [0, 3, 0]);
+
+    length = segments.reduce((sum, segment) => sum + segment.height, 0);
+
+    // Rotate in radians
+    spine.rotation.z = Math.PI / 2; // 90 degrees
+
+    const spots = randomSpots(Math.floor(randomBetween(2, length / 2)), length);
+
+    const types = randomShapeTypes(spots.length);
+
+    for (let i = 0; i < spots.length; i++) {
+      if (types[i] === "ring") {
+        const ring = makeRing(
+          1.2,       // radius
+          randomBetween(0.2, 0.65),      // tube radius
+          [length / 2 - spots[i], 3, 0]                     // position [x, y, z]
+        );
+        ring.rotation.z = Math.PI / 2; // 90 degrees
+      } else {
+        // Random red disk in the middle. Outer radius always > inner radius.
+        const holeRadius = randomBetween(1.5, 2);
+        const disk = makeDiskWithHole(
+          holeRadius,                    // inner radius (hole)
+          holeRadius + randomBetween(2, 3.5), // outer radius
+          [length / 2 - spots[i], 3, 0]                      // position
+        );
+        disk.rotation.y = Math.PI / 2; // 90 degrees
+      }
+    }
+
+
+
+
+
+
+
+
+
+
+    // for (let i = 0; i < 3; i++) {
+
+
+    //   // Random ring on the left.
+    //   const ring = makeRing(
+    //     1.2,       // radius
+    //     randomBetween(0.2, 0.65),      // tube radius
+    //     [-1 - i, 3, 0]                     // position [x, y, z]
+    //   );
+    //   ring.rotation.z = Math.PI / 2; // 90 degrees
+    // }
+
+
+
+
+
+    // // Random red disk in the middle. Outer radius always > inner radius.
+    // const holeRadius = randomBetween(1.5, 2);
+    // const disk = makeDiskWithHole(
+    //   holeRadius,                    // inner radius (hole)
+    //   holeRadius + randomBetween(2, 3.5), // outer radius
+    //   [3, 3, 0]                      // position
+    // );
+    // disk.rotation.y = Math.PI / 2; // 90 degrees
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // ============================================================
+    // 5. MOUSE LOOK + FLYING WASD CONTROLS
+    // ============================================================
+    const keysDown = {};
+    const moveSpeed = 7;              // Change this to fly faster/slower
+    const mouseSensitivity = 0.002;   // Change this to adjust mouse look
+
+    let yaw = 0;    // Left/right looking angle, in radians
+    let pitch = 0;  // Up/down looking angle, in radians
+
+    renderer.domElement.addEventListener('click', () => {
+      renderer.domElement.requestPointerLock();
+    });
+
+    document.addEventListener('mousemove', (event) => {
+      if (document.pointerLockElement !== renderer.domElement) return;
+
+      yaw -= event.movementX * mouseSensitivity;
+      pitch -= event.movementY * mouseSensitivity;
+
+      // Prevent looking past straight up/down.
+      pitch = THREE.MathUtils.clamp(pitch, -Math.PI / 2 + 0.01, Math.PI / 2 - 0.01);
+      camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    });
+
+    document.addEventListener('keydown', (event) => {
+      keysDown[event.code] = true;
+      if (['Space', 'ArrowUp', 'ArrowDown'].includes(event.code)) event.preventDefault();
+    });
+    document.addEventListener('keyup', (event) => {
+      keysDown[event.code] = false;
+    });
+    window.addEventListener('blur', () => {
+      for (const key in keysDown) keysDown[key] = false;
+    });
+
+    const forward = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const movement = new THREE.Vector3();
+    const clock = new THREE.Clock();
+
+    function updateFlying(deltaSeconds) {
+      // Forward follows the direction the camera is looking (including up/down).
+      camera.getWorldDirection(forward);
+
+      // Right points perpendicular to the forward direction, relative to world up.
+      right.crossVectors(forward, camera.up).normalize();
+
+      movement.set(0, 0, 0);
+      if (keysDown.KeyW) movement.add(forward);
+      if (keysDown.KeyS) movement.sub(forward);
+      if (keysDown.KeyD) movement.add(right);
+      if (keysDown.KeyA) movement.sub(right);
+      if (keysDown.Space) movement.y += 1;
+      if (keysDown.ShiftLeft || keysDown.ShiftRight) movement.y -= 1;
+
+      // Normalize so diagonal movement isn't faster.
+      if (movement.lengthSq() > 0) movement.normalize();
+      const speed = moveSpeed * ((keysDown.ControlLeft || keysDown.ControlRight) ? 3 : 1);
+      camera.position.addScaledVector(movement, speed * deltaSeconds);
+    }
+
+    // ============================================================
+    // 6. RENDER LOOP + WINDOW RESIZING
+    // ============================================================
+    function animate() {
+      requestAnimationFrame(animate);
+      updateFlying(Math.min(clock.getDelta(), 0.05));
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+
+</html>

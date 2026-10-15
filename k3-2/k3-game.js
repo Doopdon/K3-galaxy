@@ -250,9 +250,6 @@ class K3Game {
 
             this.keys[event.code] = true;
             if (this.shuttleSystem) this.shuttleSystem.handleKey(event);
-            // Key repeat applies more steps while F or R is held down.
-            if (event.code === "KeyF") this.adjustTimeScale(1.1);
-            if (event.code === "KeyR") this.adjustTimeScale(1 / 1.1);
 
         });
 
@@ -266,6 +263,10 @@ class K3Game {
 
             this.keys[event.code] = false;
 
+        });
+
+        window.addEventListener("blur", () => {
+            this.keys = {};
         });
 
 
@@ -317,8 +318,15 @@ class K3Game {
     }
 
     adjustTimeScale(factor) {
-        this.timeScale = Math.max(0.01, Math.min(100, this.timeScale * factor));
+        if (!Number.isFinite(factor) || factor <= 0) return;
+        this.timeScale = Math.max(0.000001, Math.min(100, this.timeScale * factor));
         if (this.shuttleSystem) this.shuttleSystem.updateStatus();
+    }
+
+    updateAnimationSpeed(delta) {
+        const direction = Number(!!this.keys.KeyF) - Number(!!this.keys.KeyR);
+        // One second held changes time by 10x, independent of key repeat/FPS.
+        if (direction) this.adjustTimeScale(Math.pow(10, direction * delta));
     }
 
     adjustSpeed(factor) {
@@ -333,6 +341,8 @@ class K3Game {
     }
 
     updateControls(delta) {
+
+        this.updateAnimationSpeed(delta);
 
         let speed =
             this.moveSpeed *
@@ -830,7 +840,7 @@ class K3Game {
             const status = document.getElementById("ride-status");
             if (status && this.activeScene) {
                 status.textContent = this.activeScene.name + " | Speed: " +
-                    this.moveSpeed.toPrecision(4) + " | Time: " + this.timeScale.toFixed(2) + "x";
+                    this.moveSpeed.toPrecision(4) + " | Time: " + this.timeScale.toPrecision(3) + "x";
             }
         }
         if (this.shuttleSystem) this.shuttleSystem.syncLayers();

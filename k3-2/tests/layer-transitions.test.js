@@ -293,6 +293,29 @@ timeGame.updateSimulation(0.1);
 assert.ok(Math.abs(animationTime - 0.05) < 1e-10);
 console.log("PASS: shared animation time scaling, slower time, inverse adjustments, bounded simulation steps, and independent flight speed.");
 
+timeGame.timeScale = 1;
+timeGame.keys = { KeyR: true };
+for (let frame = 0; frame < 600; frame++) timeGame.updateAnimationSpeed(1 / 60);
+assert.equal(timeGame.timeScale, 0.000001);
+animationTime = 0;
+timeGame.updateSimulation(1);
+assert.ok(Math.abs(animationTime - 0.000001) < 1e-12);
+timeGame.keys = { KeyF: true };
+for (let frame = 0; frame < 600; frame++) timeGame.updateAnimationSpeed(1 / 60);
+assert.equal(timeGame.timeScale, 100);
+timeGame.keys = { KeyF: true, KeyR: true };
+timeGame.updateAnimationSpeed(1);
+assert.equal(timeGame.timeScale, 100);
+timeGame.timeScale = 1;
+timeGame.keys = { KeyR: true };
+for (let frame = 0; frame < 30; frame++) timeGame.updateAnimationSpeed(1 / 30);
+assert.ok(Math.abs(timeGame.timeScale - 0.1) < 1e-12);
+timeGame.timeScale = 1;
+for (let frame = 0; frame < 144; frame++) timeGame.updateAnimationSpeed(1 / 144);
+assert.ok(Math.abs(timeGame.timeScale - 0.1) < 1e-12);
+assert.equal(timeGame.moveSpeed, 50);
+console.log("PASS: held F/R controls, animation limits, near-still motion, and frame-rate independence.");
+
 // Overlapping interiors share one depth-tested scene, including different scales.
 function makeOverlapSphere(name, x, insideSize) {
     // This fixture also verifies compatibility with existing Object3D callbacks.
