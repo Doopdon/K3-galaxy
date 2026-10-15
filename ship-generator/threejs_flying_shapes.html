@@ -41,6 +41,7 @@
   </div>
 
   <!-- Import Three.js as an ES module; no installation or build step needed. -->
+  <script src="../k3-2/k3-colors.js"></script>
   <script src="./spaceship-generator.js"></script>
   <script type="module">
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
@@ -78,7 +79,7 @@
       color: 0x888888, metalness: 0.2, roughness: 0.55, side: THREE.DoubleSide
     });
     const redMaterial = new THREE.MeshStandardMaterial({
-      color: 0xe53935, metalness: 0.1, roughness: 0.55, side: THREE.DoubleSide
+      color: SpaceshipGenerator.diskColor, metalness: 0.1, roughness: 0.55, side: THREE.DoubleSide
     });
     const ship = SpaceshipGenerator.createObject(THREE, SpaceshipGenerator.generate(), {
       gray: grayMaterial, red: redMaterial

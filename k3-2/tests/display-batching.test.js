@@ -101,13 +101,29 @@ const THREE = { Vector3, Object3D, Euler, Quaternion, Group: Object3D, Scene: Ob
     MathUtils: { lerp: (a, b, t) => a + (b - a) * t } };
 const context = vm.createContext({ THREE, console, showWireFrames: false,
     document: { getElementById() { return null; } } });
-const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "../ship-generator/spaceship-generator.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
+const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-colors.js", "../ship-generator/spaceship-generator.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
     "k3-scenes/shuttle-scene.js", "k3-scenes/route-corridor.js", "k3-scenes/main-scene.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor, SpaceshipGenerator } =
     vm.runInContext(source + ";({ K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor, SpaceshipGenerator });", context);
 // The playground and cube previews use the same recipe and centered bounds.
 const recipe = SpaceshipGenerator.generate(() => 0.5);
+const palette = vm.runInContext("K3_COLORS", context);
+const savedRed = palette.red;
+const savedParticles = palette.particles;
+palette.red = 0xff0000;
+palette.particles = { color: null, innerBrightness: 1, outerBrightness: 0.35, falloff: 1.5, whiteMix: 0 };
+assert.deepEqual(Array.from(palette.particleColorAt(0)), [1, 0, 0]);
+assert.deepEqual(Array.from(palette.particleColorAt(1)), [0.35, 0, 0]);
+assert.equal(palette.particleColorAt(0.5)[1], 0, "brightness must not add white or change hue");
+palette.particles.outerBrightness = 1;
+assert.deepEqual(Array.from(palette.particleColorAt(0.5)), [1, 0, 0]);
+palette.particles.color = 0x00ff00;
+assert.deepEqual(Array.from(palette.particleColorAt(0)), [0, 1, 0]);
+palette.particles.whiteMix = 1;
+assert.deepEqual(Array.from(palette.particleColorAt(0)), [1, 1, 1]);
+palette.red = savedRed;
+palette.particles = savedParticles;
 const shipDescriptions = SpaceshipGenerator.describeOutside(recipe, 1);
 const restoredRecipe = JSON.parse(JSON.stringify(recipe));
 assert.equal(restoredRecipe.version, 1);
@@ -121,7 +137,7 @@ for (const part of shipDescriptions) {
     assert.equal(part.positions.length % 9, 0);
     assert.ok(part.positions.every(value => Number.isFinite(value) && Math.abs(value) <= 0.85 + 1e-9));
 }
-const shipMaterials = { gray: new Material({ color: 0x888888 }), red: new Material({ color: 0xe53935 }) };
+const shipMaterials = { gray: new Material({ color: 0x888888 }), red: new Material({ color: SpaceshipGenerator.diskColor }) };
 const playgroundShip = SpaceshipGenerator.createObject(
     { ...THREE, CylinderGeometry: Geometry, RingGeometry: Geometry }, recipe, shipMaterials);
 assert.equal(playgroundShip.children.length, recipe.parts.length);
@@ -199,10 +215,11 @@ let total = 0;
 for (const region of mainScene.children) {
     total += region.stars.length;
     const inside = region.createInside();
-    assert.equal(inside.children.length, 4);
+    assert.equal(inside.children.length, 5);
     assert.equal(inside.children[0].count, region.stars.length);
     assert.equal(inside.children[1].count, region.stars.length);
-    assert.equal(inside.children[2].count, region.connections.length);
+    assert.equal(inside.children[2].count, region.stars.length);
+    assert.equal(inside.children[3].count, region.connections.length);
     assert.equal(region.corridors.length, region.connections.length);
     assert.ok(region.corridors.every(corridor => corridor.parent === region && corridor.children.length === 3));
     const outside = region.createOutside();

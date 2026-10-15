@@ -39,11 +39,7 @@ function createGlowingStarInterior(scene) {
         orbits[i * 2 + 1] = Math.sqrt(14 / (radius * radius * radius)) *
             (Math.random() < 0.5 ? -1 : 1);
 
-        const brightness = THREE.MathUtils.lerp(1, 0.045, 1 - Math.pow(1 - t, 3.5));
-        const hotCore = Math.pow(1 - t, 3);
-        colors[i * 3] = brightness;
-        colors[i * 3 + 1] = brightness * (0.02 + 0.75 * hotCore);
-        colors[i * 3 + 2] = brightness * (0.005 + 0.55 * hotCore);
+        colors.set(K3_COLORS.particleColorAt(t), i * 3);
         for (let j = 0; j < 3; j++) {
             axisA[i * 3 + j] = a.getComponent(j);
             axisB[i * 3 + j] = b.getComponent(j);
@@ -100,7 +96,10 @@ function createGlowingStarInterior(scene) {
         if (shader.fragmentShader) {
             shader.fragmentShader = "varying float swarmVisible;\n" +
                 shader.fragmentShader.replace("#include <clipping_planes_fragment>",
-                    "#include <clipping_planes_fragment>\nif (swarmVisible < 0.5) discard;");
+                    `#include <clipping_planes_fragment>
+                    if (swarmVisible < 0.5) discard;
+                    vec2 pointOffset = gl_PointCoord - vec2(0.5);
+                    if (dot(pointOffset, pointOffset) > 0.25) discard;`);
         }
     };
     const cloud = new THREE.Points(geometry, material);

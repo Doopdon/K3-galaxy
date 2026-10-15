@@ -1,6 +1,7 @@
 // Shared by the Flying Shapes playground and the K3 swarm cube scenes.
 // A recipe contains only shape data, so each viewer can choose its renderer.
 const SpaceshipGenerator = {
+    get diskColor() { return K3_COLORS.red; },
     generate(random = Math.random) {
         const between = (min, max) => min + random() * (max - min);
         const segments = [];
@@ -40,7 +41,7 @@ const SpaceshipGenerator = {
             } else {
                 const innerRadius = between(1.5, 2);
                 parts.push({ id: "disk-" + index, role: "disk", type: "disk", x, innerRadius,
-                    outerRadius: innerRadius + between(2, 3.5), color: 0xe53935 });
+                    outerRadius: innerRadius + between(2, 3.5), color: this.diskColor });
             }
         }
         // Plain data survives JSON serialization and can seed deeper scenes;

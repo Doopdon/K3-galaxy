@@ -24,7 +24,7 @@ class RouteCorridor extends K3Scene {
                                 0, 0, -length / 2,
                                 0, 0, length / 2
                             ],
-                            color: 0x00ff00
+                            color: K3_COLORS.lineRed
                         }
                     ]
                 };
