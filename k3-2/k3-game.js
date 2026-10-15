@@ -795,6 +795,7 @@ class K3Game {
             window.innerWidth,
             window.innerHeight
         );
+        if (this.galaxyEffects) this.galaxyEffects.resize(window.innerWidth, window.innerHeight);
 
     }
 
@@ -947,10 +948,27 @@ class K3Game {
             }
         }
 
-        this.renderer.clear();
-        this.renderStarBackground();
+        // Keep the galactic ancestor glowing, then overlay closer layers with
+        // their own depth buffers and normal exposure, outside postprocessing.
+        if (this.mode === "inside" && this.layers[0].node === this.rootScene &&
+            typeof K3GalaxyEffects !== "undefined" && K3_COLORS.galaxyEffects.enabled) {
+            if (!this.galaxyEffects) this.galaxyEffects = new K3GalaxyEffects(this);
+            if (this.galaxyEffects.render()) {
+                this.renderLayerStack(1, this.layers.length, false);
+                return;
+            }
+        }
+        this.renderLayerStack();
+    }
+
+    renderLayerStack(start = 0, end = this.layers.length, clear = true) {
+        if (clear) {
+            this.renderer.clear();
+            this.renderStarBackground();
+        }
         // Ancestors first; clear only depth so local objects draw on top.
-        for (const layer of this.layers) {
+        for (let index = start; index < end; index++) {
+            const layer = this.layers[index];
             this.renderer.clearDepth();
             this.renderer.render(layer.scene, layer.camera);
         }

@@ -63,6 +63,7 @@ class K3Display {
             depthTest: description.depthTest ?? true,
             depthWrite: description.depthWrite ?? true
         };
+        if (description.additive) style.additive = true;
         if (style.type === "sphere") {
             style.widthSegments = description.widthSegments ?? 16;
             style.heightSegments = description.heightSegments ?? 12;
@@ -97,6 +98,7 @@ class K3Display {
             opacity: style.opacity, transparent: style.transparent,
             depthTest: style.depthTest, depthWrite: style.depthWrite
         };
+        if (style.additive) materialOptions.blending = THREE.AdditiveBlending;
         if (style.type === "sphere" || style.type === "box") {
             const geometry = style.type === "sphere"
                 ? new THREE.SphereGeometry(1, style.widthSegments, style.heightSegments)

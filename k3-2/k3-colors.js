@@ -3,6 +3,15 @@ const K3_COLORS = {
     red: 0x990000,//0x7a2b1d,
     galaxyStarColor: 0xffdd66, // Galactic-scale star markers; reload after editing.
     lineBrightness: 1.5, // Galaxy connections are brighter than the base red.
+    galaxyEffects: {
+        enabled: true, // Set false and reload to disable the galactic glow/haze.
+        bloomStrength: 0.95,
+        bloomRadius: 0.72,
+        bloomThreshold: 0.06,
+        exposure: 1.12,
+        fogDensity: 0.00024,
+        lineOpacity: 0.78
+    },
 
     particles: {
         color: null,          // null uses red above; or set a hex color here.

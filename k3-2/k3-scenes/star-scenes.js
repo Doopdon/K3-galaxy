@@ -116,7 +116,11 @@ function createRegionPreview(scene) {
         entries.push({ node, appearance: {
             type: "lines",
             positions: [0, 0, -node.length / 2, 0, 0, node.length / 2],
-            color: K3_COLORS.lineRed
+            color: K3_COLORS.lineRed,
+            ...(K3_COLORS.galaxyEffects.enabled ? {
+                transparent: true, opacity: K3_COLORS.galaxyEffects.lineOpacity,
+                depthWrite: false, additive: true
+            } : {})
         } });
     }
     const preview = K3Display.create(entries);
