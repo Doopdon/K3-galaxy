@@ -42,6 +42,7 @@ class K3Display {
     }
 
     static vertexCapacity(appearance) {
+        if (appearance.type === "pointStream") return appearance.count;
         if (appearance.type === "point") return 1;
         if (appearance.type === "dashes") {
             const period = (appearance.dashSize ?? 4) + (appearance.gapSize ?? 4);
@@ -52,7 +53,7 @@ class K3Display {
     }
 
     static style(description) {
-        if (!description || !["sphere", "box", "point", "lines", "dashes", "triangles"].includes(description.type)) {
+        if (!description || !["sphere", "box", "point", "pointStream", "lines", "dashes", "triangles"].includes(description.type)) {
             throw new Error("Unsupported outside appearance description.");
         }
         const style = {
@@ -68,7 +69,7 @@ class K3Display {
             style.wireframe = description.wireframe ?? false;
         } else if (style.type === "box") {
             style.wireframe = description.wireframe ?? false;
-        } else if (style.type === "point") {
+        } else if (style.type === "point" || style.type === "pointStream") {
             style.size = description.size ?? 3;
             style.sizeAttenuation = description.sizeAttenuation ?? false;
         } else {
@@ -110,11 +111,33 @@ class K3Display {
             geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
             geometry.attributes.position.setUsage(THREE.DynamicDrawUsage);
             geometry.attributes.color.setUsage(THREE.DynamicDrawUsage);
-            if (style.type === "point") {
+            if (style.type === "point" || style.type === "pointStream") {
                 batch.object = new THREE.Points(geometry, new THREE.PointsMaterial({
                     ...materialOptions, vertexColors: true, size: style.size,
                     sizeAttenuation: style.sizeAttenuation
                 }));
+                if (style.type === "pointStream") {
+                    geometry.setAttribute("stream", new THREE.BufferAttribute(new Float32Array(count * 4), 4));
+                    geometry.setAttribute("streamAxis", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+                    geometry.setAttribute("streamLateral", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
+                    batch.streamTime = { value: 0 };
+                    batch.object.material.onBeforeCompile = shader => {
+                        shader.uniforms.streamTime = batch.streamTime;
+                        shader.vertexShader = `uniform float streamTime;
+                            attribute vec4 stream;
+                            attribute vec3 streamAxis;
+                            attribute vec3 streamLateral;\n` + shader.vertexShader.replace("#include <begin_vertex>", `
+                            float phase = mod(stream.x + stream.y * streamTime, 2.0 * stream.z);
+                            float direction = phase < stream.z ? 1.0 : -1.0;
+                            float along = phase < stream.z ? phase - stream.z * 0.5 : stream.z * 1.5 - phase;
+                            vec3 transformed = position + streamAxis * along + streamLateral * direction * stream.w;
+                        `);
+                        if (shader.fragmentShader) shader.fragmentShader = shader.fragmentShader.replace(
+                            "#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>
+                            vec2 offset = gl_PointCoord - vec2(0.5);
+                            if (dot(offset, offset) > 0.25) discard;`);
+                    };
+                }
             } else if (style.type === "triangles") {
                 batch.object = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
                     ...materialOptions, vertexColors: true, side: THREE.DoubleSide
@@ -156,9 +179,10 @@ class K3Display {
             if (state.x !== x || state.y !== y || state.z !== z || state.angle !== angle ||
                 state.pitch !== pitch || state.roll !== roll ||
                 state.halfX !== half[0] || state.halfY !== half[1] || state.halfZ !== half[2] ||
+                state.streamVersion !== appearance.version ||
                 state.visible !== visible || state.radius !== radius || state.color !== color) changed = true;
             Object.assign(state, { x, y, z, angle, pitch, roll, visible, radius, color,
-                halfX: half[0], halfY: half[1], halfZ: half[2] });
+                halfX: half[0], halfY: half[1], halfZ: half[2], streamVersion: appearance.version });
         });
         return changed;
     }
@@ -173,6 +197,7 @@ class K3Display {
             }
         }
         for (const batch of this.batches) {
+            if (batch.streamTime) batch.streamTime.value = time;
             // Parent-frame motion changes only the containing group. Do not
             // regenerate/upload thousands of unchanged local positions each frame.
             if (!this.needsUpdate(batch)) continue;
@@ -216,7 +241,27 @@ class K3Display {
                         nodes.push(node);
                         count++;
                     };
-                    if (batch.style.type === "dashes") {
+                    if (batch.style.type === "pointStream") {
+                        const axis = new THREE.Vector3(0, 0, 1);
+                        const lateral = new THREE.Vector3(1, 0, 0);
+                        if (node) {
+                            node.rotateFramePosition(axis, false, node.spinAngle);
+                            node.rotateFramePosition(lateral, false, node.spinAngle);
+                        }
+                        for (let index = 0; index < appearance.count; index++) {
+                            if (appearance.hiddenIndices.has(index)) continue;
+                            object.geometry.attributes.stream.array.set([
+                                index / appearance.count * appearance.span * 2,
+                                appearance.speed, appearance.span, appearance.laneOffset
+                            ], count * 4);
+                            object.geometry.attributes.streamAxis.array.set([axis.x, axis.y, axis.z], count * 3);
+                            object.geometry.attributes.streamLateral.array.set([lateral.x, lateral.y, lateral.z], count * 3);
+                            writeVertex(0, 0, 0);
+                        }
+                        object.geometry.attributes.stream.needsUpdate = true;
+                        object.geometry.attributes.streamAxis.needsUpdate = true;
+                        object.geometry.attributes.streamLateral.needsUpdate = true;
+                    } else if (batch.style.type === "dashes") {
                         const length = appearance.length;
                         const dash = appearance.dashSize ?? 4;
                         const period = dash + (appearance.gapSize ?? 4);

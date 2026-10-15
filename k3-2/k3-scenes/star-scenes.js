@@ -104,15 +104,19 @@ function connectionPositions(connections) {
     return positions;
 }
 
-// A region's chosen outside model: white points plus distant animated links.
+// Galactic overview: white star points and solid route lines. Entering the
+// region reveals corridor dot streams; entering a corridor reveals shuttles.
 // Both decorations use the same generic batcher as ordinary child displays.
 function createRegionPreview(scene) {
     const entries = scene.stars.map(node => ({
         node, appearance: { type: "point", color: 0xffffff, size: 3 }
     }));
     for (const node of scene.corridors) {
-        // Reuse the corridor's line description, without its box or children.
-        entries.push({ node, appearance: node.describeOutside().parts[1] });
+        entries.push({ node, appearance: {
+            type: "lines",
+            positions: [0, 0, -node.length / 2, 0, 0, node.length / 2],
+            color: K3_COLORS.lineRed
+        } });
     }
     const preview = K3Display.create(entries);
     preview.scale.setScalar(scene.size / scene.insideSize);

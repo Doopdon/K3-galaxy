@@ -221,11 +221,15 @@ for (const region of mainScene.children) {
     assert.equal(inside.children[2].count, region.stars.length);
     assert.equal(inside.children[3].count, region.connections.length);
     assert.equal(region.corridors.length, region.connections.length);
-    assert.ok(region.corridors.every(corridor => corridor.parent === region && corridor.children.length === 3));
+    assert.ok(region.corridors.every(corridor => corridor.parent === region && corridor.children.length === 8));
     const outside = region.createOutside();
     const preview = outside.children[0];
     assert.equal(preview.children.length, 2);
     assert.equal(preview.children[0].geometry.drawRange.count, region.stars.length);
+    const overviewRoutes = preview.children[1];
+    assert.equal(overviewRoutes.geometry.drawRange.count, region.connections.length * 2);
+    assert.equal(overviewRoutes.geometry.attributes.stream, undefined, "galactic routes must be solid lines");
+    assert.ok(inside.children[4].geometry.attributes.stream, "region routes must use moving dot streams");
     const positions = preview.children[0].geometry.attributes.position.array;
     assert.ok(Math.abs(positions[0] * preview.scale.x - region.children[0].position.x * region.size / region.insideSize) < 1e-4);
 }
@@ -366,18 +370,17 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
     diagnostic.exit();
     diagnostic.enter(corridor);
     record("corridor overlap");
-    const ship = corridor.children[1];
-    ship.position.copy(corridor.parentToLocal(new Vector3(5, 0, 0)));
+    let ship = corridor.children.find(child => child.enabled);
     diagnostic.camera.position.copy(ship.position);
     diagnostic.updateSceneTransitions();
-    assert.equal(diagnostic.activeScene, ship);
+    assert.ok(diagnostic.activeScene === ship, "expected occupied diagnostic shuttle");
     record("inside ship at star");
     const loadsBefore = loads;
     for (let frame = 0; frame < 120; frame++) record("ship frame " + frame);
     assert.equal(loads, loadsBefore, "stationary ship must not reload the star");
     for (let frame = 0; frame < 120; frame++) {
-        diagnostic.updateSimulation(0.001);
-        assert.equal(diagnostic.activeScene, ship);
+        diagnostic.updateSimulation(0.0001);
+        assert.ok(diagnostic.activeScene === ship, "expected occupied diagnostic shuttle");
         record("moving ship frame " + frame);
     }
     assert.equal(loads, loadsBefore, "moving ship must not reload the star");
@@ -386,11 +389,12 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
     for (let crossing = 0; crossing < 5; crossing++) {
         diagnostic.camera.position.set(0, 1001, 0);
         diagnostic.updateSceneTransitions();
-        assert.equal(diagnostic.activeScene, corridor);
+        assert.ok(diagnostic.activeScene === corridor, "expected corridor after leaving diagnostic shuttle");
         record("exit ship " + crossing);
+        ship = corridor.children.find(child => child.enabled);
         diagnostic.camera.position.copy(ship.position);
         diagnostic.updateSceneTransitions();
-        assert.equal(diagnostic.activeScene, ship);
+        assert.ok(diagnostic.activeScene === ship, "expected occupied diagnostic shuttle");
         record("reenter ship " + crossing);
     }
     const ratio = frame => frame.pointSize / frame.swarmRadius;
@@ -546,8 +550,9 @@ for (const endpoint of [[100,80,160],[0,100,0],[100,0,0]]) {
     assert.ok(corridor.parentToLocal(corridor.localToParent(local.clone())).distanceTo(local)<1e-9);
     assert.ok(corridor.containsPosition(corridor.localToParent(new Vector3(9,9,0))));
     assert.ok(!corridor.containsPosition(corridor.localToParent(new Vector3(11,0,0))));
-    assert.equal(corridor.children.length,3);
+    assert.equal(corridor.children.length,8);
     assert.ok(corridor.children.every(child=>child.parent===corridor));
+    corridor.selectNearbyTraffic(new Vector3(0,0,0), 0);
     const before = corridor.children[0].position.clone();
     corridor.updateTraffic(0.2);
     assert.ok(before.distanceTo(corridor.children[0].position)>0);
@@ -563,7 +568,7 @@ const rideGame = Object.create(K3Game.prototype);
 Object.assign(rideGame,{layers:[],worldRoot:new Object3D(),threeScene:new Object3D(),camera:new Camera(),
     activeScene:null,mode:"outside",moveSpeed:50,timeScale:1,renderer:{clear(){},clearDepth(){},render(){}}});
 rideGame.load(routeRoot); rideGame.enter(routeRoot);
-// A point inside the box but away from all three shuttles and endpoint stars.
+// A point inside the box but away from the traffic lanes and endpoint stars.
 const localCamera = new Vector3(8,7,0);
 rideGame.camera.position.copy(corridor.localToParent(localCamera.clone()));
 rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,region);
@@ -574,9 +579,38 @@ rideGame.renderLayers();
 assert.ok(rideGame.layers[1].camera.position.distanceTo(corridor.localToParent(localCamera.clone()))<1e-9);
 const parentHeading = rideGame.layers[1].camera.quaternion;
 assert.ok(Math.abs(parentHeading.x-originalHeading.x)+Math.abs(parentHeading.y-originalHeading.y)+Math.abs(parentHeading.z-originalHeading.z)<1e-8);
-assert.equal(rideGame.worldRoot.children.length,1); // Only this corridor's craft batch.
-assert.equal(rideGame.worldRoot.children[0].count,3);
-const shuttle = corridor.children[0];
+assert.equal(rideGame.worldRoot.children.length,3); // Stream, collision boxes, batched ship surfaces.
+const trafficPoints = rideGame.worldRoot.children[0].children[0];
+const promotedTraffic = corridor.traffic.filter(craft => craft.shuttle.enabled);
+assert.ok(rideGame.worldRoot.children[2].geometry.drawRange.count > 0);
+const shipVertexCount = rideGame.worldRoot.children[2].geometry.drawRange.count;
+for (const craft of promotedTraffic) {
+    assert.ok(craft.shuttle.shipData.parts.some(part => part.role === "spine"));
+    assert.equal(craft.shuttle.rotation, -craft.direction * Math.PI / 2);
+}
+rideGame.toggleCollisionWireframes();
+rideGame.renderLayers();
+assert.equal(rideGame.worldRoot.children[1].count, 0);
+assert.equal(rideGame.worldRoot.children[2].geometry.drawRange.count, shipVertexCount);
+rideGame.toggleCollisionWireframes();
+rideGame.renderLayers();
+assert.equal(trafficPoints.geometry.drawRange.count, corridor.stream.count - promotedTraffic.length);
+assert.equal(corridor.stream.hiddenIndices.size, promotedTraffic.length);
+const trafficGeometry = trafficPoints.geometry;
+const trafficShader = { uniforms: {}, vertexShader: "#include <begin_vertex>",
+    fragmentShader: "#include <clipping_planes_fragment>" };
+trafficPoints.material.onBeforeCompile(trafficShader);
+const versionBeforeTime = corridor.stream.version;
+trafficPoints.geometry.attributes.position.needsUpdate = false;
+rideGame.worldRoot.children[0].userData.k3Display.update(3);
+assert.equal(trafficShader.uniforms.streamTime.value, 3);
+assert.equal(trafficPoints.geometry, trafficGeometry);
+assert.equal(trafficPoints.geometry.attributes.position.needsUpdate, false,
+    "distant dot animation must use the GPU clock without vertex uploads");
+assert.equal(corridor.stream.version, versionBeforeTime);
+assert.ok(trafficShader.fragmentShader.includes("dot(offset, offset) > 0.25"));
+const shuttle = corridor.children.find(child => child.enabled);
+assert.ok(shuttle);
 rideGame.camera.position.copy(shuttle.position);
 rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,shuttle);
 assert.equal(rideGame.worldRoot.children[0].material.color,0xff6600);
@@ -589,7 +623,7 @@ rideGame.camera.position.set(11,0,0);
 const expectedExit = corridor.localToParent(rideGame.camera.position.clone());
 rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,region);
 assert.ok(rideGame.camera.position.distanceTo(expectedExit)<1e-8);
-// Static corridor lines reuse geometry and remain unrelated to traffic movement.
+// Stream geometry stays fixed while its shader clock animates traffic.
 const outside = corridor.createOutside();
 assert.equal(outside.children.length,2);
 const dashMesh = outside.children[1];
@@ -601,10 +635,11 @@ outside.userData.k3Display.update(0.1);
 assert.equal(dashMesh.geometry,dashGeometry);
 assert.equal(geometryCount,resourceCount);
 assert.deepEqual(Array.from(dashGeometry.attributes.position.array), oldPositions);
+assert.equal(dashMesh.geometry.attributes.stream.array.length, corridor.outsideStream.count * 4);
 assert.equal(shuttle.position.distanceTo(oldShuttle),0);
-// Many corridor descriptions share two batches, irrespective of their orientation/length.
+// Corridor boxes and point streams batch irrespective of orientation/length.
 const regionOutside = region.createInside();
-assert.equal(regionOutside.children.length,3); // Stars, boxes, dashes; no shuttles.
+assert.equal(regionOutside.children.length,3); // Stars, corridor boxes, streams; no shuttle bodies.
 const starBatch = regionOutside.children[0];
 assert.equal(starBatch.count,2);
 assert.equal(regionOutside.children[1].count,1);
@@ -627,6 +662,42 @@ assert.ok(!scaledBox.containsPosition(scaledBox.localToParent(new Vector3(21,0,0
 const coincident = new RouteCorridor(a,a,"Coincident endpoints");
 coincident.updateTraffic(1000);
 assert.ok(coincident.children.every(child=>Number.isFinite(child.position.z)));
+
+// A heavily populated route still owns only eight full shuttle scenes.
+const busy = new RouteCorridor(new K3Scene({size:0.1}),
+    new K3Scene({size:0.1,position:[0,0,1000]}), "Busy route");
+assert.equal(busy.children.length, 8);
+assert.equal(busy.stream.count, 128);
+const forward = new Vector3(), reverse = new Vector3();
+busy.trafficPosition(5, 0, forward);
+busy.trafficPosition(69, 0, reverse);
+const nextForward = new Vector3(), nextReverse = new Vector3();
+busy.trafficPosition(5, 0.01, nextForward);
+busy.trafficPosition(69, 0.01, nextReverse);
+assert.ok(Math.abs(nextForward.z - forward.z - 0.2) < 1e-9);
+assert.ok(Math.abs(nextReverse.z - reverse.z + 0.2) < 1e-9);
+assert.equal(forward.x, -reverse.x);
+busy.selectNearbyTraffic(forward, 0);
+const occupiedTraffic = busy.traffic.find(craft => craft.particleIndex === 5);
+assert.ok(occupiedTraffic && occupiedTraffic.shuttle.enabled);
+assert.ok(occupiedTraffic.shuttle.position.distanceTo(forward) < 1e-9);
+assert.ok(busy.stream.hiddenIndices.has(5));
+busy.game = { activeScene: occupiedTraffic.shuttle, simulationTime: 0.01 };
+busy.updateTraffic(0.01);
+assert.ok(occupiedTraffic.shuttle.position.distanceTo(nextForward) < 1e-9);
+busy.selectNearbyTraffic(new Vector3(10000,10000,10000), 0.01);
+assert.equal(occupiedTraffic.particleIndex, 5, "occupied traffic must not be recycled");
+const turnaround = (busy.stream.span - 5 / busy.stream.count * busy.stream.span * 2) / busy.stream.speed;
+const beforeTurn = new Vector3(), afterTurn = new Vector3();
+busy.trafficPosition(5, turnaround - 0.0001, beforeTurn);
+busy.trafficPosition(5, turnaround + 0.0001, afterTurn);
+assert.ok(Math.abs(beforeTurn.z - afterTurn.z) < 1e-8, "traffic must turn at the end, not teleport to the start");
+busy.game.activeScene = busy;
+busy.selectNearbyTraffic(null, 0.01);
+assert.ok(busy.children.every(child => !child.enabled));
+assert.equal(busy.stream.hiddenIndices.size, 0);
+assert.equal(busy.children.length, 8);
+console.log("PASS: opposing GPU dot streams, exact shuttle handoff, fixed pool, occupied identity, endpoint turns and dot restoration.");
 console.log("PASS: graph-to-corridor ownership, diagonal/vertical box transforms, normal nested entry/exit, local shuttle motion, dashed animation and unchanged buffers.");
 
 // Boundary rotations must never become mouse-look or user-roll angles.

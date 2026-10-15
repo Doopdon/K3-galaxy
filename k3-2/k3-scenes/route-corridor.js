@@ -1,4 +1,10 @@
 // One logical scene per existing graph edge. Local +Z points from A to B.
+const K3_ROUTE_SHIPS = {
+    maxVisible: 8,
+    revealDistance: 80, // Multiples of shuttle boundary radius (previously 20).
+    modelScale: 0.4
+};
+
 class RouteCorridor extends K3Scene {
     constructor(starA, starB, name) {
         const a = starA.position, b = starB.position;
@@ -15,47 +21,114 @@ class RouteCorridor extends K3Scene {
             pitch: -Math.atan2(dy, Math.hypot(dx, dz)),
             boundary: { type: "box", halfExtents: half },
             revealOnOverlap: false,
-            makeOutside() {
+            makeOutside(scene) {
                 return {
                     type: "group", parts: [
                         { type: "box", halfExtents: half, wireframe: true, color: 0xcc4455, collisionBoundary: true },
-                        {
-                            type: "lines",
-                            positions: [
-                                0, 0, -length / 2,
-                                0, 0, length / 2
-                            ],
-                            color: K3_COLORS.lineRed
-                        }
+                        scene.outsideStream
                     ]
                 };
             },
+            makeInside: scene => K3Display.create([{ node: null, appearance: scene.stream }]),
             onUpdate(scene, delta) { scene.updateTraffic(delta); }
         });
         this.endpoints = [starA, starB];
         this.length = length;
+        const shuttleSize = Math.min(halfWidth * 0.3, half[2] / 4);
+        const span = Math.max(half[2] * 2 - shuttleSize * 2, halfWidth * 0.001);
+        // Keep physical vehicles separated, including on short routes. Long
+        // routes show up to 64 vehicles in each direction with a bounded pool.
+        const perLane = Math.max(1, Math.min(64, 2 ** Math.floor(Math.log2(Math.max(1, span / (shuttleSize * 6))))));
+        this.stream = { type: "pointStream", count: perLane * 2, size: 2,
+            span,
+            laneOffset: halfWidth * 0.4, speed: 20, color: K3_COLORS.lineRed,
+            hiddenIndices: new Set(), version: 0 };
+        // Distant views sample the same stream at a lower density.
+        this.outsideStream = { ...this.stream, count: Math.min(32, this.stream.count), hiddenIndices: new Set() };
+        this.trafficTime = 0;
         this.traffic = [];
-        for (let index = 0; index < 3; index++) {
+        for (let index = 0; index < K3_ROUTE_SHIPS.maxVisible; index++) {
             const shuttle = new Shuttle(name + " / Shuttle " + (index + 1));
-            shuttle.size = Math.min(halfWidth * 0.3, half[2] / 4);
+            const describeBoundary = shuttle.makeOutside;
+            let shipParts = null;
+            shuttle.makeOutside = node => {
+                // Generate only when this corridor is opened, not for every
+                // pooled shuttle across the entire galaxy at startup.
+                if (!shipParts) {
+                    node.shipData = SpaceshipGenerator.generate();
+                    const modelRadius = node.size * K3_ROUTE_SHIPS.modelScale;
+                    node.shipData.outsideScale = SpaceshipGenerator.fitScale(node.shipData, modelRadius);
+                    node.shipData.insideScale = node.shipData.outsideScale * node.insideSize / node.size;
+                    shipParts = SpaceshipGenerator.describeOutside(node.shipData, modelRadius);
+                }
+                return { type: "group", parts: [describeBoundary(node), ...shipParts] };
+            };
+            shuttle.size = shuttleSize;
             shuttle.boundary.halfExtents = [shuttle.size, shuttle.size, shuttle.size];
             const limit = Math.max(0, half[2] - shuttle.size);
             shuttle.position.set((index - 1) * halfWidth * 0.4, 0, (index - 1) * limit * 0.6);
             this.add(shuttle);
-            this.traffic.push({ shuttle, limit, speed: 20, direction: index % 2 ? -1 : 1 });
+            shuttle.enabled = false;
+            this.traffic.push({ shuttle, limit, speed: 20, direction: 1, particleIndex: -1 });
+        }
+        this.refreshNearbyChildren = (position, time) => this.selectNearbyTraffic(position, time);
+    }
+
+    trafficPosition(index, time, target) {
+        const { span, count, speed, laneOffset } = this.stream;
+        const phase = ((index / count * span * 2 + speed * time) % (span * 2) + span * 2) % (span * 2);
+        const direction = phase < span ? 1 : -1;
+        target.set(direction * laneOffset, 0, phase < span ? phase - span / 2 : span * 1.5 - phase);
+        return direction;
+    }
+
+    selectNearbyTraffic(position, time) {
+        let occupied = this.game && this.game.activeScene;
+        while (occupied && occupied.parent !== this) occupied = occupied.parent;
+        const pinned = this.traffic.find(craft => craft.shuttle === occupied);
+        const nearby = [];
+        const point = new THREE.Vector3();
+        const range = this.traffic[0].shuttle.size * K3_ROUTE_SHIPS.revealDistance;
+        if (position) for (let index = 0; index < this.stream.count; index++) {
+            if (pinned && pinned.particleIndex === index) continue;
+            this.trafficPosition(index, time, point);
+            const distance = point.distanceTo(position);
+            if (distance < range) nearby.push({ index, distance });
+        }
+        nearby.sort((a, b) => a.distance - b.distance);
+        const chosen = new Set(nearby.slice(0, this.traffic.length - (pinned ? 1 : 0)).map(item => item.index));
+        if (pinned) chosen.add(pinned.particleIndex);
+        let changed = false;
+        for (const craft of this.traffic) {
+            if (craft.particleIndex >= 0 && !chosen.has(craft.particleIndex)) {
+                this.stream.hiddenIndices.delete(craft.particleIndex);
+                craft.particleIndex = -1;
+                craft.shuttle.enabled = false;
+                changed = true;
+            }
+        }
+        for (const index of chosen) {
+            if (this.traffic.some(craft => craft.particleIndex === index)) continue;
+            const craft = this.traffic.find(entry => entry.particleIndex < 0);
+            craft.particleIndex = index;
+            craft.shuttle.enabled = true;
+            this.stream.hiddenIndices.add(index);
+            changed = true;
+        }
+        if (changed) this.stream.version++;
+        for (const craft of this.traffic) if (craft.shuttle.enabled) {
+            craft.direction = this.trafficPosition(craft.particleIndex, time, craft.shuttle.position);
+            craft.shuttle.rotation = -craft.direction * Math.PI / 2;
         }
     }
 
     updateTraffic(delta) {
-        // Reflected motion along local Z, independent of the dotted-line phase.
+        this.trafficTime = this.game ? (this.game.simulationTime || 0) : this.trafficTime + delta;
         for (const craft of this.traffic) {
-            const span = craft.limit * 2;
-            if (span === 0) continue;
-            const z = craft.shuttle.position.z + craft.limit;
-            let phase = craft.direction > 0 ? z : span * 2 - z;
-            phase = (phase + craft.speed * delta) % (span * 2);
-            craft.direction = phase < span ? 1 : -1;
-            craft.shuttle.position.z = (phase < span ? phase : span * 2 - phase) - craft.limit;
+            if (craft.shuttle.enabled) {
+                craft.direction = this.trafficPosition(craft.particleIndex, this.trafficTime, craft.shuttle.position);
+                craft.shuttle.rotation = -craft.direction * Math.PI / 2;
+            }
         }
     }
 }
