@@ -33,6 +33,12 @@ class Object3D {
 }
 class Euler {
     constructor(x, y, z, order) { Object.assign(this, {x,y,z,order}); }
+    setFromQuaternion(q, order) {
+        const owner = { rotation: {} };
+        new Quaternion(owner).copy(q);
+        Object.assign(this, owner.rotation, { order });
+        return this;
+    }
 }
 class Quaternion {
     constructor(owner = null) { Object.assign(this, {x:0,y:0,z:0,w:1,owner}); }
@@ -41,6 +47,16 @@ class Quaternion {
         const s1=Math.sin(e.x/2),s2=Math.sin(e.y/2),s3=Math.sin(e.z/2);
         Object.assign(this,{x:s1*c2*c3+c1*s2*s3,y:c1*s2*c3-s1*c2*s3,
             z:c1*c2*s3-s1*s2*c3,w:c1*c2*c3+s1*s2*s3});
+        return this;
+    }
+    setFromAxisAngle(axis, angle) {
+        const sine = Math.sin(angle / 2);
+        Object.assign(this, { x: axis.x*sine, y: axis.y*sine, z: axis.z*sine, w: Math.cos(angle / 2) });
+        return this;
+    }
+    normalize() {
+        const length = Math.hypot(this.x, this.y, this.z, this.w);
+        this.x/=length; this.y/=length; this.z/=length; this.w/=length;
         return this;
     }
     copy(q) { Object.assign(this,{x:q.x,y:q.y,z:q.z,w:q.w}); return this.commit(); }
@@ -699,6 +715,44 @@ assert.equal(busy.stream.hiddenIndices.size, 0);
 assert.equal(busy.children.length, 8);
 console.log("PASS: opposing GPU dot streams, exact shuttle handoff, fixed pool, occupied identity, endpoint turns and dot restoration.");
 console.log("PASS: graph-to-corridor ownership, diagonal/vertical box transforms, normal nested entry/exit, local shuttle motion, dashed animation and unchanged buffers.");
+
+// Mouse look preserves a rolled north reference instead of accumulating bank.
+{
+    const rotate = (q, x, y, z) => {
+        const point = new Quaternion();
+        Object.assign(point, {x,y,z,w:0});
+        return new Quaternion().copy(q).multiply(point).multiply(new Quaternion().copy(q).invert());
+    };
+    const orientation = game => new Quaternion().copy(game.controlFrame).multiply(
+        new Quaternion().setFromEuler(new Euler(game.pitch, game.yaw, game.roll, "YXZ")));
+    for (const roll of [Math.PI / 2, -Math.PI / 2, Math.PI]) {
+        const game = Object.create(K3Game.prototype);
+        Object.assign(game, {pitch:0.6, yaw:0.3, roll:0, mouseSensitivity:0.002,
+            controlFrame:new Quaternion().setFromEuler(new Euler(0.8,-0.6,0.4,"YXZ"))});
+        const before = rotate(orientation(game), 0, 0, -1);
+        const oldNorth = rotate(game.controlFrame, 0, 1, 0);
+        game.rollLookFrame(roll);
+        const after = rotate(orientation(game), 0, 0, -1);
+        assert.ok(Math.hypot(before.x-after.x,before.y-after.y,before.z-after.z) < 1e-9,
+            "roll must preserve the direction being viewed");
+        const north = rotate(game.controlFrame, 0, 1, 0);
+        assert.ok(Math.hypot(north.x-oldNorth.x,north.y-oldNorth.y,north.z-oldNorth.z) > 0.1);
+        for (let step=0; step<100; step++) {
+            game.applyMouseLook(15, step%2 ? 30 : -20);
+            const unchangedNorth = rotate(game.controlFrame, 0, 1, 0);
+            assert.ok(Math.hypot(north.x-unchangedNorth.x,north.y-unchangedNorth.y,north.z-unchangedNorth.z) < 1e-12,
+                "yaw/pitch must not move the player's north pole");
+            const onScreen = rotate(orientation(game).invert(), north.x, north.y, north.z);
+            assert.ok(Math.abs(onScreen.x) < 1e-9, "north must stay on the screen's vertical axis");
+            assert.ok(onScreen.y > 0, "north must stay toward the screen top");
+        }
+        game.applyMouseLook(0,-100000);
+        assert.ok(Math.abs(game.pitch-(Math.PI/2-0.01)) < 1e-12);
+        game.applyMouseLook(0,100000);
+        assert.ok(Math.abs(game.pitch+(Math.PI/2-0.01)) < 1e-12);
+    }
+    console.log("PASS: fixed player north during yaw/pitch, explicit roll changes north without changing heading, and pole limits.");
+}
 
 // Boundary rotations must never become mouse-look or user-roll angles.
 {

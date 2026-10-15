@@ -294,30 +294,34 @@ class K3Game {
             }
 
 
-            this.yaw -=
-                event.movementX *
-                this.mouseSensitivity;
-
-
-            this.pitch -=
-                event.movementY *
-                this.mouseSensitivity;
-
-
-            // Stop camera from flipping vertically
-            const limit =
-                Math.PI / 2 - 0.01;
-
-            this.pitch = Math.max(
-                -limit,
-                Math.min(
-                    limit,
-                    this.pitch
-                )
-            );
+            this.applyMouseLook(event.movementX, event.movementY);
 
         });
 
+    }
+
+    applyMouseLook(movementX, movementY) {
+        // Mouse look keeps one north reference. Only explicit roll (or a scene
+        // boundary/frame rotation) changes that reference.
+        if (this.roll !== 0) this.rollLookFrame(0);
+        this.yaw -= movementX * this.mouseSensitivity;
+        const limit = Math.PI / 2 - 0.01;
+        this.pitch = Math.max(-limit, Math.min(limit,
+            this.pitch - movementY * this.mouseSensitivity));
+    }
+
+    rollLookFrame(angle) {
+        const total = angle + this.roll;
+        if (total === 0) return;
+        const look = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(this.pitch, this.yaw, 0, "YXZ")
+        );
+        const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), total);
+        if (!this.controlFrame) this.controlFrame = new THREE.Quaternion();
+        // Tilt the north reference around the current view direction, while
+        // preserving heading and pitch in the newly rolled frame.
+        this.controlFrame.multiply(look).multiply(turn).multiply(look.invert()).normalize();
+        this.roll = 0;
     }
 
     toggleCollisionWireframes() {
@@ -451,14 +455,14 @@ class K3Game {
 
         if (this.keys["KeyQ"]) {
 
-            this.roll += rollSpeed;
+            this.rollLookFrame(rollSpeed);
 
         }
 
 
         if (this.keys["KeyE"]) {
 
-            this.roll -= rollSpeed;
+            this.rollLookFrame(-rollSpeed);
 
         }
 
