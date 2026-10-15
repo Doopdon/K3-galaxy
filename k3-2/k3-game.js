@@ -8,7 +8,7 @@ class K3Game {
 
         this.moveSpeed = 50;
         this.timeScale = 1;
-        this.showCollisionWireframes = true;
+        this.showCollisionWireframes = false;
 
         this.keys = {};
 

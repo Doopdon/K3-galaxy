@@ -49,7 +49,7 @@ function createStarScenes(parentSize, starCount, namePrefix) {
                         },
                         {
                             type: "sphere",
-                            radius: scene.size * STAR_VISUAL_RADIUS_RATIO * (0.5 / 9.6),
+                            radius: scene.size * STAR_VISUAL_RADIUS_RATIO * (0.1 / 9.6),
                             color: 0xffffff,
                             widthSegments: 12,
                             heightSegments: 8

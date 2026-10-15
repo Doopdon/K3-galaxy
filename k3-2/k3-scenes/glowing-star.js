@@ -7,7 +7,7 @@ function createGlowingStarInterior(scene) {
     // Dimensions and radial color falloff from fake_glowing_star_threejs.html.
     const scale = swarmRadius / 9.6;
     root.add(new THREE.Mesh(
-        new THREE.SphereGeometry(0.5 * scale, 48, 32),
+        new THREE.SphereGeometry(0.1 * scale, 48, 32),
         new THREE.MeshBasicMaterial({ color: 0xffffff })
     ));
 
