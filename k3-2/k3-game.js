@@ -356,6 +356,7 @@ class K3Game {
     updateControls(delta) {
 
         this.updateAnimationSpeed(delta);
+        this.refreshNearbySceneChildren();
         const movementStart = this.camera.position.clone();
 
         let speed =
@@ -894,7 +895,7 @@ class K3Game {
         }
     }
 
-    renderLayers() {
+    refreshNearbySceneChildren() {
         // Let procedural scenes choose nearby logical children in their own
         // units, including ancestors while a moving child is occupied.
         if (this.mode === "inside") {
@@ -913,6 +914,10 @@ class K3Game {
                 if (index > 0) node.localToParent(local);
             }
         }
+    }
+
+    renderLayers() {
+        this.refreshNearbySceneChildren();
         this.syncOverlappingInteriors();
         if (!this.shuttleSystem) {
             const status = document.getElementById("ride-status");

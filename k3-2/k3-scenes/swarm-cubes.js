@@ -1,11 +1,14 @@
 // Nearby swarm dots promoted to reusable, enterable cube scenes.
+const K3_SWARM_SHIPS = { maxVisible: 320, revealDistance: 60 };
+
 function installSwarmChildren(scene, data, pointSize) {
-    const capacity = 64;
+    const capacity = K3_SWARM_SHIPS.maxVisible;
     // PointsMaterial uses viewportHeight/2; geometric projection also includes
     // 1/tan(fov/2). Match a face-on cube's edge to that point footprint.
     const fov = scene.game && scene.game.camera ? scene.game.camera.fov : 60;
     const edge = pointSize * Math.tan(fov * Math.PI / 360);
-    const range = edge * 12;
+    const range = edge * K3_SWARM_SHIPS.revealDistance;
+    const binWidth = edge * 12;
     const bins = [];
     const pool = [];
     data.visibilityAttributes = new Set();
@@ -22,7 +25,7 @@ function installSwarmChildren(scene, data, pointSize) {
     for (let index = 0; index < data.orbits.length / 2; index++) {
         const offset = index * 3;
         const radius = Math.hypot(data.axisA[offset], data.axisA[offset + 1], data.axisA[offset + 2]);
-        const bin = Math.floor(radius / range);
+        const bin = Math.floor(radius / binWidth);
         if (!bins[bin]) bins[bin] = [];
         bins[bin].push(index);
     }
@@ -66,16 +69,23 @@ function installSwarmChildren(scene, data, pointSize) {
         }
     };
     const point = new THREE.Vector3();
+    let lastQuery = null;
     scene.refreshNearbyChildren = (cameraPosition, time) => {
         let occupied = scene.game.activeScene;
         while (occupied && occupied.parent !== scene) occupied = occupied.parent;
+        if (lastQuery && lastQuery.time === time && lastQuery.occupied === occupied &&
+            lastQuery.x === (cameraPosition && cameraPosition.x) &&
+            lastQuery.y === (cameraPosition && cameraPosition.y) &&
+            lastQuery.z === (cameraPosition && cameraPosition.z)) return;
+        lastQuery = { time, occupied, x: cameraPosition && cameraPosition.x,
+            y: cameraPosition && cameraPosition.y, z: cameraPosition && cameraPosition.z };
         const candidates = [];
         const radius = cameraPosition ? cameraPosition.length() : 0;
         const outerRange = range * 1.25;
         const retained = new Set(pool.filter(child => child.enabled).map(child => child.particleIndex));
         data.lastQueryCount = 0;
-        for (let bin = Math.max(0, Math.floor((radius - outerRange) / range));
-            cameraPosition && bin <= Math.floor((radius + outerRange) / range); bin++) {
+        for (let bin = Math.max(0, Math.floor((radius - outerRange) / binWidth));
+            cameraPosition && bin <= Math.floor((radius + outerRange) / binWidth); bin++) {
             for (const index of bins[bin] || []) {
                 data.lastQueryCount++;
                 data.positionAt(index, time, point);

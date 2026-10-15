@@ -431,10 +431,12 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
     diagnostic.camera.position.copy(target);
     diagnostic.renderLayers();
     const promoted = swarm.pool.filter(child => child.enabled);
-    assert.ok(promoted.length > 0 && promoted.length <= 64);
+    assert.ok(promoted.length > 64 && promoted.length <= 320);
     assert.ok(promoted.some(child => child.particleIndex === 0));
     assert.equal(swarm.visibilityAttributes.size, 1, "disposed layers must release mask attributes");
-    assert.ok(swarm.lastQueryCount < 100000, "radial bins must skip distant particles");
+    assert.ok(swarm.lastQueryCount <= 100000, "radial bins must visit each candidate at most once");
+    const previousRange = cube => cube.size * 2 * 12;
+    assert.ok(Math.abs(swarm.range / previousRange(promoted[0]) - 5) < 1e-12);
     const expectedNearest = [];
     const sample = new Vector3();
     for (let index = 0; index < swarm.orbits.length / 2; index++) {
@@ -443,7 +445,7 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
     }
     expectedNearest.sort((a, b) => a.distance - b.distance);
     assert.deepEqual(Array.from(promoted, child => child.particleIndex).sort((a, b) => a - b),
-        expectedNearest.slice(0, 64).map(item => item.index).sort((a, b) => a - b),
+        expectedNearest.slice(0, 320).map(item => item.index).sort((a, b) => a - b),
         "radial search must find the same nearest dots as a full scan");
     assert.equal(Array.from(swarm.visible).filter(value => value === 0).length, promoted.length);
     for (const child of promoted) {
@@ -537,6 +539,17 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
     diagnostic.camera.position.copy(swarm.positionAt(dotIndex, 0.05, new Vector3()));
     diagnostic.renderLayers();
     assert.ok(swarm.pool.some(child => child.enabled && child.particleIndex === dotIndex));
+    // Flight collision checks must see newly promoted ships without waiting
+    // for another render pass to populate the pool.
+    diagnostic.camera.position.set(0, 0, 900);
+    diagnostic.refreshNearbySceneChildren();
+    assert.ok(swarm.pool.every(child => !child.enabled));
+    assert.equal(swarm.lastQueryCount, 0);
+    diagnostic.camera.position.copy(swarm.positionAt(0, 0.05, new Vector3()));
+    Object.assign(diagnostic, {keys:{}, pitch:0, yaw:0, roll:0});
+    diagnostic.camera.rotation.set = function(x,y,z) { Object.assign(this,{x,y,z}); };
+    diagnostic.updateControls(0);
+    assert.ok(swarm.pool.includes(diagnostic.activeScene), "new nearby ships must be collidable before rendering");
     console.log("PASS: nearby swarm cube promotion, bounded radial search, particle masking, matched size, " +
         "nested entry, moving occupied frames, stable orbits, resource reuse, and distant dot restoration.");
 }

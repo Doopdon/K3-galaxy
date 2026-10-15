@@ -200,6 +200,7 @@ class K3Display {
 
     update(time = 0) {
         this.time = time;
+        const rotatedFrames = new Map();
         for (const { node, object } of this.custom) {
             object.visible = !this.hidden.has(node) && (!node || node.enabled !== false);
             if (node) {
@@ -237,12 +238,22 @@ class K3Display {
                 } else {
                     const positions = object.geometry.attributes.position.array;
                     const colors = object.geometry.attributes.color.array;
+                    let axes = null;
+                    if (node && (angle !== 0 || node.pitch !== 0 || node.roll !== 0)) {
+                        axes = rotatedFrames.get(node);
+                        if (!axes) {
+                            axes = [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1)];
+                            for (const axis of axes) node.rotateFramePosition(axis, false, node.spinAngle);
+                            rotatedFrames.set(node, axes);
+                        }
+                    }
                     const writeVertex = (x, y, z) => {
                         const offset = count * 3;
-                        batch.vertex.set(x, y, z);
-                        if (node && (angle !== 0 || node.pitch !== 0 || node.roll !== 0)) {
-                            node.rotateFramePosition(batch.vertex, false, node.spinAngle);
-                        }
+                        if (axes) batch.vertex.set(
+                            axes[0].x*x + axes[1].x*y + axes[2].x*z,
+                            axes[0].y*x + axes[1].y*y + axes[2].y*z,
+                            axes[0].z*x + axes[1].z*y + axes[2].z*z);
+                        else batch.vertex.set(x, y, z);
                         positions[offset] = position.x + batch.vertex.x;
                         positions[offset + 1] = position.y + batch.vertex.y;
                         positions[offset + 2] = position.z + batch.vertex.z;
