@@ -487,6 +487,11 @@ console.log("PASS: single interior ownership, blocked duplicate opens from a shi
 
 // A full flight step can cross a tiny boundary with both endpoints outside.
 const tinyStar = new K3Scene({ size: 0.003, insideSize: 1000 });
+const earlyEntry = new K3Scene({ size: 1, insideSize: 1000, boundary: { type: "sphere", radius: 2 } });
+assert.equal(earlyEntry.containsPosition(new Vector3(0,0,1.5)), true);
+assert.equal(earlyEntry.containsInsidePosition(new Vector3(0,0,1500)), true);
+assert.equal(earlyEntry.containsInsidePosition(new Vector3(0,0,2001)), false);
+assert.ok(Math.abs(earlyEntry.movementEntry(new Vector3(0,0,3), new Vector3(0,0,-3)) - 1/6) < 1e-12);
 assert.ok(Math.abs(tinyStar.movementEntry(new Vector3(0, 0, 1), new Vector3(0, 0, -1)) - 0.4985) < 1e-9);
 assert.equal(tinyStar.movementEntry(new Vector3(1, 0, 1), new Vector3(1, 0, -1)), null);
 const tiltedBox = new K3Scene({ size: 0.01, insideSize: 100,

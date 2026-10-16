@@ -248,6 +248,16 @@ class K3Game {
 
     setupControls() {
 
+        this.adjustingFov = false;
+        window.addEventListener("mousedown", (event) => {
+            if (event.button === 1) {
+                event.preventDefault();
+                this.adjustingFov = true;
+            }
+        });
+        window.addEventListener("mouseup", (event) => {
+            if (event.button === 1) this.adjustingFov = false;
+        });
         window.addEventListener("keydown", (event) => {
 
             this.keys[event.code] = true;
@@ -274,6 +284,7 @@ class K3Game {
 
         window.addEventListener("blur", () => {
             this.keys = {};
+            this.adjustingFov = false;
         });
 
 
@@ -289,6 +300,12 @@ class K3Game {
 
 
         window.addEventListener("mousemove", (event) => {
+
+            if (this.adjustingFov) {
+                this.camera.fov = Math.max(15, Math.min(110, this.camera.fov + event.movementY * 0.15));
+                this.camera.updateProjectionMatrix();
+                return;
+            }
 
             if (
                 document.pointerLockElement !==

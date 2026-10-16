@@ -1,7 +1,8 @@
 // Relative separation is measured in star radii, keeping galaxy navigation units.
 const K3_GALAXY_SCALE = {
     starCountMultiplier: 10,
-    relativeSeparation: 10
+    relativeSeparation: 10,
+    starEntryRadiusMultiplier: 2 // Load the swarm sooner without enlarging its visuals.
 };
 
 // Logical stars use exactly the same outside-description API as any other scene.
@@ -20,6 +21,7 @@ function createStarScenes(parentSize, starCount, namePrefix) {
             name: namePrefix + " " + (index + 1),
             info: "A white star surrounded by a glowing red orbital swarm.",
             size: starSize,
+            boundary: { type: "sphere", radius: starSize * K3_GALAXY_SCALE.starEntryRadiusMultiplier },
             insideSize: 1000,
             position: [Math.cos(angle) * ring * radius, y * radius,
             Math.sin(angle) * ring * radius],
@@ -30,7 +32,7 @@ function createStarScenes(parentSize, starCount, namePrefix) {
                     parts: [
                         {
                             type: "sphere",
-                            radius: scene.size,
+                            radius: scene.boundary.radius,
                             color: 0x3388ff,
                             widthSegments: 8,
                             heightSegments: 6,

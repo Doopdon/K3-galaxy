@@ -117,7 +117,7 @@ class K3Scene {
                 Math.abs(position.y) <= half[1] * scale &&
                 Math.abs(position.z) <= half[2] * scale;
         }
-        return position.length() <= this.insideSize;
+        return position.length() <= (this.boundary.radius ?? this.size) * this.insideSize / this.size;
     }
 
     rotateFramePosition(position, inverse = false, visualSpin = 0) {
@@ -195,7 +195,8 @@ class K3Scene {
         const lengthSquared = direction.x ** 2 + direction.y ** 2 + direction.z ** 2;
         if (lengthSquared === 0) return null;
         const projection = a.x * direction.x + a.y * direction.y + a.z * direction.z;
-        const offset = a.x ** 2 + a.y ** 2 + a.z ** 2 - this.insideSize ** 2;
+        const radius = (this.boundary.radius ?? this.size) * this.insideSize / this.size;
+        const offset = a.x ** 2 + a.y ** 2 + a.z ** 2 - radius ** 2;
         const discriminant = projection ** 2 - lengthSquared * offset;
         if (discriminant < 0) return null;
         const entry = (-projection - Math.sqrt(discriminant)) / lengthSquared;
@@ -205,7 +206,7 @@ class K3Scene {
     containsPosition(position) {
         if (!this.enabled) return false;
         if (this.boundary.type === "box") return this.containsInsidePosition(this.parentToLocal(position.clone()));
-        return position.distanceTo(this.position) <= this.size;
+        return position.distanceTo(this.position) <= (this.boundary.radius ?? this.size);
     }
 
     createOutside() {
