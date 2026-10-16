@@ -38,14 +38,13 @@ function createStarScenes(parentSize, starCount, namePrefix) {
                             collisionBoundary: true
                         },
                         {
-                            type: "sphere",
+                            type: "softSprite",
                             radius: scene.size * STAR_VISUAL_RADIUS_RATIO,
                             color: K3_COLORS.red,
                             transparent: true,
                             opacity: 0.7,
                             depthWrite: false,
-                            widthSegments: 12,
-                            heightSegments: 8
+                            additive: true
                         },
                         {
                             type: "sphere",

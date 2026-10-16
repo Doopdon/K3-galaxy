@@ -252,6 +252,10 @@ class K3Game {
 
             this.keys[event.code] = true;
             if (event.code === "KeyH" && !event.repeat) this.toggleCollisionWireframes();
+            if (event.code === "KeyU" && !event.repeat) {
+                const help = document.getElementById("ride-help");
+                if (help) help.hidden = !help.hidden;
+            }
             if (this.shuttleSystem) this.shuttleSystem.handleKey(event);
 
         });

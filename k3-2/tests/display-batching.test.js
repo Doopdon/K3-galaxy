@@ -232,6 +232,33 @@ assert.equal(lone.children[0].matrices[0].position.length(), 0);
 const g = Object.create(K3Game.prototype);
 Object.assign(g, { activeScene: parent, mode: "inside" });
 assert.equal(g.checkChildCollision(children[1].position), children[1]);
+// Hidden-at-start collision meshes need instance colors before shader compile.
+{
+    const debugGame = { showCollisionWireframes: false };
+    const redBox = new K3Scene();
+    const yellowBox = new K3Scene();
+    redBox.bind(debugGame); yellowBox.bind(debugGame);
+    const root = K3Display.create([
+        {node:redBox, appearance:{type:"box", color:0xff0000, wireframe:true, collisionBoundary:true}},
+        {node:yellowBox, appearance:{type:"box", color:0xffbb33, wireframe:true, collisionBoundary:true}}
+    ]);
+    const boxes = root.children[0];
+    assert.equal(boxes.count, 0);
+    assert.ok(boxes.instanceColor, "instance-color shader input must exist while initially hidden");
+    const buffer = boxes.instanceColor;
+    for (let repeat = 0; repeat < 3; repeat++) {
+        debugGame.showCollisionWireframes = true;
+        root.userData.k3Display.update();
+        assert.equal(boxes.count, 2);
+        assert.deepEqual(boxes.colors[0], [1,0,0]);
+        assert.deepEqual(boxes.colors[1], [1,187/255,51/255]);
+        assert.equal(boxes.instanceColor, buffer);
+        debugGame.showCollisionWireframes = false;
+        root.userData.k3Display.update();
+        assert.equal(boxes.count, 0);
+    }
+}
+
 // The actual galaxy retains its configured counts; every region uses generic batching.
 assert.equal(mainScene.children.length, 50);
 let total = 0;
@@ -241,6 +268,15 @@ for (const region of mainScene.children) {
     assert.equal(inside.children.length, 5);
     assert.equal(inside.children[0].count, region.stars.length);
     assert.equal(inside.children[1].count, region.stars.length);
+    const cloudPreview = inside.children[1];
+    assert.equal(region.stars[0].describeOutside().parts[1].type, "softSprite");
+    assert.equal(cloudPreview.material.depthWrite, false);
+    const previewShader = { vertexShader: "#include <begin_vertex>\n#include <project_vertex>",
+        fragmentShader: "#include <color_fragment>" };
+    cloudPreview.material.onBeforeCompile(previewShader);
+    assert.ok(previewShader.vertexShader.includes("mvPosition.xy += position.xy * cloudScale"));
+    assert.ok(previewShader.fragmentShader.includes("smoothstep(0.65, 1.0, radius)"));
+    assert.ok(previewShader.fragmentShader.includes("diffuseColor.a *= fade"));
     assert.equal(inside.children[2].count, region.stars.length);
     assert.equal(inside.children[3].count, region.connections.length);
     assert.equal(region.corridors.length, region.connections.length);

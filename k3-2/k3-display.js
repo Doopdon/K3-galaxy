@@ -53,7 +53,7 @@ class K3Display {
     }
 
     static style(description) {
-        if (!description || !["sphere", "box", "point", "pointStream", "lines", "dashes", "triangles"].includes(description.type)) {
+        if (!description || !["sphere", "box", "softSprite", "point", "pointStream", "lines", "dashes", "triangles"].includes(description.type)) {
             throw new Error("Unsupported outside appearance description.");
         }
         const style = {
@@ -99,12 +99,42 @@ class K3Display {
             depthTest: style.depthTest, depthWrite: style.depthWrite
         };
         if (style.additive) materialOptions.blending = THREE.AdditiveBlending;
-        if (style.type === "sphere" || style.type === "box") {
+        if (style.type === "sphere" || style.type === "box" || style.type === "softSprite") {
             const geometry = style.type === "sphere"
                 ? new THREE.SphereGeometry(1, style.widthSegments, style.heightSegments)
-                : new THREE.BoxGeometry(2, 2, 2);
+                : style.type === "softSprite" ? new THREE.PlaneGeometry(2, 2) : new THREE.BoxGeometry(2, 2, 2);
             const material = new THREE.MeshBasicMaterial({ ...materialOptions, wireframe: style.wireframe });
+            if (style.type === "softSprite") {
+                material.onBeforeCompile = shader => {
+                    // Instanced camera-facing quads avoid hardware point-size
+                    // limits, so the blurred preview also works very close up.
+                    shader.vertexShader = "varying vec2 cloudUv;\n" + shader.vertexShader
+                        .replace("#include <begin_vertex>", "#include <begin_vertex>\ncloudUv = uv;")
+                        .replace("#include <project_vertex>", `
+                            vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+                            vec2 cloudScale = vec2(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz));
+                            cloudScale *= length(modelMatrix[0].xyz);
+                            mvPosition.xy += position.xy * cloudScale;
+                            gl_Position = projectionMatrix * mvPosition;
+                        `);
+                    shader.fragmentShader = "varying vec2 cloudUv;\n" + shader.fragmentShader
+                        .replace("#include <color_fragment>", `#include <color_fragment>
+                            vec2 cloudPoint = cloudUv * 2.0 - 1.0;
+                            float radius = length(cloudPoint);
+                            if (radius >= 1.0) discard;
+                            float fade = exp(-3.0 * radius * radius) * (1.0 - smoothstep(0.65, 1.0, radius));
+                            // Fixed fine grain suggests a distant swarm without
+                            // animating or allocating an image per logical star.
+                            float grain = fract(sin(dot(floor(cloudUv * 256.0), vec2(12.9898,78.233))) * 43758.5453);
+                            diffuseColor.a *= fade * (0.85 + 0.15 * grain);
+                        `);
+                };
+            }
             batch.object = new THREE.InstancedMesh(geometry, material, batch.entries.length);
+            // Collision batches start hidden. Allocate instanceColor BEFORE
+            // the first render so Three.js compiles the instance-color shader
+            // path even if no visible slot has been populated yet.
+            if (batch.entries.length) batch.object.setColorAt(0, new THREE.Color().set(0xffffff));
             batch.transform = new THREE.Object3D();
             batch.object.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         } else {
@@ -222,7 +252,7 @@ class K3Display {
                 const position = !this.centered && node ? node.position : { x: 0, y: 0, z: 0 };
                 const angle = node ? node.rotation + node.spinAngle : 0;
                 batch.color.set(appearance.color ?? 0xffffff);
-                if (batch.style.type === "sphere" || batch.style.type === "box") {
+                if (batch.style.type === "sphere" || batch.style.type === "box" || batch.style.type === "softSprite") {
                     const transform = batch.transform;
                     transform.position.copy(position);
                     if (node) node.applyOutsideRotation(transform);
@@ -304,7 +334,7 @@ class K3Display {
                 }
             }
             object.visible = count > 0;
-            if (batch.style.type === "sphere" || batch.style.type === "box") {
+            if (batch.style.type === "sphere" || batch.style.type === "box" || batch.style.type === "softSprite") {
                 object.count = count;
                 object.instanceMatrix.needsUpdate = true;
                 if (object.instanceColor) object.instanceColor.needsUpdate = true;
