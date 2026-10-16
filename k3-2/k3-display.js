@@ -273,7 +273,7 @@ class K3Display {
                         for (let index = 0; index < appearance.count; index++) {
                             if (appearance.hiddenIndices.has(index)) continue;
                             object.geometry.attributes.stream.array.set([
-                                index / appearance.count * appearance.span * 2,
+                                appearance.phases ? appearance.phases[index] : index / appearance.count * appearance.span * 2,
                                 appearance.speed, appearance.span, appearance.laneOffset
                             ], count * 4);
                             object.geometry.attributes.streamAxis.array.set([axis.x, axis.y, axis.z], count * 3);

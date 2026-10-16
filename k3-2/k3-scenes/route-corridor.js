@@ -46,10 +46,40 @@ class RouteCorridor extends K3Scene {
             2 ** Math.floor(Math.log2(Math.max(1, span / (shuttleSize * 6))))));
         this.stream = { type: "pointStream", count: perLane * 2, size: 2,
             span,
-            laneOffset: halfWidth * K3_ROUTE_SHIPS.laneOffset, speed: 20, color: K3_COLORS.lineRed,
+            laneOffset: halfWidth * K3_ROUTE_SHIPS.laneOffset, speed: 20 * (0.85 + Math.random() * 0.3), color: K3_COLORS.lineRed,
             hiddenIndices: new Set(), version: 0 };
+        // Random gap lengths, not jittered grid slots. Each lane starts with
+        // its own pattern and phase; keep a minimum gap for physical vehicles.
+        this.stream.phases = new Float32Array(this.stream.count);
+        for (let lane = 0; lane < 2; lane++) {
+            const weights = Array.from({ length: perLane }, () => -Math.log(Math.max(1e-9, Math.random())));
+            const total = weights.reduce((sum, weight) => sum + weight, 0);
+            const minimum = Math.min(shuttleSize * 3, span / perLane * 0.5);
+            const freeLength = span - minimum * perLane;
+            const offset = Math.random() * span;
+            const phases = [];
+            let cursor = 0;
+            for (const weight of weights) {
+                phases.push(((cursor + offset) % span) + lane * span);
+                cursor += minimum + freeLength * weight / total;
+            }
+            phases.sort((a, b) => a - b);
+            this.stream.phases.set(phases, lane * perLane);
+        }
         // Distant views sample the same stream at a lower density.
         this.outsideStream = { ...this.stream, count: Math.min(K3_ROUTE_SHIPS.distantDotsPerLane * 2, this.stream.count), hiddenIndices: new Set() };
+        this.outsideStream.phases = new Float32Array(this.outsideStream.count);
+        // Sampling every nth particle averages out the irregular gaps. Choose
+        // a stable random subset instead, retaining exact vehicle identities.
+        const indices = Array.from({ length: this.stream.count }, (_, index) => index);
+        for (let index = indices.length - 1; index > 0; index--) {
+            const other = Math.floor(Math.random() * (index + 1));
+            [indices[index], indices[other]] = [indices[other], indices[index]];
+        }
+        this.outsideStream.sourceIndices = indices.slice(0, this.outsideStream.count).sort((a, b) => a - b);
+        for (let index = 0; index < this.outsideStream.count; index++) {
+            this.outsideStream.phases[index] = this.stream.phases[this.outsideStream.sourceIndices[index]];
+        }
         this.trafficTime = 0;
         this.traffic = [];
         for (let index = 0; index < K3_ROUTE_SHIPS.maxVisible; index++) {
@@ -80,8 +110,8 @@ class RouteCorridor extends K3Scene {
     }
 
     trafficPosition(index, time, target) {
-        const { span, count, speed, laneOffset } = this.stream;
-        const phase = ((index / count * span * 2 + speed * time) % (span * 2) + span * 2) % (span * 2);
+        const { span, speed, laneOffset, phases } = this.stream;
+        const phase = ((phases[index] + speed * time) % (span * 2) + span * 2) % (span * 2);
         const direction = phase < span ? 1 : -1;
         target.set(direction * laneOffset, 0, phase < span ? phase - span / 2 : span * 1.5 - phase);
         return direction;

@@ -705,8 +705,8 @@ busy.trafficPosition(5 + busy.stream.count / 2, 0, reverse);
 const nextForward = new Vector3(), nextReverse = new Vector3();
 busy.trafficPosition(5, 0.01, nextForward);
 busy.trafficPosition(5 + busy.stream.count / 2, 0.01, nextReverse);
-assert.ok(Math.abs(nextForward.z - forward.z - 0.2) < 1e-9);
-assert.ok(Math.abs(nextReverse.z - reverse.z + 0.2) < 1e-9);
+assert.ok(Math.abs(nextForward.z - forward.z - busy.stream.speed * 0.01) < 1e-9);
+assert.ok(Math.abs(nextReverse.z - reverse.z + busy.stream.speed * 0.01) < 1e-9);
 assert.equal(forward.x, -reverse.x);
 busy.selectNearbyTraffic(forward, 0);
 const occupiedTraffic = busy.traffic.find(craft => craft.particleIndex === 5);
@@ -718,7 +718,16 @@ busy.updateTraffic(0.01);
 assert.ok(occupiedTraffic.shuttle.position.distanceTo(nextForward) < 1e-9);
 busy.selectNearbyTraffic(new Vector3(10000,10000,10000), 0.01);
 assert.equal(occupiedTraffic.particleIndex, 5, "occupied traffic must not be recycled");
-const turnaround = (busy.stream.span - 5 / busy.stream.count * busy.stream.span * 2) / busy.stream.speed;
+const turnaround = (busy.stream.span - busy.stream.phases[5]) / busy.stream.speed;
+const gaps = Array.from(busy.stream.phases.slice(1), (phase, index) => phase - busy.stream.phases[index]);
+assert.ok(gaps.every(gap => gap > 0));
+assert.ok(Math.max(...gaps) - Math.min(...gaps) > 0.1, "vehicle gaps must be uneven");
+assert.ok(Math.max(...gaps) / Math.min(...gaps) > 5, "spacing must have pronounced clusters and gaps");
+const distantGaps = Array.from(busy.outsideStream.phases.slice(1), (phase, index) => phase - busy.outsideStream.phases[index]);
+assert.ok(Math.max(...distantGaps) / Math.min(...distantGaps) > 5, "distant sampling must retain visibly irregular spacing");
+for (let index = 0; index < busy.outsideStream.count; index++) {
+    assert.equal(busy.outsideStream.phases[index], busy.stream.phases[busy.outsideStream.sourceIndices[index]]);
+}
 const beforeTurn = new Vector3(), afterTurn = new Vector3();
 busy.trafficPosition(5, turnaround - 0.0001, beforeTurn);
 busy.trafficPosition(5, turnaround + 0.0001, afterTurn);
