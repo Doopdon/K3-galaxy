@@ -247,7 +247,7 @@ class K3Display {
                             rotatedFrames.set(node, axes);
                         }
                     }
-                    const writeVertex = (x, y, z) => {
+                    const writeVertex = (x, y, z, brightness = 1) => {
                         const offset = count * 3;
                         if (axes) batch.vertex.set(
                             axes[0].x*x + axes[1].x*y + axes[2].x*z,
@@ -257,9 +257,9 @@ class K3Display {
                         positions[offset] = position.x + batch.vertex.x;
                         positions[offset + 1] = position.y + batch.vertex.y;
                         positions[offset + 2] = position.z + batch.vertex.z;
-                        colors[offset] = batch.color.r;
-                        colors[offset + 1] = batch.color.g;
-                        colors[offset + 2] = batch.color.b;
+                        colors[offset] = batch.color.r * brightness;
+                        colors[offset + 1] = batch.color.g * brightness;
+                        colors[offset + 2] = batch.color.b * brightness;
                         nodes.push(node);
                         count++;
                     };
@@ -297,7 +297,8 @@ class K3Display {
                     } else {
                         const local = batch.style.type === "point" ? [0, 0, 0] : appearance.positions;
                         for (let index = 0; index < local.length; index += 3) {
-                            writeVertex(local[index], local[index + 1], local[index + 2]);
+                            writeVertex(local[index], local[index + 1], local[index + 2],
+                                appearance.vertexBrightness ? appearance.vertexBrightness[index / 3] : 1);
                         }
                     }
                 }

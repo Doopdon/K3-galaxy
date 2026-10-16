@@ -91,10 +91,11 @@ class RouteCorridor extends K3Scene {
                 // pooled shuttle across the entire galaxy at startup.
                 if (!shipParts) {
                     node.shipData = SpaceshipGenerator.generate();
+                    node.shipData.emissiveness = 1;
                     const modelRadius = node.size * K3_ROUTE_SHIPS.modelScale;
                     node.shipData.outsideScale = SpaceshipGenerator.fitScale(node.shipData, modelRadius);
                     node.shipData.insideScale = node.shipData.outsideScale * node.insideSize / node.size;
-                    shipParts = SpaceshipGenerator.describeOutside(node.shipData, modelRadius);
+                    shipParts = SpaceshipGenerator.describeOutside(node.shipData, modelRadius, 12, node.shipData.emissiveness);
                 }
                 return { type: "group", parts: [describeBoundary(node), ...shipParts] };
             };

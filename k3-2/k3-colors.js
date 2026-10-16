@@ -3,6 +3,11 @@ const K3_COLORS = {
     red: 0x990000,//0x7a2b1d,
     galaxyStarColor: 0xffdd66, // Galactic-scale star markers; reload after editing.
     lineBrightness: 1.5, // Galaxy connections are brighter than the base red.
+    shipDiskGlow: {
+        enabled: true,
+        strength: 0.25, // Subtle additive red halo; set 0 to remove.
+        spread: 0.15   // Fraction of disk radius beyond its outer edge.
+    },
     galaxyEffects: {
         enabled: true, // Set false and reload to disable the galactic glow/haze.
         bloomStrength: 0.95,

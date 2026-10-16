@@ -151,8 +151,15 @@ assert.ok(recipe.parts.some(part => part.type === "disk"));
 assert.ok(recipe.parts.some(part => part.type === "cylinder" && part.topRadius === 1.2));
 for (const part of shipDescriptions) {
     assert.equal(part.positions.length % 9, 0);
-    assert.ok(part.positions.every(value => Number.isFinite(value) && Math.abs(value) <= 0.85 + 1e-9));
+    assert.ok(part.positions.every(value => Number.isFinite(value) && Math.abs(value) <= (part.additive ? 1 : 0.85) + 1e-9));
 }
+const diskHalos = shipDescriptions.filter(part => part.additive);
+assert.ok(SpaceshipGenerator.describeOutside(recipe, 1, 12, 0).every(part => !part.additive));
+assert.ok(SpaceshipGenerator.describeOutside(recipe, 1, 12, 0.5).filter(part => part.additive)
+    .every(part => part.opacity === palette.shipDiskGlow.strength * 0.5));
+assert.equal(diskHalos.length, recipe.parts.filter(part => part.role === "disk").length);
+assert.ok(diskHalos.every(part => !part.depthWrite && part.transparent &&
+    part.vertexBrightness.includes(0) && part.vertexBrightness.includes(1)));
 const shipMaterials = { gray: new Material({ color: 0x888888 }), red: new Material({ color: SpaceshipGenerator.diskColor }) };
 const playgroundShip = SpaceshipGenerator.createObject(
     { ...THREE, CylinderGeometry: Geometry, RingGeometry: Geometry }, recipe, shipMaterials);
@@ -261,7 +268,7 @@ assert.ok(scaledRoute.traffic.every(craft => craft.shuttle.size <= scaledStar.si
 const star = mainScene.children[0].stars[0];
 star.game = { simulationTime: 12 };
 const starInside = star.createInside();
-assert.equal(starInside.children.length, 3); // Environment, cube batch, ship surface batch.
+assert.equal(starInside.children.length, 3); // Swarm ship disks have no glow batch.
 const cloud = starInside.children[0].children[1];
 const outsideRadius = star.describeOutside().parts[1].radius;
 assert.equal(cloud.geometry.boundingSphere.radius * star.size / star.insideSize, outsideRadius);
@@ -457,7 +464,7 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
         assert.equal(child.roll, child.shipData.orientation.roll);
         assert.ok(Math.abs(child.shipData.insideScale - child.shipData.outsideScale *
             child.insideSize / child.size) < 1e-12);
-        assert.equal(JSON.stringify(SpaceshipGenerator.describeOutside(child.shipData, child.size)),
+        assert.equal(JSON.stringify(SpaceshipGenerator.describeOutside(child.shipData, child.size, 12, child.shipData.emissiveness)),
             JSON.stringify(child.describeOutside().parts.slice(1)));
         for (const part of child.describeOutside().parts.slice(1)) {
             assert.equal(part.type, "triangles");
@@ -465,7 +472,8 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
         }
     }
     const surfaceBatch = diagnostic.worldRoot.children[2];
-    assert.equal(diagnostic.worldRoot.children.length, 3, "all ship surfaces must share one generic batch");
+    assert.equal(diagnostic.worldRoot.children.length, 3, "swarm ships must not allocate glow geometry");
+    assert.ok(promoted.every(child => child.shipData.emissiveness === 0));
     assert.ok(surfaceBatch.geometry.drawRange.count > 0);
     assert.equal(surfaceBatch.material.side, THREE.DoubleSide);
     assert.ok(surfaceBatch.userData.k3Scenes.includes(promoted[0]));
@@ -608,7 +616,7 @@ rideGame.renderLayers();
 assert.ok(rideGame.layers[1].camera.position.distanceTo(corridor.localToParent(localCamera.clone()))<1e-9);
 const parentHeading = rideGame.layers[1].camera.quaternion;
 assert.ok(Math.abs(parentHeading.x-originalHeading.x)+Math.abs(parentHeading.y-originalHeading.y)+Math.abs(parentHeading.z-originalHeading.z)<1e-8);
-assert.equal(rideGame.worldRoot.children.length,3); // Stream, collision boxes, batched ship surfaces.
+assert.equal(rideGame.worldRoot.children.length,4); // Stream, collision boxes, ship surfaces, disk halos.
 const trafficPoints = rideGame.worldRoot.children[0].children[0];
 const promotedTraffic = corridor.traffic.filter(craft => craft.shuttle.enabled);
 assert.ok(rideGame.worldRoot.children[2].geometry.drawRange.count > 0);

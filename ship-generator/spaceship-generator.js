@@ -72,9 +72,11 @@ const SpaceshipGenerator = {
 
     // Small distant ships need fewer segments. Triangle descriptions let the
     // generic display batch every ship together, including both surface colors.
-    describeOutside(recipe, halfExtent, segments = 12) {
+    // emissiveness: 0 disables disk halos; 1 uses the full configured glow.
+    describeOutside(recipe, halfExtent, segments = 12, emissiveness = 1) {
+        emissiveness = Math.max(0, Math.min(1, emissiveness));
         const scale = this.fitScale(recipe, halfExtent);
-        return recipe.parts.map(part => {
+        const surfaces = recipe.parts.map(part => {
             const positions = [];
             const vertex = (x, radius, angle) => [x * scale,
                 radius * Math.cos(angle) * scale, radius * Math.sin(angle) * scale];
@@ -97,5 +99,33 @@ const SpaceshipGenerator = {
             }
             return { type: "triangles", positions, color: part.color };
         });
+        const glow = K3_COLORS.shipDiskGlow;
+        if (!glow.enabled || glow.strength <= 0 || emissiveness === 0) return surfaces;
+        for (const part of recipe.parts) {
+            if (part.role !== "disk") continue;
+            const positions = [], vertexBrightness = [];
+            // Radial brightness gradients fade both edges to black, which
+            // contributes no color with additive blending. Keep the hole open.
+            const bands = [
+                [part.innerRadius * (1 - glow.spread), 0],
+                [part.innerRadius, 1], [part.outerRadius, 1],
+                [part.outerRadius * (1 + glow.spread), 0]
+            ];
+            const vertex = (radius, angle, brightness) => {
+                positions.push(part.x * scale, radius * Math.cos(angle) * scale, radius * Math.sin(angle) * scale);
+                vertexBrightness.push(brightness);
+            };
+            for (let band = 0; band < bands.length - 1; band++) {
+                const [inner, innerLight] = bands[band], [outer, outerLight] = bands[band + 1];
+                for (let index = 0; index < segments; index++) {
+                    const a = index * Math.PI * 2 / segments, b = (index + 1) * Math.PI * 2 / segments;
+                    vertex(inner, a, innerLight); vertex(outer, a, outerLight); vertex(outer, b, outerLight);
+                    vertex(inner, a, innerLight); vertex(outer, b, outerLight); vertex(inner, b, innerLight);
+                }
+            }
+            surfaces.push({ type: "triangles", positions, vertexBrightness, color: part.color,
+                additive: true, transparent: true, opacity: glow.strength * emissiveness, depthWrite: false });
+        }
+        return surfaces;
     }
 };

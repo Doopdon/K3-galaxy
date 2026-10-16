@@ -36,7 +36,8 @@ function installSwarmChildren(scene, data, pointSize) {
             pitch: Math.asin(Math.random() * 2 - 1),
             roll: Math.random() * Math.PI * 2
         };
-        const shipParts = SpaceshipGenerator.describeOutside(ship, edge / 2);
+        ship.emissiveness = 0;
+        const shipParts = SpaceshipGenerator.describeOutside(ship, edge / 2, 12, ship.emissiveness);
         const child = new K3Scene({ name: scene.name + " / Swarm cube", size: edge / 2,
             ...orientation,
             insideSize: 100, revealOnOverlap: false,
