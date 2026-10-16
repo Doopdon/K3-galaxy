@@ -325,6 +325,19 @@ assert.equal(shader.uniforms.orbitTime.value, 24);
 assert.ok(shader.vertexShader.includes("orbitAxisA * cos(angle)"));
 assert.ok(shader.vertexShader.includes("gl_PointSize = size * length(modelMatrix[0].xyz);"));
 assert.ok(!shader.vertexShader.includes("gl_PointSize = size;"));
+assert.ok(shader.vertexShader.includes("gl_PointSize *= projectionMatrix[1][1] * particleProjectionScale;"));
+const projectionScale = shader.uniforms.particleProjectionScale.value;
+assert.ok(Math.abs(projectionScale - Math.tan(Math.PI / 6)) < 1e-12);
+let previousSize = Infinity;
+for (const fov of [15, 30, 60, 90, 110]) {
+    const projectedSize = cloud.material.size * projectionScale / Math.tan(fov * Math.PI / 360);
+    assert.ok(projectedSize < previousSize, "widening FOV must shrink perspective particles");
+    previousSize = projectedSize;
+    const fixedShipEdge = cloud.material.size * Math.tan(Math.PI / 6);
+    const projectedShipSize = fixedShipEdge / Math.tan(fov * Math.PI / 360);
+    assert.ok(Math.abs(projectedSize - projectedShipSize) < 1e-12,
+        "particles and promoted ships must scale together at every FOV");
+}
 assert.ok(shader.fragmentShader.includes("if (swarmVisible < 0.5) discard;"));
 assert.equal(cloud.geometry.attributes.particleVisible.array, star.swarmData.visible);
 // Existing disposal traversal releases batch resources as well.

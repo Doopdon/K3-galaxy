@@ -77,8 +77,12 @@ function createGlowingStarInterior(scene) {
     const time = { value: 0 };
     material.onBeforeCompile = shader => {
         shader.uniforms.orbitTime = time;
+        shader.uniforms.particleProjectionScale = {
+            value: Math.tan(K3_SWARM_SHIPS.referenceFov * Math.PI / 360)
+        };
         shader.vertexShader = `
             uniform float orbitTime;
+            uniform float particleProjectionScale;
             attribute vec3 orbitAxisA;
             attribute vec3 orbitAxisB;
             attribute vec2 orbit;
@@ -92,6 +96,9 @@ function createGlowingStarInterior(scene) {
             // PointsMaterial scales positions but not point sizes. Interiors
             // use uniform scale, including when revealed beside a corridor.
             gl_PointSize = size * length(modelMatrix[0].xyz);
+            // Match perspective geometry when FOV/zoom changes; preserve the
+            // original size at referenceFov. Fixed-pixel galaxy dots are separate.
+            gl_PointSize *= projectionMatrix[1][1] * particleProjectionScale;
         `);
         if (shader.fragmentShader) {
             shader.fragmentShader = "varying float swarmVisible;\n" +
