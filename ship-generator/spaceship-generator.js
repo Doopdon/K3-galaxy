@@ -37,7 +37,8 @@ const SpaceshipGenerator = {
             const x = length / 2 - spots[index];
             if (types[index] === "ring") {
                 parts.push({ id: "ring-" + index, role: "ring", type: "cylinder", x, topRadius: 1.2, bottomRadius: 1.2,
-                    length: between(0.2, 0.65), color: 0x888888 });
+                    length: between(0.2, 0.65), color: 0x888888,
+                    terrain: TerrainGenerator.randomSettings(random) });
             } else {
                 const innerRadius = between(1.5, 2);
                 parts.push({ id: "disk-" + index, role: "disk", type: "disk", x, innerRadius,

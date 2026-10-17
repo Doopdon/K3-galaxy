@@ -11,7 +11,7 @@ const K3ShipCloseup = {
         const count = view.getUint32(80, true);
         if (bytes.length !== 84 + count * 50) throw new Error("Invalid binary ring STL");
         const positions = new Float32Array(count * 9);
-        let minZ = Infinity, maxZ = -Infinity, radius = 0;
+        let minZ = Infinity, maxZ = -Infinity, radius = 0, innerRadius = Infinity;
         for (let triangle = 0; triangle < count; triangle++) {
             for (let vertex = 0; vertex < 3; vertex++) {
                 const offset = 84 + triangle * 50 + 12 + vertex * 12;
@@ -20,6 +20,7 @@ const K3ShipCloseup = {
                 positions.set([z, x, y], triangle * 9 + vertex * 3);
                 minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
                 radius = Math.max(radius, Math.hypot(x, y));
+                innerRadius = Math.min(innerRadius, Math.hypot(x, y));
             }
         }
         const thickness = maxZ - minZ;
@@ -35,6 +36,7 @@ const K3ShipCloseup = {
         geometry.computeVertexNormals();
         geometry.computeBoundingSphere();
         this.ringGeometry = geometry;
+        this.ringInnerRadius = innerRadius / radius;
         return geometry;
     },
 
@@ -72,6 +74,7 @@ const K3ShipCloseup = {
                 else mesh.rotation.z = Math.PI / 2;
             }
             root.add(mesh);
+            if (part.role === "ring") root.add(K3RingTerrain.create(part, scale, this.ringInnerRadius));
         }
         if (data.emissiveness > 0 && K3_COLORS.shipDiskGlow.enabled) {
             const halfExtent = scale / SpaceshipGenerator.fitScale(data, 1);

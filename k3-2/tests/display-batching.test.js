@@ -84,13 +84,26 @@ class Quaternion {
 class BufferAttribute {
     constructor(array, itemSize) { Object.assign(this, { array, itemSize }); }
     setUsage() { return this; }
+    setXYZ(index,x,y,z) { this.array.set([x,y,z],index*3); }
 }
 class Geometry {
     constructor() { geometryCount++; this.attributes = {}; }
     setAttribute(n, a) { this.attributes[n] = a; }
     setDrawRange(start, count) { this.drawRange = { start, count }; }
     clone() { const copy = new Geometry(); copy.attributes = { ...this.attributes }; return copy; }
-    computeVertexNormals() {}
+    computeVertexNormals() {
+        if (!this.attributes.position) return;
+        const p = this.attributes.position.array, normals = new Float32Array(p.length);
+        const indices = this.indices || Array.from({length:p.length/3},(_,index)=>index);
+        for (let i=0;i<indices.length;i+=3) {
+            const a=indices[i]*3,b=indices[i+1]*3,c=indices[i+2]*3;
+            const ux=p[b]-p[a],uy=p[b+1]-p[a+1],uz=p[b+2]-p[a+2];
+            const vx=p[c]-p[a],vy=p[c+1]-p[a+1],vz=p[c+2]-p[a+2];
+            for (const offset of [a,b,c]) { normals[offset]+=uy*vz-uz*vy; normals[offset+1]+=uz*vx-ux*vz; normals[offset+2]+=ux*vy-uy*vx; }
+        }
+        this.attributes.normal = new BufferAttribute(normals,3);
+    }
+    setIndex(indices) { this.indices = indices; }
     computeBoundingSphere() {}
     addEventListener(type, callback) { this.listeners = this.listeners || {}; this.listeners[type] = callback; }
     dispose() { this.disposed = true; if (this.listeners?.dispose) this.listeners.dispose(); }
@@ -98,6 +111,7 @@ class Geometry {
 class Material {
     constructor(options) { materialCount++; Object.assign(this, options); }
     dispose() { this.disposed = true; }
+    addEventListener() {}
 }
 class Mesh extends Object3D {
     constructor(geometry, material) { super(); Object.assign(this, { geometry, material }); }
@@ -112,6 +126,7 @@ class Color {
     set(value) { this.r = ((value >> 16) & 255) / 255; this.g = ((value >> 8) & 255) / 255; this.b = (value & 255) / 255; return this; }
 }
 const THREE = { Vector3, Object3D, Euler, Quaternion, Group: Object3D, Scene: Object3D, BufferGeometry: Geometry,
+    CanvasTexture: class { constructor(canvas) { this.image=canvas; } dispose() {} },
     SphereGeometry: Geometry, BoxGeometry: Geometry, PlaneGeometry: Geometry, CylinderGeometry: Geometry, RingGeometry: Geometry, DoubleSide: 2,
     HemisphereLight: Object3D, DirectionalLight: Object3D, MeshStandardMaterial: Material,
     BufferAttribute, Mesh, InstancedMesh, Points: Mesh,
@@ -119,9 +134,16 @@ const THREE = { Vector3, Object3D, Euler, Quaternion, Group: Object3D, Scene: Ob
     LineBasicMaterial: Material, Color, DynamicDrawUsage: 35048,
     Sphere: class { constructor(center, radius) { Object.assign(this, { center, radius }); } },
     MathUtils: { lerp: (a, b, t) => a + (b - a) * t } };
+Vector3.prototype.fromBufferAttribute = function(attribute,index) {
+    return this.set(...attribute.array.slice(index*3,index*3+3));
+};
 const context = vm.createContext({ THREE, console, atob, showWireFrames: false,
-    document: { getElementById() { return null; } } });
-const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-colors.js", "k3-ship-size.js", "../ship-generator/spaceship-generator.js", "assets/ring-stl.js", "k3-scenes/ship-closeup.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
+    document: { getElementById() { return null; }, createElement() {
+        const ctx = { createImageData(w,h) { return {data:new Uint8ClampedArray(w*h*4)}; },
+            putImageData(image){this.image=image;}, getImageData(){return this.image;}, save(){},restore(){},beginPath(){},moveTo(){},lineTo(){},stroke(){} };
+        return { getContext(){return ctx;} };
+    } } });
+const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-colors.js", "k3-ship-size.js", "../terrain-generator.js", "../ship-generator/spaceship-generator.js", "assets/ring-stl.js", "k3-scenes/ring-terrain.js", "k3-scenes/ship-closeup.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
     "k3-scenes/shuttle-scene.js", "k3-scenes/route-corridor.js", "k3-scenes/main-scene.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor, SpaceshipGenerator } =
@@ -178,6 +200,42 @@ for (const mesh of closeupParts) {
     } else assert.equal(mesh.scale.x, closeupRecipe.insideScale);
 }
 const detailedRings = closeupParts.filter(mesh => mesh.userData.shipPart.role === "ring");
+const ringWorlds = closeup.children.filter(mesh => mesh.userData.ringTerrain);
+assert.equal(ringWorlds.length, detailedRings.length);
+for (const world of ringWorlds) {
+    const positions = world.geometry.attributes.position.array;
+    const uv = world.geometry.attributes.uv.array;
+    for (let row=0;row<=12;row++) {
+        const a=row*129,b=a+128;
+        assert.deepEqual(Array.from(positions.slice(a*3,a*3+3)),Array.from(positions.slice(b*3,b*3+3)));
+        assert.equal(uv[a*2],0); assert.equal(uv[b*2],1);
+    }
+    assert.equal(world.material.map.image.width,512);
+    assert.ok(world.material.map.image.height >= 16 && world.material.map.image.height <= 128);
+    assert.ok(world.userData.ringTerrain.seed >= 0);
+}
+const terrainGenerator = vm.runInContext("TerrainGenerator",context);
+const coldRing = terrainGenerator.randomSettings(() => 0);
+const hotRing = terrainGenerator.randomSettings(() => 0.999999);
+assert.equal(coldRing.temperature,0);
+assert.equal(hotRing.temperature,100);
+assert.equal(coldRing.scale,6);
+assert.equal(hotRing.scale,44);
+assert.equal(coldRing.seamless,true);
+assert.notEqual(coldRing.sea,hotRing.sea);
+assert.notEqual(coldRing.islandiness,hotRing.islandiness);
+for (const world of ringWorlds) {
+    const part = closeupParts.find(mesh => world.name === mesh.name + " terrain").userData.shipPart;
+    const positions = world.geometry.attributes.position.array;
+    assert.ok(Math.abs(positions[0] + part.length * closeupRecipe.insideScale * 0.44) < 1e-6,
+        "terrain must extend across 88% of the ring thickness to tuck into its walls");
+}
+const terrainCanvas = () => ({width:32,height:8,getContext:()=>({
+    createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)}),putImageData(){}
+})});
+const firstTerrain = terrainGenerator.render(terrainCanvas(),{seed:123,rivers:false,octaves:2});
+const repeatTerrain = terrainGenerator.render(terrainCanvas(),{seed:123,rivers:false,octaves:2});
+assert.deepEqual(Array.from(firstTerrain.heights),Array.from(repeatTerrain.heights));
 assert.ok(detailedRings.length > 1);
 assert.notEqual(detailedRings[0].geometry, detailedRings[1].geometry);
 detailedRings[0].geometry.dispose();
