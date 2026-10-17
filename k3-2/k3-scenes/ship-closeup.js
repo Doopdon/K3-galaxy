@@ -84,6 +84,13 @@ const K3ShipCloseup = {
         const light = new THREE.DirectionalLight(0xffffff, 2);
         light.position.set(100, 150, 100);
         root.add(light);
+        root.userData.k3Animate = time => {
+            // This model is already in the rotating ship frame. Apply only
+            // the difference between world-light speed and ship speed here.
+            const angle = time * K3_SHIP_SIZE.spinSpeed * (K3_SHIP_SIZE.lightRotationMultiplier - 1);
+            const cosine = Math.cos(angle), sine = Math.sin(angle);
+            light.position.set(100, 150 * cosine - 100 * sine, 150 * sine + 100 * cosine);
+        };
         return root;
     }
 };

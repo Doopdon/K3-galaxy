@@ -966,6 +966,7 @@ class K3Game {
         if (this.shuttleSystem) this.shuttleSystem.syncLayers();
         for (const layer of this.layers) {
             layer.scene.traverse((object) => {
+                if (object.userData.k3Animate) object.userData.k3Animate(this.simulationTime || 0);
                 if (object.userData.k3Display) object.userData.k3Display.update(this.simulationTime || 0);
                 if (object.userData.k3DisplayManaged) return;
                 const node = object.userData.k3Scene;

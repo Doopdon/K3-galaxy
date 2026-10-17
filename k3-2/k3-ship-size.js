@@ -3,6 +3,7 @@
 const K3_SHIP_SIZE = {
     multiplier: 1,
     spinSpeed: Math.PI * 2, // Radians per simulation second: one axial turn/sec at 1x.
+    lightRotationMultiplier: 1.15, // World light turns 15% faster than the ship.
     referenceFov: 60,
     particleSize: 0.095,
 
