@@ -920,26 +920,29 @@ class K3Game {
         // Let procedural scenes choose nearby logical children in their own
         // units, including ancestors while a moving child is occupied.
         if (this.mode === "inside") {
-            const path = new Set(this.layers.map(layer => layer.node));
-            // A procedural interior visible only through overlap stays at its
-            // distant representation instead of retaining stale nearby cubes.
-            for (const [node] of this.openInteriors || []) {
-                if (!path.has(node) && node.refreshNearbyChildren) {
-                    node.refreshNearbyChildren(null, this.simulationTime || 0);
-                }
-            }
+            const positions = new Map();
             const local = this.camera.position.clone();
             for (let index = this.layers.length - 1; index >= 0; index--) {
                 const node = this.layers[index].node;
+                positions.set(node, local.clone());
                 if (node.refreshNearbyChildren) node.refreshNearbyChildren(local, this.simulationTime || 0);
                 if (index > 0) node.localToParent(local);
+            }
+            // Overlapping interiors are just as visible and collidable as the
+            // active branch. Query them in their own units instead of disabling
+            // their procedural children until the movement frame is entered.
+            for (const [node] of this.openInteriors || []) {
+                if (positions.has(node) || !node.refreshNearbyChildren) continue;
+                const parentPosition = positions.get(node.parent);
+                const position = parentPosition ? node.parentToLocal(parentPosition.clone()) : null;
+                node.refreshNearbyChildren(position, this.simulationTime || 0);
             }
         }
     }
 
     renderLayers() {
-        this.refreshNearbySceneChildren();
         this.syncOverlappingInteriors();
+        this.refreshNearbySceneChildren();
         if (!this.shuttleSystem) {
             const status = document.getElementById("ride-status");
             if (status && this.activeScene) {

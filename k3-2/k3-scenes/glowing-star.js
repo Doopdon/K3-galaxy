@@ -50,7 +50,7 @@ function createGlowingStarInterior(scene) {
 
     if (!scene.swarmData) {
         scene.swarmData = data;
-        installSwarmChildren(scene, data, 0.095 * scale);
+        installSwarmChildren(scene, data);
     }
 
     const geometry = new THREE.BufferGeometry();
@@ -69,7 +69,7 @@ function createGlowingStarInterior(scene) {
     // Shader motion stays within this sphere, independently of initial positions.
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), swarmRadius);
     const material = new THREE.PointsMaterial({
-        size: 0.095 * scale,
+        size: K3_SHIP_SIZE.particleSize * scale,
         sizeAttenuation: true,
         vertexColors: true,
         depthWrite: true
@@ -78,7 +78,7 @@ function createGlowingStarInterior(scene) {
     material.onBeforeCompile = shader => {
         shader.uniforms.orbitTime = time;
         shader.uniforms.particleProjectionScale = {
-            value: Math.tan(K3_SWARM_SHIPS.referenceFov * Math.PI / 360)
+            value: Math.tan(K3_SHIP_SIZE.referenceFov * Math.PI / 360)
         };
         shader.vertexShader = `
             uniform float orbitTime;

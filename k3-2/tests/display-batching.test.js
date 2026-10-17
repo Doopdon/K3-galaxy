@@ -117,7 +117,7 @@ const THREE = { Vector3, Object3D, Euler, Quaternion, Group: Object3D, Scene: Ob
     MathUtils: { lerp: (a, b, t) => a + (b - a) * t } };
 const context = vm.createContext({ THREE, console, showWireFrames: false,
     document: { getElementById() { return null; } } });
-const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-colors.js", "../ship-generator/spaceship-generator.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
+const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-colors.js", "k3-ship-size.js", "../ship-generator/spaceship-generator.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
     "k3-scenes/shuttle-scene.js", "k3-scenes/route-corridor.js", "k3-scenes/main-scene.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor, SpaceshipGenerator } =
@@ -304,6 +304,16 @@ assert.ok(scaledRoute.traffic.every(craft => craft.shuttle.size <= scaledStar.si
 const star = mainScene.children[0].stars[0];
 star.game = { simulationTime: 12 };
 const starInside = star.createInside();
+const sharedShipSize = vm.runInContext("K3_SHIP_SIZE", context);
+const swarmShipInParentUnits = star.swarmData.pool[0].size * star.size / star.insideSize;
+assert.ok(Math.abs(scaledRoute.traffic[0].shuttle.size - swarmShipInParentUnits) < 1e-12,
+    "transit and swarm ships must have identical physical size across the star boundary");
+const originalMultiplier = sharedShipSize.multiplier;
+sharedShipSize.multiplier = originalMultiplier * 0.5;
+const halfSizeRoute = new RouteCorridor(star, mainScene.children[0].stars[1], "Half-sized ships");
+assert.ok(Math.abs(halfSizeRoute.traffic[0].shuttle.size - swarmShipInParentUnits * 0.5) < 1e-12);
+assert.ok(Math.abs(sharedShipSize.swarmHalfExtent(star) - star.swarmData.pool[0].size * 0.5) < 1e-12);
+sharedShipSize.multiplier = originalMultiplier;
 assert.equal(starInside.children.length, 3); // Swarm ship disks have no glow batch.
 const cloud = starInside.children[0].children[1];
 const outsideRadius = star.describeOutside().parts[1].radius;
@@ -436,6 +446,33 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
     }
     diagnostic.enter(root);
     diagnostic.enter(region);
+    // First approach through a corridor: never enter the star's movement frame
+    // or visit its center before testing promotion at the swarm's outer edge.
+    diagnostic.camera.position.set(5, 0, 0);
+    diagnostic.enter(corridor);
+    diagnostic.renderLayers();
+    const firstSwarm = diagnosticStar.swarmData;
+    const outerDot = new Vector3();
+    let outerIndex = -1;
+    for (let index = 0; index < firstSwarm.orbits.length / 2; index++) {
+        firstSwarm.positionAt(index, 0, outerDot);
+        if (outerDot.length() > 200 && outerDot.x > 20 && outerDot.y > 50) {
+            outerIndex = index;
+            break;
+        }
+    }
+    assert.ok(outerIndex >= 0);
+    const parentDot = diagnosticStar.localToParent(outerDot.clone());
+    diagnostic.camera.position.copy(corridor.parentToLocal(parentDot.clone()));
+    assert.ok(corridor.containsInsidePosition(diagnostic.camera.position));
+    diagnostic.renderLayers();
+    assert.ok(diagnostic.activeScene === corridor);
+    assert.ok(firstSwarm.pool.some(child => child.enabled && child.particleIndex === outerIndex),
+        "outer swarm ships must appear on first approach while the corridor remains active");
+    assert.ok(firstSwarm.pool.includes(diagnostic.checkChildCollision(diagnostic.camera.position)),
+        "outer ships revealed through overlap must be collidable");
+    assert.equal(firstSwarm.visible[outerIndex], 0);
+    diagnostic.exit();
     diagnostic.camera.position.set(5, 0, 0);
     diagnostic.enter(diagnosticStar);
     record("direct star entry");
@@ -754,7 +791,8 @@ const busy = new RouteCorridor(new K3Scene({size:0.1}),
     new K3Scene({size:0.1,position:[0,0,1000]}), "Busy route");
 assert.equal(busy.children.length, 8);
 assert.equal(busy.stream.count, 512);
-assert.ok(Math.abs(busy.traffic[0].shuttle.size - 0.1 * 1.25 * 0.3 / 100) < 1e-12);
+const shipSize = vm.runInContext("K3_SHIP_SIZE", context);
+assert.ok(Math.abs(busy.traffic[0].shuttle.size - shipSize.parentHalfExtent(busy.endpoints[0])) < 1e-12);
 assert.ok(Math.abs(busy.stream.laneOffset - 0.1 * 1.25 * 0.04) < 1e-12);
 const forward = new Vector3(), reverse = new Vector3();
 busy.trafficPosition(5, 0, forward);

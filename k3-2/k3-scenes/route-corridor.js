@@ -2,8 +2,6 @@
 const K3_ROUTE_SHIPS = {
     maxVisible: 8,
     revealDistance: 80, // Multiples of shuttle boundary radius (previously 20).
-    modelScale: 0.4,
-    sizeScale: 0.01, // Ship model and collision radius: 100x smaller.
     laneOffset: 0.04, // Fraction of corridor half-width (previously 0.4).
     dotsPerLane: 256,
     distantDotsPerLane: 32
@@ -38,7 +36,10 @@ class RouteCorridor extends K3Scene {
         });
         this.endpoints = [starA, starB];
         this.length = length;
-        const shuttleSize = Math.min(halfWidth * 0.3, half[2] / 4) * K3_ROUTE_SHIPS.sizeScale;
+        const shuttleSize = Math.min(K3_SHIP_SIZE.parentHalfExtent(starA),
+            K3_SHIP_SIZE.parentHalfExtent(starB), half[2] / 4);
+        // Reveal distance is independent of the physical ship-size control.
+        this.shipRevealRange = Math.min(halfWidth * 0.3, half[2] / 4) * K3_ROUTE_SHIPS.revealDistance;
         const span = Math.max(half[2] * 2 - shuttleSize * 2, halfWidth * 0.001);
         // Keep physical vehicles separated, including on short routes. Long
         // routes show dense dot streams while keeping the full ship pool fixed.
@@ -92,7 +93,7 @@ class RouteCorridor extends K3Scene {
                 if (!shipParts) {
                     node.shipData = SpaceshipGenerator.generate();
                     node.shipData.emissiveness = 1;
-                    const modelRadius = node.size * K3_ROUTE_SHIPS.modelScale;
+                    const modelRadius = node.size;
                     node.shipData.outsideScale = SpaceshipGenerator.fitScale(node.shipData, modelRadius);
                     node.shipData.insideScale = node.shipData.outsideScale * node.insideSize / node.size;
                     shipParts = SpaceshipGenerator.describeOutside(node.shipData, modelRadius, 12, node.shipData.emissiveness);
@@ -125,7 +126,7 @@ class RouteCorridor extends K3Scene {
         const nearby = [];
         const point = new THREE.Vector3();
         // Preserve the reveal bubble when shrinking the physical vehicles.
-        const range = this.traffic[0].shuttle.size * K3_ROUTE_SHIPS.revealDistance / K3_ROUTE_SHIPS.sizeScale;
+        const range = this.shipRevealRange;
         if (position) for (let index = 0; index < this.stream.count; index++) {
             if (pinned && pinned.particleIndex === index) continue;
             this.trafficPosition(index, time, point);

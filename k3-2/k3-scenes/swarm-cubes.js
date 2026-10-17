@@ -1,13 +1,12 @@
 // Nearby swarm dots promoted to reusable, enterable cube scenes.
-const K3_SWARM_SHIPS = { maxVisible: 320, revealDistance: 60, referenceFov: 60 };
+const K3_SWARM_SHIPS = { maxVisible: 320, revealDistance: 60 };
 
-function installSwarmChildren(scene, data, pointSize) {
+function installSwarmChildren(scene, data) {
     const capacity = K3_SWARM_SHIPS.maxVisible;
     // PointsMaterial uses viewportHeight/2; geometric projection also includes
     // 1/tan(fov/2). Match a face-on cube's edge to that point footprint.
     // Use a fixed reference: zooming must not change physical ship sizes.
-    const fov = K3_SWARM_SHIPS.referenceFov;
-    const edge = pointSize * Math.tan(fov * Math.PI / 360);
+    const edge = K3_SHIP_SIZE.swarmHalfExtent(scene) * 2;
     const range = edge * K3_SWARM_SHIPS.revealDistance;
     const binWidth = edge * 12;
     const bins = [];
