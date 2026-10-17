@@ -64,6 +64,7 @@ class K3Display {
             depthWrite: description.depthWrite ?? true
         };
         if (description.additive) style.additive = true;
+        if (description.renderOrder !== undefined) style.renderOrder = description.renderOrder;
         if (style.type === "sphere") {
             style.widthSegments = description.widthSegments ?? 16;
             style.heightSegments = description.heightSegments ?? 12;
@@ -191,6 +192,7 @@ class K3Display {
         }
         // Dynamic instances may move outside their original bounds in Three r128.
         batch.object.frustumCulled = false;
+        batch.object.renderOrder = style.renderOrder ?? 0;
         batch.object.userData.k3Scenes = [];
         batch.color = new THREE.Color();
         batch.vertex = new THREE.Vector3();

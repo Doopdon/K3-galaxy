@@ -2,6 +2,7 @@
 const K3_COLORS = {
     red: 0x990000,//0x7a2b1d,
     galaxyStarColor: 0xffdd66, // Galactic-scale star markers; reload after editing.
+    sunFlare: { enabled: true, strength: 0.3, size: 1 },
     lineBrightness: 1.5, // Galaxy connections are brighter than the base red.
     shipDiskGlow: {
         enabled: true,

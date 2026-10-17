@@ -113,5 +113,20 @@ function createGlowingStarInterior(scene) {
     // Use the game's clock so time controls and overlapping interiors stay in sync.
     cloud.onBeforeRender = () => { time.value = scene.game.simulationTime || 0; };
     root.add(cloud);
+    const flare = K3_COLORS.sunFlare;
+    if (flare.enabled) {
+        const radius = 0.1 * scale * flare.size;
+        // Optical overlay: render after the swarm without letting individual
+        // particle depths punch holes in the halo or streak.
+        root.add(K3Display.create([
+            { node: null, appearance: { type: "softSprite", radius: radius * 4,
+                color: 0xffe6bd, opacity: flare.strength, transparent: true,
+                additive: true, depthWrite: false, depthTest: false, renderOrder: 100 } },
+            { node: null, appearance: { type: "softSprite",
+                halfExtents: [radius * 12, radius * 0.2, 1],
+                color: 0xfff2dd, opacity: flare.strength * 0.7, transparent: true,
+                additive: true, depthWrite: false, depthTest: false, renderOrder: 100 } }
+        ]));
+    }
     return root;
 }
