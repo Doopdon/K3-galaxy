@@ -89,6 +89,9 @@ class Geometry {
     constructor() { geometryCount++; this.attributes = {}; }
     setAttribute(n, a) { this.attributes[n] = a; }
     setDrawRange(start, count) { this.drawRange = { start, count }; }
+    clone() { const copy = new Geometry(); copy.attributes = { ...this.attributes }; return copy; }
+    computeVertexNormals() {}
+    computeBoundingSphere() {}
     addEventListener(type, callback) { this.listeners = this.listeners || {}; this.listeners[type] = callback; }
     dispose() { this.disposed = true; if (this.listeners?.dispose) this.listeners.dispose(); }
 }
@@ -109,15 +112,16 @@ class Color {
     set(value) { this.r = ((value >> 16) & 255) / 255; this.g = ((value >> 8) & 255) / 255; this.b = (value & 255) / 255; return this; }
 }
 const THREE = { Vector3, Object3D, Euler, Quaternion, Group: Object3D, Scene: Object3D, BufferGeometry: Geometry,
-    SphereGeometry: Geometry, BoxGeometry: Geometry, PlaneGeometry: Geometry, DoubleSide: 2,
+    SphereGeometry: Geometry, BoxGeometry: Geometry, PlaneGeometry: Geometry, CylinderGeometry: Geometry, RingGeometry: Geometry, DoubleSide: 2,
+    HemisphereLight: Object3D, DirectionalLight: Object3D, MeshStandardMaterial: Material,
     BufferAttribute, Mesh, InstancedMesh, Points: Mesh,
     LineSegments: Mesh, MeshBasicMaterial: Material, PointsMaterial: Material,
     LineBasicMaterial: Material, Color, DynamicDrawUsage: 35048,
     Sphere: class { constructor(center, radius) { Object.assign(this, { center, radius }); } },
     MathUtils: { lerp: (a, b, t) => a + (b - a) * t } };
-const context = vm.createContext({ THREE, console, showWireFrames: false,
+const context = vm.createContext({ THREE, console, atob, showWireFrames: false,
     document: { getElementById() { return null; } } });
-const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-colors.js", "k3-ship-size.js", "../ship-generator/spaceship-generator.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
+const source = ["k3-display.js", "k3-scene.js", "k3-game.js", "k3-colors.js", "k3-ship-size.js", "../ship-generator/spaceship-generator.js", "assets/ring-stl.js", "k3-scenes/ship-closeup.js", "k3-scenes/swarm-cubes.js", "k3-scenes/glowing-star.js", "k3-scenes/star-scenes.js",
     "k3-scenes/shuttle-scene.js", "k3-scenes/route-corridor.js", "k3-scenes/main-scene.js"]
     .map(file => fs.readFileSync(path.join(__dirname, "..", file), "utf8")).join("\n");
 const { K3Scene, K3Display, K3Game, mainScene, createNeighborConnections, connectionPositions, RouteCorridor, SpaceshipGenerator } =
@@ -142,6 +146,35 @@ palette.red = savedRed;
 palette.particles = savedParticles;
 const shipDescriptions = SpaceshipGenerator.describeOutside(recipe, 1);
 const restoredRecipe = JSON.parse(JSON.stringify(recipe));
+// Real supplied STL: reconstruct JSON without rerandomizing components.
+const closeupBuilder = vm.runInContext("K3ShipCloseup", context);
+const closeupRecipe = { ...restoredRecipe, insideScale: 3.25 };
+const closeupJSON = JSON.stringify(closeupRecipe);
+const closeup = closeupBuilder.create(closeupJSON);
+assert.equal(JSON.stringify(closeup.userData.shipData), closeupJSON);
+const closeupParts = closeup.children.filter(child => child.userData.shipPart);
+assert.equal(closeupParts.length, recipe.parts.length);
+for (const mesh of closeupParts) {
+    const part = mesh.userData.shipPart;
+    assert.equal(mesh.position.x, part.x * closeupRecipe.insideScale);
+    if (part.role === "ring") {
+        const ringSource = fs.readFileSync(path.join(__dirname, "..", "..", "ring.stl"));
+        assert.equal(mesh.geometry.attributes.position.array.length, ringSource.readUInt32LE(80) * 9);
+        assert.equal(mesh.scale.x, part.length * closeupRecipe.insideScale);
+        assert.equal(mesh.scale.y, part.topRadius * closeupRecipe.insideScale);
+        assert.notEqual(mesh.geometry, closeupBuilder.ringGeometry);
+        const positions = mesh.geometry.attributes.position.array;
+        for (let index = 0; index < positions.length; index += 3) {
+            assert.ok(Math.abs(positions[index]) <= 0.500001);
+            assert.ok(Math.hypot(positions[index + 1], positions[index + 2]) <= 1.000001);
+        }
+    } else assert.equal(mesh.scale.x, closeupRecipe.insideScale);
+}
+const detailedRings = closeupParts.filter(mesh => mesh.userData.shipPart.role === "ring");
+assert.ok(detailedRings.length > 1);
+assert.notEqual(detailedRings[0].geometry, detailedRings[1].geometry);
+detailedRings[0].geometry.dispose();
+assert.ok(!closeupBuilder.ringGeometry.disposed && !detailedRings[1].geometry.disposed);
 assert.equal(restoredRecipe.version, 1);
 assert.equal(restoredRecipe.spineSegments.length, recipe.parts.filter(part => part.role === "spine").length);
 assert.equal(new Set(recipe.parts.map(part => part.id)).size, recipe.parts.length);
@@ -601,8 +634,9 @@ console.log("PASS: 5000 logical children in one sphere batch; points, lines, com
     diagnostic.updateSceneTransitions();
     assert.equal(diagnostic.activeScene, cube);
     assert.equal(diagnostic.activeScene.shipData, savedShipData);
-    assert.equal(diagnostic.worldRoot.children.length, 1); // Placeholder square.
-    assert.equal(diagnostic.worldRoot.children[0].material.color, 0xff3333);
+    assert.equal(diagnostic.worldRoot.children.length, 1);
+    assert.equal(diagnostic.worldRoot.children[0].name, "Ship close-up");
+    assert.equal(diagnostic.worldRoot.children[0].userData.shipData, savedShipData);
     diagnostic.renderLayers();
     assert.equal(swarm.positions, dotPositions, "entry must preserve the original swarm");
     const starLayer = diagnostic.layers.find(layer => layer.node === diagnosticStar);
@@ -736,7 +770,8 @@ const shuttle = corridor.children.find(child => child.enabled);
 assert.ok(shuttle);
 rideGame.camera.position.copy(shuttle.position);
 rideGame.updateSceneTransitions(); assert.equal(rideGame.activeScene,shuttle);
-assert.equal(rideGame.worldRoot.children[0].material.color,0xff6600);
+assert.equal(rideGame.worldRoot.children[0].name,"Ship close-up");
+assert.equal(rideGame.worldRoot.children[0].userData.shipData,shuttle.shipData);
 rideGame.updateSceneAnimation(0.1);
 rideGame.renderLayers();
 assert.ok(rideGame.layers[2].camera.position.distanceTo(shuttle.position)<1e-9);

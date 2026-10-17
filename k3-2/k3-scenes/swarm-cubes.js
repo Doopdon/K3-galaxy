@@ -46,8 +46,7 @@ function installSwarmChildren(scene, data) {
                 { type: "box", radius: node.size, color: 0xff0000, wireframe: true, collisionBoundary: true },
                 ...shipParts
             ] }),
-            makeInside: () => new THREE.Mesh(new THREE.PlaneGeometry(50, 50),
-                new THREE.MeshBasicMaterial({ color: 0xff3333, side: THREE.DoubleSide })) });
+            makeInside: node => K3ShipCloseup.create(node.shipData) });
         // Keep the full recipe on the logical scene, rather than only inside
         // the outside renderer's closure. Descendants can use parent.shipData.
         child.shipData = ship;

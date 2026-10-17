@@ -85,6 +85,10 @@ class RouteCorridor extends K3Scene {
         this.traffic = [];
         for (let index = 0; index < K3_ROUTE_SHIPS.maxVisible; index++) {
             const shuttle = new Shuttle(name + " / Shuttle " + (index + 1));
+            shuttle.makeInside = node => {
+                if (!node.shipData) node.describeOutside();
+                return K3ShipCloseup.create(node.shipData);
+            };
             const describeBoundary = shuttle.makeOutside;
             let shipParts = null;
             shuttle.makeOutside = node => {
