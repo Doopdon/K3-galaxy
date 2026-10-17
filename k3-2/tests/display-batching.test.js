@@ -338,6 +338,18 @@ const star = mainScene.children[0].stars[0];
 star.game = { simulationTime: 12 };
 const starInside = star.createInside();
 const sharedShipSize = vm.runInContext("K3_SHIP_SIZE", context);
+const spinBase = { rotation: 0.7, pitch: 0.4, roll: -0.3 };
+const spinningShip = new K3Scene(spinBase);
+const spineBefore = spinningShip.rotateFramePosition(new Vector3(1,0,0));
+const northBefore = spinningShip.rotateFramePosition(new Vector3(0,1,0));
+sharedShipSize.updateRotation(spinningShip, 0.25, spinBase);
+assert.ok(spinningShip.rotateFramePosition(new Vector3(1,0,0)).distanceTo(spineBefore) < 1e-9,
+    "spin must preserve the tilted ship's spine direction");
+assert.ok(spinningShip.rotateFramePosition(new Vector3(0,1,0)).distanceTo(northBefore) > 0.1);
+sharedShipSize.updateRotation(spinningShip, 1, spinBase);
+assert.equal(spinningShip.rotation, spinBase.rotation);
+assert.equal(spinningShip.pitch, spinBase.pitch);
+assert.equal(spinningShip.roll, spinBase.roll);
 const swarmShipInParentUnits = star.swarmData.pool[0].size * star.size / star.insideSize;
 assert.ok(Math.abs(scaledRoute.traffic[0].shuttle.size - swarmShipInParentUnits) < 1e-12,
     "transit and swarm ships must have identical physical size across the star boundary");

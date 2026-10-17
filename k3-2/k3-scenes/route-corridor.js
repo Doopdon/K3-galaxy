@@ -161,7 +161,8 @@ class RouteCorridor extends K3Scene {
         if (changed) this.stream.version++;
         for (const craft of this.traffic) if (craft.shuttle.enabled) {
             craft.direction = this.trafficPosition(craft.particleIndex, time, craft.shuttle.position);
-            craft.shuttle.rotation = -craft.direction * Math.PI / 2;
+            K3_SHIP_SIZE.updateRotation(craft.shuttle, time,
+                {rotation: -craft.direction * Math.PI / 2, pitch: 0, roll: 0});
         }
     }
 
@@ -170,7 +171,8 @@ class RouteCorridor extends K3Scene {
         for (const craft of this.traffic) {
             if (craft.shuttle.enabled) {
                 craft.direction = this.trafficPosition(craft.particleIndex, this.trafficTime, craft.shuttle.position);
-                craft.shuttle.rotation = -craft.direction * Math.PI / 2;
+                K3_SHIP_SIZE.updateRotation(craft.shuttle, this.trafficTime,
+                    {rotation: -craft.direction * Math.PI / 2, pitch: 0, roll: 0});
             }
         }
     }

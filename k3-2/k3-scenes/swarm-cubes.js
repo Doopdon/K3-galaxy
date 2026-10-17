@@ -65,7 +65,10 @@ function installSwarmChildren(scene, data) {
         if (previousUpdate) previousUpdate(node, delta);
         const time = scene.game.simulationTime || 0;
         for (const child of pool) {
-            if (child.enabled) data.positionAt(child.particleIndex, time, child.position);
+            if (child.enabled) {
+                data.positionAt(child.particleIndex, time, child.position);
+                K3_SHIP_SIZE.updateRotation(child, time, child.shipData.orientation);
+            }
         }
     };
     const point = new THREE.Vector3();
@@ -116,7 +119,10 @@ function installSwarmChildren(scene, data) {
             data.visible[index] = 0;
             changed = true;
         }
-        for (const child of pool) if (child.enabled) data.positionAt(child.particleIndex, time, child.position);
+        for (const child of pool) if (child.enabled) {
+            data.positionAt(child.particleIndex, time, child.position);
+            K3_SHIP_SIZE.updateRotation(child, time, child.shipData.orientation);
+        }
         // Upload before renderer traversal, so the dot disappears in the very
         // same frame that its cube becomes visible.
         if (changed) for (const attribute of data.visibilityAttributes) attribute.needsUpdate = true;
