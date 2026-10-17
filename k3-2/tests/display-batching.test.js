@@ -347,6 +347,23 @@ const halfSizeRoute = new RouteCorridor(star, mainScene.children[0].stars[1], "H
 assert.ok(Math.abs(halfSizeRoute.traffic[0].shuttle.size - swarmShipInParentUnits * 0.5) < 1e-12);
 assert.ok(Math.abs(sharedShipSize.swarmHalfExtent(star) - star.swarmData.pool[0].size * 0.5) < 1e-12);
 sharedShipSize.multiplier = originalMultiplier;
+const speedReset = Object.create(K3Game.prototype);
+Object.assign(speedReset, { mode: "inside", timeScale: 0.001 });
+for (const [scene, expectedSpeed] of [
+    [star, 10], [star.swarmData.pool[0], 10],
+    [scaledRoute, scaledRoute.boundary.halfExtents[0] * 0.5],
+    [scaledRoute.children[0], 100]
+]) {
+    speedReset.activeScene = scene;
+    speedReset.moveSpeed = 1e30;
+    speedReset.resetFlightSpeed();
+    assert.equal(speedReset.moveSpeed, expectedSpeed);
+    assert.equal(speedReset.activeScene, scene);
+    assert.equal(speedReset.timeScale, 0.001);
+}
+assert.equal(star.swarmData.pool[0].flightSpeed / star.swarmData.pool[0].insideSize,
+    scaledRoute.children[0].flightSpeed / scaledRoute.children[0].insideSize,
+    "ship speed presets must feel equivalent despite different interior units");
 assert.equal(starInside.children.length, 3); // Swarm ship disks have no glow batch.
 const cloud = starInside.children[0].children[1];
 const outsideRadius = star.describeOutside().parts[1].radius;

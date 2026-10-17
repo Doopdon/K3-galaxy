@@ -267,6 +267,10 @@ class K3Game {
                 if (help) help.hidden = !help.hidden;
             }
             if (this.shuttleSystem) this.shuttleSystem.handleKey(event);
+            if (event.code === "Space") {
+                event.preventDefault();
+                if (!event.repeat) this.resetFlightSpeed();
+            }
 
         });
 
@@ -363,6 +367,15 @@ class K3Game {
         if (direction) this.adjustTimeScale(Math.pow(10, direction * delta));
     }
 
+    resetFlightSpeed() {
+        const scene = this.activeScene;
+        if (!scene) return;
+        this.moveSpeed = this.mode === "inside"
+            ? (scene.flightSpeed ?? scene.insideSize * 0.01)
+            : scene.size * 0.01;
+        if (this.shuttleSystem) this.shuttleSystem.updateStatus();
+    }
+
     adjustSpeed(factor) {
         const nextSpeed = this.moveSpeed * factor;
         if (!Number.isFinite(nextSpeed) || nextSpeed <= 0) return;
@@ -444,7 +457,7 @@ class K3Game {
         // UP / DOWN
         // ----------------------------------------------
 
-        if (this.keys["Space"]) {
+        if (this.keys["KeyX"]) {
 
             this.camera.translateY(
                 speed

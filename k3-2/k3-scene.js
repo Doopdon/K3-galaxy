@@ -4,6 +4,7 @@ class K3Scene {
         info = "",
         size = 1,
         insideSize = size,
+        flightSpeed = null,
         position = [0, 0, 0],
         rotation = 0,
         pitch = 0,
@@ -28,6 +29,7 @@ class K3Scene {
         this.size = size;
         // Interior units are independent of the radius seen by the parent.
         this.insideSize = insideSize;
+        this.flightSpeed = flightSpeed;
 
         this.position = new THREE.Vector3(
             position[0],

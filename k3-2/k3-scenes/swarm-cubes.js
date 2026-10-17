@@ -40,7 +40,7 @@ function installSwarmChildren(scene, data) {
         const shipParts = SpaceshipGenerator.describeOutside(ship, edge / 2, 12, ship.emissiveness);
         const child = new K3Scene({ name: scene.name + " / Swarm cube", size: edge / 2,
             ...orientation,
-            insideSize: 100, revealOnOverlap: false,
+            insideSize: 100, flightSpeed: 10, revealOnOverlap: false,
             boundary: { type: "box", halfExtents: [edge / 2, edge / 2, edge / 2] },
             makeOutside: node => ({ type: "group", parts: [
                 { type: "box", radius: node.size, color: 0xff0000, wireframe: true, collisionBoundary: true },

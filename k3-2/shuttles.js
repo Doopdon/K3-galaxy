@@ -66,7 +66,7 @@ class K3ShuttleSystem {
             else this.stopRide();
         } else if (event.code === "KeyN") {
             this.startRide((this.rideIndex + 1) % this.shuttles.length);
-        } else if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "KeyC"].includes(event.code)) {
+        } else if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "KeyX", "KeyC"].includes(event.code)) {
             this.stopRide();
         }
     }

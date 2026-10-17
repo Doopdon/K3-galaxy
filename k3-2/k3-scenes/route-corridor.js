@@ -18,6 +18,7 @@ class RouteCorridor extends K3Scene {
         super({
             name,
             size, insideSize: size,
+            flightSpeed: halfWidth * 0.5,
             position: [(a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2],
             rotation: Math.atan2(dx, dz),
             pitch: -Math.atan2(dy, Math.hypot(dx, dz)),

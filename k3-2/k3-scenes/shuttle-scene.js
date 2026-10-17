@@ -12,6 +12,7 @@ class Shuttle extends K3Scene {
             name,
             size: 3,
             insideSize: 1000,
+            flightSpeed: 100,
             boundary: { type: "box", halfExtents: [3, 3, 3] },
             makeOutside: scene => mini.create(scene.size),
             makeInside: () => new THREE.Mesh(

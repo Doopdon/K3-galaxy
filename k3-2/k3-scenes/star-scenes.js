@@ -23,6 +23,7 @@ function createStarScenes(parentSize, starCount, namePrefix) {
             size: starSize,
             boundary: { type: "sphere", radius: starSize * K3_GALAXY_SCALE.starEntryRadiusMultiplier },
             insideSize: 1000,
+            flightSpeed: 10,
             position: [Math.cos(angle) * ring * radius, y * radius,
             Math.sin(angle) * ring * radius],
             makeInside: createGlowingStarInterior,
