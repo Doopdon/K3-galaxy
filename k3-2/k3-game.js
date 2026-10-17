@@ -264,7 +264,14 @@ class K3Game {
             if (event.code === "KeyH" && !event.repeat) this.toggleCollisionWireframes();
             if (event.code === "KeyU" && !event.repeat) {
                 const help = document.getElementById("ride-help");
-                if (help) help.hidden = !help.hidden;
+                if (help) {
+                    help.hidden = !help.hidden;
+                    if (help.hidden && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+                        document.documentElement.requestFullscreen().catch(error => console.warn("Fullscreen unavailable:", error));
+                    } else if (!help.hidden && document.fullscreenElement && document.exitFullscreen) {
+                        document.exitFullscreen().catch(error => console.warn("Could not exit fullscreen:", error));
+                    }
+                }
             }
             if (this.shuttleSystem) this.shuttleSystem.handleKey(event);
             if (event.code === "Space") {
